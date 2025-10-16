@@ -1,17 +1,23 @@
-// entity/User.java
 package tmmsystem.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import tmmsystem.common.BaseEntity;
 
-@Entity @Table(name = "user")
-@Getter @Setter
+import java.time.Instant;
+
+@Entity
+@Table(name = "user")
+@Getter
+@Setter
 public class User extends BaseEntity {
 
     @Column(nullable = false, unique = true, length = 150)
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false, length = 255)
     private String password;
 
@@ -34,16 +40,16 @@ public class User extends BaseEntity {
     private String resetCode;
 
     @Column(name = "reset_code_expires_at")
-    private java.time.Instant resetCodeExpiresAt;
+    private Instant resetCodeExpiresAt;
 
     @Column(name = "last_login_at")
-    private java.time.Instant lastLoginAt;
+    private Instant lastLoginAt;
 
     @Column(name = "deleted_at")
-    private java.time.Instant deletedAt;
+    private Instant deletedAt;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "role_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -53,5 +59,4 @@ public class User extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
-
 }

@@ -36,7 +36,19 @@ public class UserService {
     }
 
     public LoginResponse authenticate(String email, String password){
+        System.out.println("=== LOGIN DEBUG ===");
+        System.out.println("Email: " + email);
+        System.out.println("Password: " + password);
+
         return userRepo.findByEmail(email)
+                .map(u -> {
+                    System.out.println("User found: " + u.getEmail());
+                    System.out.println("DB password: " + u.getPassword());
+                    System.out.println("isActive: " + u.getActive());
+                    boolean pwdMatch = passwordEncoder.matches(password, u.getPassword());
+                    System.out.println("Password matches: " + pwdMatch);
+                    return u;
+                })
                 .filter(u -> passwordEncoder.matches(password, u.getPassword()) && Boolean.TRUE.equals(u.getActive()))
                 .map(u -> {
                     String token = jwtService.generateToken(u.getEmail(), java.util.Map.of(

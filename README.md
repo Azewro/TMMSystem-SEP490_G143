@@ -8,7 +8,6 @@ Nguyễn Anh Hùng - HE180711
 Nguyễn Thị Thu Hiền - HE172532
 
 Nguyễn Thị Thủy - HE172416
-
 Đỗ Hải Phong - HE181907
 
 Lê Văn Đức - HE160559
