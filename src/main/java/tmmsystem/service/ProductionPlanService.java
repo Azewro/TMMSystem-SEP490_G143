@@ -170,6 +170,9 @@ public class ProductionPlanService {
             for (ProductionPlanStageRequest stageRequest : request.getStages()) {
                 createPlanStage(savedDetail, stageRequest);
             }
+        } else {
+            // Auto scaffold 6 default stages for planning workflow
+            createDefaultStages(savedDetail);
         }
     }
     
@@ -203,6 +206,78 @@ public class ProductionPlanService {
         stage.setNotes(request.getNotes());
         
         stageRepo.save(stage);
+    }
+
+    private void createDefaultStages(ProductionPlanDetail detail) {
+        // Derive baseline times
+        LocalDate startDate = detail.getProposedStartDate() != null ? detail.getProposedStartDate() : LocalDate.now().plusDays(1);
+        LocalDateTime baseStart = startDate.atTime(8, 0);
+
+        BigDecimal quantity = detail.getPlannedQuantity() != null ? detail.getPlannedQuantity() : BigDecimal.ZERO;
+
+        // Helper to build request quickly
+        java.util.function.BiConsumer<String, Integer> addStage = (stageType, hours) -> {
+            ProductionPlanStageRequest req = new ProductionPlanStageRequest();
+            req.setStageType(stageType);
+            req.setSequenceNo(mapSequence(stageType));
+            LocalDateTime st = baseStart.plusHours(totalDefaultHoursUpTo(stageType, quantity));
+            LocalDateTime en = st.plusHours(hours);
+            req.setPlannedStartTime(st);
+            req.setPlannedEndTime(en);
+            if ("PACKAGING".equals(stageType)) {
+                req.setCapacityPerHour(new BigDecimal("500"));
+            }
+            if ("DYEING".equals(stageType)) {
+                req.setNotes("Outsourced stage - scheduling with vendor");
+            }
+            createPlanStage(detail, req);
+        };
+
+        // Default durations (hours)
+        addStage.accept("WARPING", 4);
+        addStage.accept("WEAVING", 8);
+        addStage.accept("DYEING", 24);
+        addStage.accept("CUTTING", 4);
+        addStage.accept("SEWING", 16);
+        // Packaging duration estimated from capacity 500 units/hour
+        int packagingHours = quantity.compareTo(BigDecimal.ZERO) > 0
+            ? quantity.divide(new BigDecimal("500"), 0, java.math.RoundingMode.CEILING).intValue()
+            : 2;
+        addStage.accept("PACKAGING", Math.max(packagingHours, 2));
+    }
+
+    private int mapSequence(String stageType) {
+        return switch (stageType) {
+            case "WARPING" -> 1;
+            case "WEAVING" -> 2;
+            case "DYEING" -> 3;
+            case "CUTTING" -> 4;
+            case "SEWING" -> 5;
+            case "PACKAGING" -> 6;
+            default -> 99;
+        };
+    }
+
+    private int totalDefaultHoursUpTo(String stageType, BigDecimal quantity) {
+        // Sum of default durations of previous stages to create a simple sequential baseline
+        int warping = 4;
+        int weaving = 8;
+        int dyeing = 24;
+        int cutting = 4;
+        int sewing = 16;
+        int packaging = quantity.compareTo(BigDecimal.ZERO) > 0
+            ? quantity.divide(new BigDecimal("500"), 0, java.math.RoundingMode.CEILING).intValue()
+            : 2;
+
+        return switch (stageType) {
+            case "WARPING" -> 0;
+            case "WEAVING" -> warping;
+            case "DYEING" -> warping + weaving;
+            case "CUTTING" -> warping + weaving + dyeing;
+            case "SEWING" -> warping + weaving + dyeing + cutting;
+            case "PACKAGING" -> warping + weaving + dyeing + cutting + sewing;
+            default -> 0;
+        };
     }
     
     // ===== Approval Workflow =====
