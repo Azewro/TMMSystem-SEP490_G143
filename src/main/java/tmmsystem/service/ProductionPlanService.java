@@ -126,9 +126,32 @@ public class ProductionPlanService {
         ProductionPlan savedPlan = planRepo.save(plan);
         
         // Create plan details
-        if (request.getDetails() != null) {
+        if (request.getDetails() != null && !request.getDetails().isEmpty()) {
             for (ProductionPlanDetailRequest detailRequest : request.getDetails()) {
                 createPlanDetail(savedPlan, detailRequest);
+            }
+        } else {
+            // Auto-generate details from quotation/contract if FE doesn't provide
+            if (contract.getQuotation() != null && contract.getQuotation().getDetails() != null
+                    && !contract.getQuotation().getDetails().isEmpty()) {
+                LocalDate proposedStart = contract.getContractDate() != null
+                        ? contract.getContractDate().plusDays(1)
+                        : LocalDate.now().plusDays(1);
+                LocalDate proposedEnd = contract.getDeliveryDate() != null
+                        ? contract.getDeliveryDate()
+                        : proposedStart.plusDays(14);
+
+                for (QuotationDetail qd : contract.getQuotation().getDetails()) {
+                    ProductionPlanDetailRequest autoReq = new ProductionPlanDetailRequest();
+                    autoReq.setProductId(qd.getProduct().getId());
+                    autoReq.setPlannedQuantity(qd.getQuantity());
+                    autoReq.setRequiredDeliveryDate(contract.getDeliveryDate() != null ? contract.getDeliveryDate() : proposedEnd);
+                    autoReq.setProposedStartDate(proposedStart);
+                    autoReq.setProposedEndDate(proposedEnd);
+                    autoReq.setNotes(qd.getNoteColor());
+                    // No stages provided -> createPlanDetail will scaffold 6 default stages
+                    createPlanDetail(savedPlan, autoReq);
+                }
             }
         }
         
