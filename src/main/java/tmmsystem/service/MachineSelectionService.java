@@ -1,13 +1,11 @@
 package tmmsystem.service;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
 import tmmsystem.repository.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -20,19 +18,22 @@ public class MachineSelectionService {
     private final ProductionPlanStageRepository productionPlanStageRepository;
     private final WorkOrderRepository workOrderRepository;
     private final ProductionStageRepository productionStageRepository;
+    private final ProductRepository productRepository;
     
     public MachineSelectionService(MachineRepository machineRepository,
                                   MachineAssignmentRepository machineAssignmentRepository,
                                   MachineMaintenanceRepository machineMaintenanceRepository,
                                   ProductionPlanStageRepository productionPlanStageRepository,
                                   WorkOrderRepository workOrderRepository,
-                                  ProductionStageRepository productionStageRepository) {
+                                  ProductionStageRepository productionStageRepository,
+                                  ProductRepository productRepository) {
         this.machineRepository = machineRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.machineMaintenanceRepository = machineMaintenanceRepository;
         this.productionPlanStageRepository = productionPlanStageRepository;
         this.workOrderRepository = workOrderRepository;
         this.productionStageRepository = productionStageRepository;
+        this.productRepository = productRepository;
     }
     
     /**
@@ -221,6 +222,7 @@ public class MachineSelectionService {
         
         // 2. Kiểm tra ProductionPlanStage đã được gán
         List<ProductionPlanStage> assignedStages = productionPlanStageRepository.findAll().stream()
+            .filter(stage -> stage.getAssignedMachine() != null)
             .filter(stage -> machine.getId().equals(stage.getAssignedMachine().getId()))
             .filter(stage -> isTimeOverlap(startTime, endTime, stage.getPlannedStartTime(), stage.getPlannedEndTime()))
             .collect(Collectors.toList());
@@ -238,6 +240,7 @@ public class MachineSelectionService {
         
         for (WorkOrder workOrder : activeWorkOrders) {
             List<ProductionStage> activeStages = productionStageRepository.findAll().stream()
+                .filter(stage -> stage.getWorkOrderDetail() != null && stage.getWorkOrderDetail().getWorkOrder() != null)
                 .filter(stage -> workOrder.getId().equals(stage.getWorkOrderDetail().getWorkOrder().getId()))
                 .filter(stage -> "IN_PROGRESS".equals(stage.getStatus()))
                 .collect(Collectors.toList());
@@ -452,8 +455,10 @@ public class MachineSelectionService {
      * Lấy Product by ID (cần inject ProductRepository)
      */
     private Product getProductById(Long productId) {
-        // TODO: Inject ProductRepository và implement
-        return null;
+        if (productId == null) {
+            return null;
+        }
+        return productRepository.findById(productId).orElse(null);
     }
     
     // ===== DTO Classes =====
