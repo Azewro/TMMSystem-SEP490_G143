@@ -14,6 +14,8 @@ import tmmsystem.repository.ProductCategoryRepository;
 import tmmsystem.repository.MaterialRepository;
 import tmmsystem.repository.MaterialStockRepository;
 import tmmsystem.repository.UserRepository;
+import tmmsystem.repository.RoleRepository;
+import tmmsystem.entity.Role;
 import tmmsystem.repository.CustomerRepository;
 import tmmsystem.entity.Material;
 import tmmsystem.entity.MaterialStock;
@@ -49,6 +51,9 @@ public class DataInitializer implements CommandLineRunner {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Autowired
+	private RoleRepository roleRepository;
     
 	@Override
 	public void run(String... args) throws Exception {
@@ -60,6 +65,7 @@ public class DataInitializer implements CommandLineRunner {
 		// Đổi mật khẩu tất cả user và customer thành "Abcd1234"
 		resetAllUserPasswords();
 		resetAllCustomerPasswords();
+		createDepartmentalRolesAndUsers();
 	}
 	
 
@@ -259,7 +265,66 @@ public class DataInitializer implements CommandLineRunner {
             customerRepository.save(customer);
             updatedCount++;
         }
-        
         System.out.println("Đã đổi mật khẩu " + updatedCount + " Customer thành '" + newPassword + "'");
+    }
+
+    /**
+     * Tạo 4 role/phòng ban và mỗi role tạo 1 user mẫu nếu chưa tồn tại
+     */
+    private void createDepartmentalRolesAndUsers() {
+        createRoleIfMissing("Production manager", "Production manager role");
+        createRoleIfMissing("Quality Assurance department", "Quality Assurance department role");
+        createRoleIfMissing("Product Process Leader", "Product Process Leader role");
+        createRoleIfMissing("Technical Department", "Technical Department role");
+
+        createUserIfMissing(
+            "prod.manager@tmmsystem.local",
+            "Production Manager",
+            "+84000000001",
+            "Production manager");
+
+        createUserIfMissing(
+            "qa.dept@tmmsystem.local",
+            "QA Department",
+            "+84000000002",
+            "Quality Assurance department");
+
+        createUserIfMissing(
+            "process.leader@tmmsystem.local",
+            "Product Process Leader",
+            "+84000000003",
+            "Product Process Leader");
+
+        createUserIfMissing(
+            "technical.dept@tmmsystem.local",
+            "Technical Department",
+            "+84000000004",
+            "Technical Department");
+    }
+
+    private void createRoleIfMissing(String name, String description) {
+        roleRepository.findByName(name).orElseGet(() -> {
+            Role r = new Role();
+            r.setName(name);
+            r.setDescription(description);
+            r.setActive(true);
+            return roleRepository.save(r);
+        });
+    }
+
+    private void createUserIfMissing(String email, String name, String phone, String roleName) {
+        if (userRepository.findAll().stream().anyMatch(u -> email.equalsIgnoreCase(u.getEmail()))) {
+            return;
+        }
+        User user = new User();
+        user.setEmail(email);
+        user.setName(name);
+        user.setPhoneNumber(phone);
+        user.setActive(true);
+        user.setVerified(true);
+        user.setPassword(passwordEncoder.encode("Abcd1234"));
+        Role role = roleRepository.findByName(roleName).orElseThrow();
+        user.setRole(role);
+        userRepository.save(user);
     }
 }

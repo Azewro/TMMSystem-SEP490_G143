@@ -425,6 +425,22 @@ public class ProductionPlanController {
             @PathVariable Long stageId) {
         return service.checkStageScheduleConflicts(stageId);
     }
+
+    @Operation(summary = "Gán người phụ trách cho công đoạn",
+               description = "Gán user phụ trách (in-charge) cho một công đoạn trong kế hoạch sản xuất")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Thành công - Trả về công đoạn sau khi cập nhật"),
+        @ApiResponse(responseCode = "404", description = "Không tìm thấy công đoạn hoặc người dùng"),
+        @ApiResponse(responseCode = "500", description = "Lỗi server nội bộ")
+    })
+    @PutMapping("/stages/{stageId}/assign-incharge")
+    public tmmsystem.dto.production_plan.ProductionPlanStageDto assignInCharge(
+            @Parameter(description = "ID của công đoạn", required = true, example = "1")
+            @PathVariable Long stageId,
+            @Parameter(description = "ID của người phụ trách", required = true, example = "5")
+            @RequestParam Long userId) {
+        return service.assignInChargeUser(stageId, userId);
+    }
     
     @Operation(summary = "Get machine suggestions for new stage",
                description = "Get machine suggestions when creating a new production stage")

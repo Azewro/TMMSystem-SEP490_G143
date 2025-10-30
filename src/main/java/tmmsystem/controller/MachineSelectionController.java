@@ -71,7 +71,13 @@ public class MachineSelectionController {
     @GetMapping("/check-availability")
     public MachineAvailabilityResponse checkMachineAvailability(
             @RequestParam Long machineId,
+            @io.swagger.v3.oas.annotations.Parameter(description = "Thời gian bắt đầu",
+                example = "2025-09-16 08:00",
+                schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string"))
             @RequestParam LocalDateTime startTime,
+            @io.swagger.v3.oas.annotations.Parameter(description = "Thời gian kết thúc",
+                example = "17/09/2025 17:00",
+                schema = @io.swagger.v3.oas.annotations.media.Schema(type = "string"))
             @RequestParam LocalDateTime endTime) {
         
         // This would be implemented in MachineSelectionService

@@ -25,6 +25,9 @@ public class ProductionPlanService {
     private final ProductRepository productRepo;
     private final ProductionOrderRepository poRepo;
     private final ProductionOrderDetailRepository podRepo;
+    private final BomRepository bomRepo;
+    private final BomDetailRepository bomDetailRepo;
+    private final MaterialRepository materialRepo;
     @SuppressWarnings("unused")
     private final NotificationService notificationService;
     private final ProductionPlanMapper mapper;
@@ -39,6 +42,9 @@ public class ProductionPlanService {
                                 ProductRepository productRepo,
                                 ProductionOrderRepository poRepo,
                                 ProductionOrderDetailRepository podRepo,
+                                BomRepository bomRepo,
+                                BomDetailRepository bomDetailRepo,
+                                MaterialRepository materialRepo,
                                 NotificationService notificationService,
                                 ProductionPlanMapper mapper,
                                 MachineSelectionService machineSelectionService) {
@@ -51,6 +57,9 @@ public class ProductionPlanService {
         this.productRepo = productRepo;
         this.poRepo = poRepo;
         this.podRepo = podRepo;
+        this.bomRepo = bomRepo;
+        this.bomDetailRepo = bomDetailRepo;
+        this.materialRepo = materialRepo;
         this.notificationService = notificationService;
         this.mapper = mapper;
         this.machineSelectionService = machineSelectionService;
@@ -186,6 +195,9 @@ public class ProductionPlanService {
         detail.setLeadTimeDays(request.getLeadTimeDays());
         detail.setNotes(request.getNotes());
         
+        // Ensure product has an active BOM (auto-create if missing)
+        ensureActiveBomForProduct(product);
+
         ProductionPlanDetail savedDetail = detailRepo.save(detail);
         
         // Create plan stages
@@ -303,6 +315,73 @@ public class ProductionPlanService {
         };
     }
     
+    // ===== BOM helper =====
+    private Bom ensureActiveBomForProduct(Product product) {
+        return bomRepo.findActiveBomByProductId(product.getId())
+            .orElseGet(() -> createAutoBom(product));
+    }
+
+    private Bom createAutoBom(Product product) {
+        Bom bom = new Bom();
+        bom.setProduct(product);
+        // Unique, readable auto version
+        String version = "auto-" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                .format(java.time.LocalDateTime.now());
+        bom.setVersion(version);
+        bom.setVersionNotes("Auto-generated at plan creation");
+        bom.setActive(true);
+        bom.setEffectiveDate(java.time.LocalDate.now());
+        Bom saved = bomRepo.save(bom);
+
+        // Tạo BomDetail gợi ý cơ bản dựa trên đặc tính sản phẩm
+        createSuggestedBomDetails(saved, product);
+        return saved;
+    }
+
+    private void createSuggestedBomDetails(Bom bom, Product product) {
+        // Chọn vật tư sợi theo tên sản phẩm (cotton/bamboo), fallback vật tư đầu tiên
+        Material selected = selectYarnMaterialForProduct(product);
+        if (selected == null) {
+            return; // Không có vật tư để gợi ý, giữ BOM rỗng
+        }
+
+        java.math.BigDecimal qtyPerUnitKg = java.math.BigDecimal.ZERO;
+        if (product.getStandardWeight() != null) {
+            // standardWeight đơn vị gram → chuyển sang kg, cộng 5% hao hụt mặc định
+            qtyPerUnitKg = product.getStandardWeight()
+                    .divide(new java.math.BigDecimal("1000"), 3, java.math.RoundingMode.HALF_UP)
+                    .multiply(new java.math.BigDecimal("1.05"));
+        } else {
+            // Fallback 0.2kg/chiếc nếu chưa có trọng lượng chuẩn
+            qtyPerUnitKg = new java.math.BigDecimal("0.2");
+        }
+
+        BomDetail d = new BomDetail();
+        d.setBom(bom);
+        d.setMaterial(selected);
+        d.setQuantity(qtyPerUnitKg);
+        d.setUnit("KG");
+        d.setStage("WEAVING");
+        d.setOptional(false);
+        d.setNotes("Auto-suggested from product weight");
+        bomDetailRepo.save(d);
+    }
+
+    private Material selectYarnMaterialForProduct(Product product) {
+        // Ưu tiên theo từ khóa trong tên sản phẩm
+        String name = product.getName() != null ? product.getName().toLowerCase() : "";
+        java.util.List<Material> all = materialRepo.findAll();
+        Material prefer = null;
+        if (name.contains("bambo") || name.contains("bamboo")) {
+            prefer = all.stream().filter(m -> m.getType().equals("YARN") && (m.getName().toLowerCase().contains("bambo") || m.getCode().toLowerCase().contains("30/1"))).findFirst().orElse(null);
+        } else if (name.contains("cotton") || name.contains("bông")) {
+            prefer = all.stream().filter(m -> m.getType().equals("YARN") && (m.getName().toLowerCase().contains("cotton") || m.getCode().toLowerCase().contains("32/1"))).findFirst().orElse(null);
+        }
+        if (prefer != null) return prefer;
+        // Fallback: bất kỳ vật tư loại YARN
+        return all.stream().filter(m -> m.getType().equals("YARN")).findFirst().orElse(null);
+    }
+
     // ===== Approval Workflow =====
     
     @Transactional
@@ -455,6 +534,18 @@ public class ProductionPlanService {
             pod.setQuantity(detail.getPlannedQuantity());
             pod.setUnit("UNIT");
             pod.setNoteColor(detail.getNotes());
+
+            // Resolve BOM: prefer active BOM; fallback to latest by createdAt
+            Bom bom = bomRepo.findActiveBomByProductId(detail.getProduct().getId())
+                .orElseGet(() -> {
+                    java.util.List<Bom> list = bomRepo.findByProductIdOrderByCreatedAtDesc(detail.getProduct().getId());
+                    return list.isEmpty() ? null : list.get(0);
+                });
+            if (bom == null) {
+                throw new RuntimeException("No BOM found for product id=" + detail.getProduct().getId());
+            }
+            pod.setBom(bom);
+            pod.setBomVersion(bom.getVersion());
             
             podRepo.save(pod);
         }
@@ -580,5 +671,21 @@ public class ProductionPlanService {
         }
         
         return List.of("Unable to check conflicts for assigned machine");
+    }
+
+    /**
+     * Gán người phụ trách cho một công đoạn
+     */
+    @Transactional
+    public ProductionPlanStageDto assignInChargeUser(Long stageId, Long userId) {
+        ProductionPlanStage stage = stageRepo.findById(stageId)
+            .orElseThrow(() -> new RuntimeException("Production plan stage not found"));
+
+        User user = userRepo.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+        stage.setInChargeUser(user);
+        ProductionPlanStage saved = stageRepo.save(stage);
+        return mapper.toDto(saved);
     }
 }
