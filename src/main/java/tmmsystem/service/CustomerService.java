@@ -6,8 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.User;
+import tmmsystem.entity.OtpToken;
 import tmmsystem.repository.CustomerRepository;
 import tmmsystem.repository.UserRepository;
+import tmmsystem.repository.OtpTokenRepository;
 
 import java.util.List;
 
@@ -19,19 +21,22 @@ public class CustomerService {
     private final tmmsystem.util.JwtService jwtService;
     private final MailService mailService;
     private final String appBaseUrl;
+    private final OtpTokenRepository otpTokenRepository;
 
     public CustomerService(CustomerRepository customerRepository,
                            UserRepository userRepository,
                            PasswordEncoder passwordEncoder,
                            tmmsystem.util.JwtService jwtService,
                            MailService mailService,
-                           @Value("${app.base-url}") String appBaseUrl) {
+                           @Value("${app.base-url}") String appBaseUrl,
+                           OtpTokenRepository otpTokenRepository) {
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.mailService = mailService;
         this.appBaseUrl = appBaseUrl;
+        this.otpTokenRepository = otpTokenRepository;
     }
 
     public List<Customer> findAll() { return customerRepository.findAll(); }
@@ -46,8 +51,8 @@ public class CustomerService {
             User createdBy = userRepository.findById(createdByUserId).orElseThrow();
             customer.setCreatedBy(createdBy);
         }
-        if (customer.getPassword() != null) {
-            customer.setPassword(passwordEncoder.encode(customer.getPassword()));
+        if (customer.getCustomerCode() == null || customer.getCustomerCode().isBlank()) {
+            customer.setCustomerCode(generateCustomerCode());
         }
         return customerRepository.save(customer);
     }
@@ -69,36 +74,68 @@ public class CustomerService {
         existing.setPaymentTerms(updated.getPaymentTerms());
         existing.setActive(updated.getActive());
         existing.setRegistrationType(updated.getRegistrationType());
-        if (updated.getPassword() != null && !updated.getPassword().isBlank()) {
-            existing.setPassword(passwordEncoder.encode(updated.getPassword()));
-        }
         return existing;
     }
 
     public void delete(Long id) { customerRepository.deleteById(id); }
 
-    // ===== Customer portal auth =====
-    public tmmsystem.dto.auth.CustomerLoginResponse authenticate(String email, String password) {
-        return customerRepository.findByEmail(email)
-                .filter(c -> Boolean.TRUE.equals(c.getActive()) && c.getPassword() != null && passwordEncoder.matches(password, c.getPassword()))
-                .map(c -> {
-                    String token = jwtService.generateToken(c.getEmail(), java.util.Map.of(
-                            "cid", c.getId(),
-                            "role", "CUSTOMER"
-                    ));
-                    long expiresIn = jwtService.getExpirationMillis();
-                    return new tmmsystem.dto.auth.CustomerLoginResponse(
-                            c.getContactPerson(),
-                            c.getEmail(),
-                            "CUSTOMER",
-                            Boolean.TRUE.equals(c.getActive()),
-                            token,
-                            expiresIn,
-                            c.getId(),
-                            c.getCompanyName()
-                    );
-                })
-                .orElse(null);
+    // ===== Customer portal OTP auth =====
+    @Transactional
+    public void requestOtp(String emailOrPhone) {
+        Customer customer = findByEmailOrPhoneOrThrow(emailOrPhone);
+        String code = generateNumericCode(6);
+        OtpToken otp = new OtpToken();
+        otp.setCustomer(customer);
+        otp.setOtpCode(code);
+        otp.setExpiredAt(java.time.Instant.now().plus(java.time.Duration.ofMinutes(5)));
+        otpTokenRepository.save(otp);
+        // send via email; for phone/SMS integration can be added later
+        if (customer.getEmail() != null) {
+            mailService.send(customer.getEmail(), "Your OTP Code", "Your OTP is: " + code + "\nIt expires in 5 minutes.");
+        }
+    }
+
+    @Transactional
+    public tmmsystem.dto.auth.CustomerLoginResponse verifyOtpAndLogin(String emailOrPhone, String otpCode) {
+        Customer customer = findByEmailOrPhoneOrThrow(emailOrPhone);
+        OtpToken latest = otpTokenRepository.findTopByCustomerIdAndUsedFalseOrderByCreatedAtDesc(customer.getId())
+                .orElseThrow(() -> new RuntimeException("No OTP requested"));
+        if (Boolean.TRUE.equals(latest.getUsed())) {
+            throw new RuntimeException("OTP already used");
+        }
+        if (java.time.Instant.now().isAfter(latest.getExpiredAt())) {
+            throw new RuntimeException("OTP expired");
+        }
+        if (!latest.getOtpCode().equals(otpCode)) {
+            throw new RuntimeException("Invalid OTP");
+        }
+        latest.setUsed(true);
+        otpTokenRepository.save(latest);
+
+        String token = jwtService.generateToken(customer.getEmail(), java.util.Map.of(
+                "cid", customer.getId(),
+                "role", "CUSTOMER"
+        ));
+        long expiresIn = jwtService.getExpirationMillis();
+        customer.setLastLoginAt(java.time.Instant.now());
+        return new tmmsystem.dto.auth.CustomerLoginResponse(
+                customer.getContactPerson(),
+                customer.getEmail(),
+                "CUSTOMER",
+                Boolean.TRUE.equals(customer.getActive()),
+                token,
+                expiresIn,
+                customer.getId(),
+                customer.getCompanyName()
+        );
+    }
+
+    private Customer findByEmailOrPhoneOrThrow(String emailOrPhone) {
+        String key = emailOrPhone == null ? null : emailOrPhone.trim().toLowerCase();
+        java.util.Optional<Customer> byEmail = (key != null && key.contains("@")) ? customerRepository.findByEmail(key) : java.util.Optional.empty();
+        if (byEmail.isPresent()) return byEmail.get();
+        return customerRepository.findByPhoneNumber(emailOrPhone)
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
     }
 
     public Long getCustomerIdFromToken(String token) {
@@ -126,54 +163,7 @@ public class CustomerService {
 
     
 
-    @Transactional
-    public void requestPasswordReset(tmmsystem.dto.auth.ForgotPasswordRequest request) {
-        Customer customer = customerRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        if (!Boolean.TRUE.equals(customer.getActive())) {
-            throw new RuntimeException("User is inactive");
-        }
-        String code = generateNumericCode(6);
-        customer.setPasswordResetToken(code);
-        customer.setPasswordResetExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofMinutes(10)));
-        customerRepository.save(customer);
-        mailService.send(customer.getEmail(), "Password Reset Code", "Your verification code is: " + code + "\nThis code expires in 10 minutes.");
-    }
-
-    @Transactional
-    public void verifyCodeAndResetPassword(tmmsystem.dto.auth.VerifyResetCodeRequest request) {
-        Customer customer = customerRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        if (customer.getPasswordResetToken() == null || !customer.getPasswordResetToken().equals(request.code())) {
-            throw new RuntimeException("Invalid or used code");
-        }
-        if (customer.getPasswordResetExpiresAt() == null || java.time.Instant.now().isAfter(customer.getPasswordResetExpiresAt())) {
-            throw new RuntimeException("Reset code expired");
-        }
-        String newPasswordPlain = generateRandomPassword(10);
-        customer.setPassword(passwordEncoder.encode(newPasswordPlain));
-        customer.setPasswordResetToken(null);
-        customer.setPasswordResetExpiresAt(null);
-        customerRepository.save(customer);
-        mailService.send(customer.getEmail(), "Your new password", "Your new password is: " + newPasswordPlain);
-    }
-
-    @Transactional
-    public void changePassword(tmmsystem.dto.auth.ChangePasswordRequest request) {
-        Customer customer = customerRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        if (!Boolean.TRUE.equals(customer.getActive())) {
-            throw new RuntimeException("User is inactive");
-        }
-        if (customer.getPassword() == null || !passwordEncoder.matches(request.currentPassword(), customer.getPassword())) {
-            throw new RuntimeException("Current password is incorrect");
-        }
-        if (request.newPassword() == null || request.newPassword().isBlank()) {
-            throw new RuntimeException("New password must not be empty");
-        }
-        customer.setPassword(passwordEncoder.encode(request.newPassword()));
-        customerRepository.save(customer);
-    }
+    // Legacy password-based flows removed for customers in favor of OTP
 
     private String generateNumericCode(int length) {
         java.security.SecureRandom random = new java.security.SecureRandom();
@@ -182,12 +172,11 @@ public class CustomerService {
         return sb.toString();
     }
 
-    private String generateRandomPassword(int length) {
-        final String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%";
-        java.security.SecureRandom random = new java.security.SecureRandom();
-        StringBuilder sb = new StringBuilder(length);
-        for (int i = 0; i < length; i++) { sb.append(chars.charAt(random.nextInt(chars.length()))); }
-        return sb.toString();
+    private String generateCustomerCode() {
+        java.time.LocalDate now = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        String yyyymm = String.format("%04d%02d", now.getYear(), now.getMonthValue());
+        String suffix = generateNumericCode(3);
+        return "CUS-" + yyyymm + "-" + suffix;
     }
 }
 

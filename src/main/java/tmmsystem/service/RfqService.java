@@ -25,12 +25,18 @@ public class RfqService {
     public Rfq findById(Long id) { return rfqRepository.findById(id).orElseThrow(); }
 
     @Transactional
-    public Rfq create(Rfq rfq) { 
-        return rfqRepository.save(rfq); 
+    public Rfq create(Rfq rfq) {
+        if (rfq.getRfqNumber() == null || rfq.getRfqNumber().isBlank()) {
+            rfq.setRfqNumber(generateRfqNumber());
+        }
+        return rfqRepository.save(rfq);
     }
 
     @Transactional
     public Rfq createWithDetails(Rfq rfq, List<RfqDetailDto> details) {
+        if (rfq.getRfqNumber() == null || rfq.getRfqNumber().isBlank()) {
+            rfq.setRfqNumber(generateRfqNumber());
+        }
         // Lưu RFQ trước
         Rfq savedRfq = rfqRepository.save(rfq);
         
@@ -231,6 +237,13 @@ public class RfqService {
         notificationService.notifyRfqCanceled(savedRfq);
         
         return savedRfq;
+    }
+
+    private String generateRfqNumber() {
+        // Sinh mã theo format RFQ-YYYYMMDD-xxxx (số thứ tự trong ngày)
+        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        long count = rfqRepository.count();
+        return "RFQ-" + dateStr + "-" + String.format("%04d", (count+1));
     }
 }
 

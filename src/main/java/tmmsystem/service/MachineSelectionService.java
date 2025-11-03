@@ -44,22 +44,28 @@ public class MachineSelectionService {
                                                           BigDecimal requiredQuantity,
                                                           LocalDateTime preferredStartTime,
                                                           LocalDateTime preferredEndTime) {
+        // Chuẩn hóa stageType: viết hoa, map các biến thể thường gặp
+        String type = stageType != null ? stageType.trim().toUpperCase() : "";
+        if ("WRAPPING".equals(type)) { // người dùng hay nhập nhầm WRAPPING thay vì WARPING
+            type = "WARPING";
+        }
+        final String normalizedType = type;
         
         // 1. Xử lý các trường hợp đặc biệt không cần máy
-        if ("DYEING".equals(stageType)) {
+        if ("DYEING".equals(type)) {
             // Công đoạn nhuộm: outsourced, không cần máy nội bộ
-            return createOutsourcedStageSuggestion(stageType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
+            return createOutsourcedStageSuggestion(type, productId, requiredQuantity, preferredStartTime, preferredEndTime);
         }
         
-        if ("PACKAGING".equals(stageType)) {
+        if ("PACKAGING".equals(type)) {
             // Công đoạn đóng gói: làm thủ công, không cần máy
-            return createManualStageSuggestion(stageType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
+            return createManualStageSuggestion(type, productId, requiredQuantity, preferredStartTime, preferredEndTime);
         }
         
         // 2. Lọc máy theo loại công đoạn cho các công đoạn cần máy
         List<Machine> suitableMachines = machineRepository.findAll().stream()
-            .filter(machine -> stageType.equals(machine.getType()))
-            .filter(machine -> "AVAILABLE".equals(machine.getStatus()))
+            .filter(machine -> machine.getType() != null && normalizedType.equalsIgnoreCase(machine.getType()))
+            // Không lọc theo status để vẫn tính điểm khả dụng và xung đột; trạng thái sẽ được phản ánh ở AvailabilityInfo
             .collect(Collectors.toList());
         
         List<MachineSuggestionDto> suggestions = new ArrayList<>();
@@ -87,7 +93,7 @@ public class MachineSelectionService {
             suggestion.setSuggestedEndTime(availabilityInfo.getSuggestedEndTime());
             
             // 4. Tính điểm ưu tiên tổng thể
-            suggestion.setPriorityScore(calculatePriorityScore(suggestion, stageType, requiredQuantity));
+            suggestion.setPriorityScore(calculatePriorityScore(suggestion, normalizedType, requiredQuantity));
             
             suggestions.add(suggestion);
         }

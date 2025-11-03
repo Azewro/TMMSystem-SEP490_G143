@@ -73,7 +73,6 @@ public class CustomerController {
         updated.setActive(body.getIsActive());
         updated.setVerified(body.getIsVerified());
         updated.setRegistrationType(body.getRegistrationType());
-        updated.setPassword(body.getPassword());
         Customer res = service.update(id, updated);
         return mapper.toDto(res);
     }

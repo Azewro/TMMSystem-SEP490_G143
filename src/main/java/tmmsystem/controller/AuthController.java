@@ -12,6 +12,8 @@ import tmmsystem.dto.auth.LoginResponse;
 import tmmsystem.dto.auth.ChangePasswordRequest;
 import tmmsystem.dto.auth.ForgotPasswordRequest;
 import tmmsystem.dto.auth.VerifyResetCodeRequest;
+import tmmsystem.dto.auth.CustomerOtpRequest;
+import tmmsystem.dto.auth.CustomerOtpVerifyRequest;
 import tmmsystem.service.UserService;
 import tmmsystem.service.CustomerService;
 import tmmsystem.dto.auth.CustomerRegisterRequest;
@@ -29,40 +31,20 @@ public class AuthController {
         this.customerService = cs;
     }
 
-    @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req){
-        // Thử đăng nhập với User trước
+    @PostMapping("/user/login")
+    public ResponseEntity<?> userLogin(@RequestBody LoginRequest req){
         LoginResponse userRes = userService.authenticate(req.email(), req.password());
         if (userRes != null) {
             return ResponseEntity.ok(userRes);
         }
-        
-        // Nếu không thành công, thử với Customer portal (merged)
-        tmmsystem.dto.auth.CustomerLoginResponse customerUserRes = customerService.authenticate(req.email(), req.password());
-        if (customerUserRes != null) {
-            return ResponseEntity.ok(customerUserRes);
-        }
-        
         return ResponseEntity.status(401).body("Invalid credentials or inactive");
     }
 
     @PostMapping("/change-password")
     public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest req){
         try {
-            // Thử với User trước
-            try {
-                userService.changePassword(req);
-                return ResponseEntity.ok().build();
-            } catch (RuntimeException ex) {
-                // Nếu không tìm thấy trong User, thử với Customer portal
-                try {
-                    customerService.changePassword(req);
-                    return ResponseEntity.ok().build();
-                } catch (RuntimeException ex2) {
-                    // Nếu cả hai đều không tìm thấy, trả về lỗi từ UserService
-                    return ResponseEntity.badRequest().body(ex.getMessage());
-                }
-            }
+            userService.changePassword(req);
+            return ResponseEntity.ok().build();
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body("Error: " + ex.getMessage());
         }
@@ -71,20 +53,8 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest req){
         try {
-            // Thử với User trước
-            try {
-                userService.requestPasswordReset(req);
-                return ResponseEntity.ok().build();
-            } catch (RuntimeException ex) {
-                // Nếu không tìm thấy trong User, thử với Customer portal
-                try {
-                    customerService.requestPasswordReset(req);
-                    return ResponseEntity.ok().build();
-                } catch (RuntimeException ex2) {
-                    // Nếu cả hai đều không tìm thấy, trả về lỗi từ UserService
-                    return ResponseEntity.badRequest().body(ex.getMessage());
-                }
-            }
+            userService.requestPasswordReset(req);
+            return ResponseEntity.ok().build();
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body("Error: " + ex.getMessage());
         }
@@ -93,22 +63,31 @@ public class AuthController {
     @PostMapping("/verify-reset-code")
     public ResponseEntity<?> verifyResetCode(@RequestBody VerifyResetCodeRequest req){
         try {
-            // Thử với User trước
-            try {
-                userService.verifyCodeAndResetPassword(req);
-                return ResponseEntity.ok().build();
-            } catch (RuntimeException ex) {
-                // Nếu không tìm thấy trong User, thử với Customer portal
-                try {
-                    customerService.verifyCodeAndResetPassword(req);
-                    return ResponseEntity.ok().build();
-                } catch (RuntimeException ex2) {
-                    // Nếu cả hai đều không tìm thấy, trả về lỗi từ UserService
-                    return ResponseEntity.badRequest().body(ex.getMessage());
-                }
-            }
+            userService.verifyCodeAndResetPassword(req);
+            return ResponseEntity.ok().build();
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body("Error: " + ex.getMessage());
+        }
+    }
+
+    // ===== Customer OTP login =====
+    @PostMapping("/customer/customer-login")
+    public ResponseEntity<?> customerRequestOtp(@RequestBody CustomerOtpRequest req) {
+        try {
+            customerService.requestOtp(req.emailOrPhone());
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+
+    @PostMapping("/customer/verify-login-otp")
+    public ResponseEntity<?> customerVerifyOtp(@RequestBody CustomerOtpVerifyRequest req) {
+        try {
+            var res = customerService.verifyOtpAndLogin(req.emailOrPhone(), req.otp());
+            return ResponseEntity.ok(res);
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(401).body(ex.getMessage());
         }
     }
 
@@ -130,7 +109,6 @@ public class AuthController {
             customer.setActive(true);
             customer.setVerified(false);
             customer.setRegistrationType("SELF_REGISTERED");
-            customer.setPassword(req.password());
 
             customerService.create(customer, null);
             return ResponseEntity.ok("Đăng ký thành công. Vui lòng cập nhật thông tin công ty sau khi đăng nhập.");

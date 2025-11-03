@@ -9,7 +9,9 @@ import java.time.Instant;
 
 @Entity @Table(name = "customer",
         uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"email"})
+                @UniqueConstraint(columnNames = {"email"}),
+                @UniqueConstraint(columnNames = {"phone_number"}),
+                @UniqueConstraint(columnNames = {"customer_code"})
         }
 )
 @Getter @Setter
@@ -24,6 +26,8 @@ public class Customer {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
+    @Column(name = "customer_code", length = 30, nullable = false)
+    private String customerCode; // CUS-YYYYMM-XXX
     @Column(name = "company_name", nullable = true, length = 255)
     private String companyName;
     @Column(name = "tax_code", length = 50)
@@ -44,16 +48,10 @@ public class Customer {
     private String position; // Manager, Buyer, Director, etc.
 
     // Portal Access
-    @Column(length = 255)
-    private String password; // BCrypt hashed - for customer portal login
     @Column(name = "is_verified")
     private Boolean verified = false; // Email verified?
     @Column(name = "last_login_at")
     private java.time.Instant lastLoginAt;
-    @Column(name = "password_reset_token", length = 255)
-    private String passwordResetToken;
-    @Column(name = "password_reset_expires_at")
-    private java.time.Instant passwordResetExpiresAt;
 
     // Additional contacts (JSON)
     @Column(name = "additional_contacts", columnDefinition = "json")
@@ -74,6 +72,11 @@ public class Customer {
     private Boolean active = true;
     @Column(name = "registration_type", length = 20)
     private String registrationType = "SALES_CREATED";
+
+    // Sales in charge
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sales_in_charge_id")
+    private User salesInCharge;
 
     // Audit
     @ManyToOne(fetch = FetchType.LAZY)
