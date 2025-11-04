@@ -166,13 +166,14 @@ public class RfqService {
         if (!"DRAFT".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be in DRAFT status to send");
         }
+        // must have assignments before sending
+        if (rfq.getAssignedSales() == null || rfq.getAssignedPlanning() == null) {
+            throw new IllegalStateException("Cần gán Sales và Planning trước khi gửi RFQ");
+        }
         rfq.setStatus("SENT");
         rfq.setSent(true);
         Rfq savedRfq = rfqRepository.save(rfq);
-        
-        // Gửi thông báo cho Sale Staff
         notificationService.notifyNewRfq(savedRfq);
-        
         return savedRfq;
     }
 
@@ -239,12 +240,43 @@ public class RfqService {
         return savedRfq;
     }
 
+    @Transactional
+    public Rfq assignStaff(Long rfqId, Long salesId, Long planningId, Long approvedById) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        if (!"DRAFT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ có thể gán nhân sự khi RFQ đang ở trạng thái DRAFT");
+        }
+        if (salesId == null || planningId == null) {
+            throw new IllegalArgumentException("Thiếu Sales hoặc Planning để gán");
+        }
+        User sales = new User(); sales.setId(salesId);
+        User planning = new User(); planning.setId(planningId);
+        rfq.setAssignedSales(sales);
+        rfq.setAssignedPlanning(planning);
+        if (approvedById != null) {
+            User director = new User(); director.setId(approvedById);
+            rfq.setApprovedBy(director);
+            rfq.setApprovalDate(java.time.Instant.now());
+        }
+        return rfqRepository.save(rfq);
+    }
+
     private String generateRfqNumber() {
-        // Sinh mã theo format RFQ-YYYYMMDD-xxxx (số thứ tự trong ngày)
-        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
-        long count = rfqRepository.count();
-        return "RFQ-" + dateStr + "-" + String.format("%04d", (count+1));
+        String dateStr = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+                .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE); // YYYYMMDD
+        int attempt = 0;
+        while (attempt < 3) {
+            Integer maxSeq = rfqRepository.findMaxRfqSeqForToday();
+            int next = (maxSeq == null ? 1 : maxSeq + 1);
+            String candidate = "RFQ-" + dateStr + "-" + String.format("%03d", next);
+            if (!rfqRepository.existsByRfqNumber(candidate)) {
+                return candidate;
+            }
+            attempt++;
+            try { Thread.sleep(10L); } catch (InterruptedException ignored) {}
+        }
+        // Fallback random suffix to avoid collisions
+        int rand = new java.security.SecureRandom().nextInt(900) + 100;
+        return "RFQ-" + dateStr + "-" + String.format("%03d", rand);
     }
 }
-
-

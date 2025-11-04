@@ -13,8 +13,10 @@ import jakarta.validation.Valid;
 import tmmsystem.dto.sales.RfqDto;
 import tmmsystem.dto.sales.RfqDetailDto;
 import tmmsystem.dto.sales.CapacityCheckResultDto;
+import tmmsystem.dto.sales.RfqAssignRequest;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.Rfq;
+import tmmsystem.entity.User;
 import tmmsystem.mapper.RfqMapper;
 import tmmsystem.service.RfqService;
 import tmmsystem.service.CapacityCheckService;
@@ -65,11 +67,17 @@ public class RfqController {
         Rfq rfq = new Rfq();
         rfq.setRfqNumber(body.getRfqNumber());
         if (body.getCustomerId() != null) { Customer c = new Customer(); c.setId(body.getCustomerId()); rfq.setCustomer(c); }
+        rfq.setSourceType(body.getSourceType());
         rfq.setExpectedDeliveryDate(body.getExpectedDeliveryDate());
         rfq.setStatus(body.getStatus());
         rfq.setSent(body.getIsSent());
         rfq.setNotes(body.getNotes());
-        
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); rfq.setCreatedBy(u); }
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); rfq.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); rfq.setApprovedBy(u); }
+        rfq.setApprovalDate(body.getApprovalDate());
+
         // Sử dụng method mới để tạo RFQ kèm details
         return mapper.toDto(service.createWithDetails(rfq, body.getDetails()));
     }
@@ -85,10 +93,16 @@ public class RfqController {
         Rfq rfq = new Rfq();
         rfq.setRfqNumber(body.getRfqNumber());
         if (body.getCustomerId() != null) { Customer c = new Customer(); c.setId(body.getCustomerId()); rfq.setCustomer(c); }
+        rfq.setSourceType(body.getSourceType());
         rfq.setExpectedDeliveryDate(body.getExpectedDeliveryDate());
         rfq.setStatus(body.getStatus());
         rfq.setSent(body.getIsSent());
         rfq.setNotes(body.getNotes());
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); rfq.setCreatedBy(u); }
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); rfq.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); rfq.setApprovedBy(u); }
+        rfq.setApprovalDate(body.getApprovalDate());
         return mapper.toDto(service.update(id, rfq));
     }
 
@@ -231,6 +245,15 @@ public class RfqController {
     public CapacityCheckResultDto checkWarehouseCapacity(@Parameter(description = "ID RFQ") @PathVariable Long id) {
         return capacityCheckService.checkWarehouseCapacity(id);
     }
+
+    @Operation(summary = "Gán Sales và Planning cho RFQ (chỉ khi DRAFT)")
+    @PostMapping("/{id}/assign")
+    public RfqDto assign(
+            @Parameter(description = "ID RFQ") @PathVariable Long id,
+            @RequestBody(description = "Payload gán nhân sự", required = true,
+                    content = @Content(schema = @Schema(implementation = RfqAssignRequest.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody RfqAssignRequest body) {
+        Rfq updated = service.assignStaff(id, body.getAssignedSalesId(), body.getAssignedPlanningId(), body.getApprovedById());
+        return mapper.toDto(updated);
+    }
 }
-
-

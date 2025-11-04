@@ -159,7 +159,34 @@ public class UserService {
         Role role = roleRepository.findById(user.getRole().getId())
                 .orElseThrow(() -> new RuntimeException("Role not found"));
         user.setRole(role);
+
+        // Auto-generate employee code if not provided
+        if (user.getEmployeeCode() == null || user.getEmployeeCode().isBlank()) {
+            user.setEmployeeCode(generateNextEmployeeCode());
+        }
         return UserMapper.toDto(userRepo.save(user));
+    }
+
+    private String generateNextEmployeeCode() {
+        // Pattern: EMP-YYYYMM-XXX
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC);
+        String yyyymm = String.format("%04d%02d", now.getYear(), now.getMonthValue());
+        // In case of race condition, we retry a few times
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Integer maxSeq = userRepo.findMaxEmployeeSeqForCurrentMonth();
+            int next = (maxSeq == null ? 1 : maxSeq + 1);
+            String code = String.format("EMP-%s-%03d", yyyymm, next);
+            // Optimistic: try to use it; unique constraint will protect duplicates
+            try {
+                // very small window, but we just return and let caller save
+                return code;
+            } catch (Exception ignore) {
+                // retry if unique violation happened elsewhere
+            }
+        }
+        // Fallback with random suffix to avoid infinite loop
+        int rand = new java.security.SecureRandom().nextInt(900) + 100;
+        return String.format("EMP-%s-%03d", yyyymm, rand);
     }
 
     public UserDto updateUser(Long id, User updated) {

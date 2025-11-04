@@ -13,6 +13,7 @@ public class UserMapper {
         dto.setAvatar(user.getAvatar());
         dto.setIsActive(user.getActive());
         dto.setIsVerified(user.getVerified());
+        dto.setEmployeeCode(user.getEmployeeCode());
         if (user.getRole() != null) {
             dto.setRoleName(user.getRole().getName());
         }

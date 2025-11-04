@@ -16,7 +16,9 @@ import java.util.List;
         },
         indexes = {
                 @Index(name = "idx_rfq_customer_created", columnList = "customer_id, created_at"),
-                @Index(name = "idx_rfq_status", columnList = "status")
+                @Index(name = "idx_rfq_status", columnList = "status"),
+                @Index(name = "idx_rfq_assigned_sales", columnList = "assigned_sales_id"),
+                @Index(name = "idx_rfq_assigned_planning", columnList = "assigned_planning_id")
         }
 )
 @Getter @Setter
@@ -39,11 +41,14 @@ public class Rfq {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
+    @Column(name = "source_type", length = 30)
+    private String sourceType = "CUSTOMER_PORTAL"; // CUSTOMER_PORTAL | PUBLIC_FORM | BY_SALES
+
     @Column(name = "expected_delivery_date")
     private LocalDate expectedDeliveryDate;
 
     @Column(length = 100)
-    private String status = "DRAFT"; // DRAFT, SENT, QUOTED, CANCELED
+    private String status = "DRAFT"; // DRAFT, SUBMITTED, APPROVED, REJECTED, QUOTED, CANCELED (or legacy flow)
 
     @Column(name = "is_sent")
     private Boolean sent = false;
@@ -56,11 +61,20 @@ public class Rfq {
     private User createdBy; // Sales person
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_sales_id")
+    private User assignedSales; // Sales chính phụ trách RFQ
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_planning_id")
+    private User assignedPlanning; // Planning phụ trách kiểm tra năng lực
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
-    private User approvedBy;
+    private User approvedBy; // Director
+
+    @Column(name = "approval_date")
+    private Instant approvalDate;
 
     @OneToMany(mappedBy = "rfq", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RfqDetail> details = new ArrayList<>();
 }
-
-

@@ -15,12 +15,16 @@ public class RfqMapper {
         dto.setId(entity.getId());
         dto.setRfqNumber(entity.getRfqNumber());
         dto.setCustomerId(entity.getCustomer() != null ? entity.getCustomer().getId() : null);
+        dto.setSourceType(entity.getSourceType());
         dto.setExpectedDeliveryDate(entity.getExpectedDeliveryDate());
         dto.setStatus(entity.getStatus());
         dto.setIsSent(entity.getSent());
         dto.setNotes(entity.getNotes());
         dto.setCreatedById(entity.getCreatedBy() != null ? entity.getCreatedBy().getId() : null);
+        dto.setAssignedSalesId(entity.getAssignedSales() != null ? entity.getAssignedSales().getId() : null);
+        dto.setAssignedPlanningId(entity.getAssignedPlanning() != null ? entity.getAssignedPlanning().getId() : null);
         dto.setApprovedById(entity.getApprovedBy() != null ? entity.getApprovedBy().getId() : null);
+        dto.setApprovalDate(entity.getApprovalDate());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         if (entity.getDetails() != null) {
@@ -41,5 +45,3 @@ public class RfqMapper {
         return dto;
     }
 }
-
-
