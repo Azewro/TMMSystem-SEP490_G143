@@ -14,6 +14,8 @@ import tmmsystem.dto.sales.RfqDto;
 import tmmsystem.dto.sales.RfqDetailDto;
 import tmmsystem.dto.sales.CapacityCheckResultDto;
 import tmmsystem.dto.sales.RfqAssignRequest;
+import tmmsystem.dto.sales.RfqCreateDto;
+import tmmsystem.dto.sales.RfqPublicCreateDto;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.Rfq;
 import tmmsystem.entity.User;
@@ -34,9 +36,9 @@ public class RfqController {
     private final RfqMapper mapper;
     private final CapacityCheckService capacityCheckService;
 
-    public RfqController(RfqService service, RfqMapper mapper, CapacityCheckService capacityCheckService) { 
-        this.service = service; 
-        this.mapper = mapper; 
+    public RfqController(RfqService service, RfqMapper mapper, CapacityCheckService capacityCheckService) {
+        this.service = service;
+        this.mapper = mapper;
         this.capacityCheckService = capacityCheckService;
     }
 
@@ -59,29 +61,27 @@ public class RfqController {
     @GetMapping("/{id}")
     public RfqDto get(@Parameter(description = "ID RFQ") @PathVariable Long id) { return mapper.toDto(service.findById(id)); }
 
-    @Operation(summary = "Tạo RFQ",
-            description = "Customer/Sale tạo yêu cầu báo giá ở trạng thái DRAFT. Có thể bao gồm danh sách sản phẩm trong cùng request.")
+    @Operation(summary = "Tạo RFQ (khách đã đăng nhập)",
+            description = "Customer/Sale tạo yêu cầu báo giá ở trạng thái DRAFT. Bắt buộc cung cấp customerId (khách đã đăng nhập).")
     @PostMapping
     public RfqDto create(
-            @RequestBody(description = "Payload tạo RFQ", required = true,
-                    content = @Content(schema = @Schema(implementation = RfqDto.class)))
-            @Valid @org.springframework.web.bind.annotation.RequestBody RfqDto body) {
-        Rfq rfq = new Rfq();
-        rfq.setRfqNumber(body.getRfqNumber());
-        if (body.getCustomerId() != null) { Customer c = new Customer(); c.setId(body.getCustomerId()); rfq.setCustomer(c); }
-        rfq.setSourceType(body.getSourceType());
-        rfq.setExpectedDeliveryDate(body.getExpectedDeliveryDate());
-        rfq.setStatus(body.getStatus());
-        rfq.setSent(body.getIsSent());
-        rfq.setNotes(body.getNotes());
-        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); rfq.setCreatedBy(u); }
-        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); rfq.setAssignedSales(u); }
-        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
-        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); rfq.setApprovedBy(u); }
-        rfq.setApprovalDate(body.getApprovalDate());
+            @RequestBody(description = "Payload tạo RFQ (khách đã đăng nhập)", required = true,
+                    content = @Content(schema = @Schema(implementation = RfqCreateDto.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody RfqCreateDto body) {
+        Rfq created = service.createFromLoggedIn(body);
+        return mapper.toDto(created);
+    }
 
-        // Sử dụng method mới để tạo RFQ kèm details
-        return mapper.toDto(service.createWithDetails(rfq, body.getDetails()));
+    // New endpoint: public form submission (khách chưa đăng nhập)
+    @Operation(summary = "Tạo RFQ (public form)",
+            description = "Dành cho khách chưa đăng nhập: cung cấp contactPerson, contactEmail or contactPhone, contactAddress. Hệ thống sẽ tìm customer theo email/phone hoặc sinh customer mới (is_verified=false) và gán vào RFQ.")
+    @PostMapping("/public")
+    public RfqDto createPublic(
+            @RequestBody(description = "Payload tạo RFQ public", required = true,
+                    content = @Content(schema = @Schema(implementation = RfqPublicCreateDto.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody RfqPublicCreateDto body) {
+        Rfq created = service.createFromPublic(body);
+        return mapper.toDto(created);
     }
 
     @Operation(summary = "Cập nhật RFQ",
@@ -299,5 +299,14 @@ public class RfqController {
     @GetMapping("/for-planning")
     public List<RfqDto> listForPlanning(@RequestHeader("X-User-Id") Long userId) {
         return service.findByAssignedPlanning(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    // NEW: Danh sách RFQ DRAFT chưa được gán (dành cho Director để phân công)
+    @Operation(summary = "Danh sách RFQ DRAFT chưa được gán",
+            description = "Trả về danh sách RFQ ở trạng thái DRAFT mà Sales or Planning chưa được gán. Dành cho Director để phân công.")
+    @GetMapping("/drafts/unassigned")
+    public List<RfqDto> listDraftsUnassigned(@RequestHeader(value = "X-User-Id", required = false) Long directorUserId) {
+        // Hiện chưa kiểm tra role thật sự của user; giả sử caller là director.
+        return service.findDraftUnassigned().stream().map(mapper::toDto).collect(Collectors.toList());
     }
 }

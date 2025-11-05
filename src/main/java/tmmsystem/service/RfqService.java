@@ -1,11 +1,15 @@
 package tmmsystem.service;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import tmmsystem.entity.*;
-import tmmsystem.repository.RfqDetailRepository;
-import tmmsystem.repository.RfqRepository;
+import tmmsystem.repository.*;
 import tmmsystem.dto.sales.RfqDetailDto;
+import tmmsystem.dto.sales.RfqCreateDto;
+import tmmsystem.dto.sales.RfqPublicCreateDto;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,11 +19,15 @@ public class RfqService {
     private final RfqRepository rfqRepository;
     private final RfqDetailRepository detailRepository;
     private final NotificationService notificationService;
+    private final CustomerRepository customerRepository;
+    private final UserRepository userRepository;
 
-    public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository, NotificationService notificationService) {
+    public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository, NotificationService notificationService, CustomerRepository customerRepository, UserRepository userRepository) {
         this.rfqRepository = rfqRepository;
         this.detailRepository = detailRepository;
         this.notificationService = notificationService;
+        this.customerRepository = customerRepository;
+        this.userRepository = userRepository;
     }
 
     public List<Rfq> findAll() { return rfqRepository.findAll(); }
@@ -63,6 +71,123 @@ public class RfqService {
         }
         
         return savedRfq;
+    }
+
+    // New: create RFQ for logged-in customer (uses RfqCreateDto)
+    @Transactional
+    public Rfq createFromLoggedIn(RfqCreateDto dto) {
+        if (dto.getCustomerId() == null) throw new IllegalArgumentException("customerId is required");
+        Rfq rfq = new Rfq();
+        rfq.setRfqNumber(dto.getRfqNumber());
+        Customer c = new Customer(); c.setId(dto.getCustomerId()); rfq.setCustomer(c);
+        rfq.setSourceType(dto.getSourceType());
+        rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+        rfq.setStatus(dto.getStatus());
+        rfq.setSent(dto.getIsSent());
+        rfq.setNotes(dto.getNotes());
+        if (dto.getCreatedById() != null) { User u = new User(); u.setId(dto.getCreatedById()); rfq.setCreatedBy(u); }
+        if (dto.getAssignedPlanningId() != null) { User u = new User(); u.setId(dto.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
+        if (dto.getApprovedById() != null) { User u = new User(); u.setId(dto.getApprovedById()); rfq.setApprovedBy(u); }
+        rfq.setApprovalDate(dto.getApprovalDate());
+
+        // If employeeCode provided, try find user and assign if role is Sales
+        if (dto.getEmployeeCode() != null && !dto.getEmployeeCode().isBlank()) {
+            String code = dto.getEmployeeCode().trim();
+            User user = userRepository.findByEmployeeCode(code).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + code)
+            );
+            String roleName = user.getRole() != null ? user.getRole().getName() : null;
+            if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
+            }
+            rfq.setAssignedSales(user);
+        } else if (dto.getAssignedSalesId() != null) {
+            User u = new User(); u.setId(dto.getAssignedSalesId()); rfq.setAssignedSales(u);
+        }
+
+        return createWithDetails(rfq, dto.getDetails());
+    }
+
+    // New: create RFQ from public form (find or create customer)
+    @Transactional
+    public Rfq createFromPublic(RfqPublicCreateDto dto) {
+        // validate at service level as well (caller should have validated DTO)
+        if ((dto.getContactEmail() == null || dto.getContactEmail().isBlank()) && (dto.getContactPhone() == null || dto.getContactPhone().isBlank())) {
+            throw new IllegalArgumentException("Public submission must provide contactEmail or contactPhone");
+        }
+
+        String normEmail = normalizeEmail(dto.getContactEmail());
+        String normPhone = normalizePhone(dto.getContactPhone());
+
+        Customer customer = null;
+        if (normEmail != null) {
+            customer = customerRepository.findByEmail(normEmail).orElse(null);
+        }
+        if (customer == null && normPhone != null) {
+            customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
+        }
+
+        if (customer == null) {
+            Customer newCustomer = new Customer();
+            String prefix = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
+            int rand = new java.security.SecureRandom().nextInt(900) + 100;
+            newCustomer.setCustomerCode("CUS-" + prefix + "-" + rand);
+            newCustomer.setContactPerson(dto.getContactPerson());
+            if (normEmail != null) newCustomer.setEmail(normEmail);
+            if (normPhone != null) newCustomer.setPhoneNumber(normPhone);
+            newCustomer.setAddress(dto.getContactAddress());
+            newCustomer.setVerified(false);
+            newCustomer.setRegistrationType("PUBLIC_FORM");
+
+            try {
+                customer = customerRepository.save(newCustomer);
+            } catch (DataIntegrityViolationException ex) {
+                // Race condition: someone else inserted same email/phone concurrently; re-query
+                if (normEmail != null) customer = customerRepository.findByEmail(normEmail).orElse(null);
+                if (customer == null && normPhone != null) customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
+                if (customer == null) throw ex; // rethrow if still not found
+            }
+        }
+
+        Rfq rfq = new Rfq();
+        rfq.setRfqNumber(dto.getRfqNumber());
+        rfq.setCustomer(customer);
+        rfq.setSourceType(dto.getSourceType() == null ? "PUBLIC_FORM" : dto.getSourceType());
+        rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+        rfq.setStatus(dto.getStatus());
+        rfq.setSent(dto.getIsSent());
+        rfq.setNotes(dto.getNotes());
+        rfq.setApprovalDate(dto.getApprovalDate());
+
+        // If employeeCode was supplied by sales staff in public form, try assign
+        if (dto.getEmployeeCode() != null && !dto.getEmployeeCode().isBlank()) {
+            String code = dto.getEmployeeCode().trim();
+            User user = userRepository.findByEmployeeCode(code).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + code)
+            );
+            String roleName = user.getRole() != null ? user.getRole().getName() : null;
+            if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
+            }
+            rfq.setAssignedSales(user);
+        }
+
+        return createWithDetails(rfq, dto.getDetails());
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null) return null;
+        String e = email.trim().toLowerCase();
+        return e.isEmpty() ? null : e;
+    }
+
+    private String normalizePhone(String phone) {
+        if (phone == null) return null;
+        String p = phone.trim();
+        if (p.isEmpty()) return null;
+        // strip spaces and common separators for normalization
+        p = p.replaceAll("[ ()\\-]", "");
+        return p;
     }
 
     @Transactional
@@ -275,6 +400,14 @@ public class RfqService {
         if (planningId == null) return java.util.Collections.emptyList();
         return rfqRepository.findAll().stream()
                 .filter(r -> r.getAssignedPlanning() != null && planningId.equals(r.getAssignedPlanning().getId()))
+                .collect(Collectors.toList());
+    }
+
+    // Lấy danh sách RFQ đang ở trạng thái DRAFT và chưa được gán (dành cho Director xem trước khi phân công)
+    public List<Rfq> findDraftUnassigned() {
+        return rfqRepository.findAll().stream()
+                .filter(r -> "DRAFT".equals(r.getStatus()))
+                .filter(r -> r.getAssignedSales() == null || r.getAssignedPlanning() == null)
                 .collect(Collectors.toList());
     }
 
