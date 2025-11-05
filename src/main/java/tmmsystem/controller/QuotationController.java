@@ -146,9 +146,12 @@ public class QuotationController {
 
     // Sale Staff APIs
     @Operation(summary = "Lấy báo giá chờ gửi",
-            description = "Sale Staff lấy danh sách báo giá đã tạo, chờ gửi cho khách hàng")
+            description = "Sale Staff lấy danh sách báo giá đã tạo, chờ gửi cho khách hàng. Nếu header X-User-Id được cung cấp thì chỉ trả về báo giá có RFQ được gán cho Sales đó.")
     @GetMapping("/pending")
-    public List<QuotationDto> getPendingQuotations() {
+    public List<QuotationDto> getPendingQuotations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId != null) {
+            return service.findPendingQuotationsByAssignedSales(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+        }
         return service.findPendingQuotations().stream().map(mapper::toDto).collect(Collectors.toList());
     }
 
@@ -188,5 +191,3 @@ public class QuotationController {
         return service.createOrderFromQuotation(id);
     }
 }
-
-

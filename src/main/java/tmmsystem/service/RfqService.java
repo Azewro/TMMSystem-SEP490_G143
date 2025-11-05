@@ -8,6 +8,7 @@ import tmmsystem.repository.RfqRepository;
 import tmmsystem.dto.sales.RfqDetailDto;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class RfqService {
@@ -259,6 +260,22 @@ public class RfqService {
             rfq.setApprovalDate(java.time.Instant.now());
         }
         return rfqRepository.save(rfq);
+    }
+
+    // Lấy danh sách RFQ được gán cho Sales (dùng header X-User-Id để gọi)
+    public List<Rfq> findByAssignedSales(Long salesId) {
+        if (salesId == null) return java.util.Collections.emptyList();
+        return rfqRepository.findAll().stream()
+                .filter(r -> r.getAssignedSales() != null && salesId.equals(r.getAssignedSales().getId()))
+                .collect(Collectors.toList());
+    }
+
+    // Lấy danh sách RFQ được gán cho Planning
+    public List<Rfq> findByAssignedPlanning(Long planningId) {
+        if (planningId == null) return java.util.Collections.emptyList();
+        return rfqRepository.findAll().stream()
+                .filter(r -> r.getAssignedPlanning() != null && planningId.equals(r.getAssignedPlanning().getId()))
+                .collect(Collectors.toList());
     }
 
     private String generateRfqNumber() {

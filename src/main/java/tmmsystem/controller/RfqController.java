@@ -23,6 +23,8 @@ import tmmsystem.service.CapacityCheckService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/v1/rfqs")
@@ -255,5 +257,47 @@ public class RfqController {
             @Valid @org.springframework.web.bind.annotation.RequestBody RfqAssignRequest body) {
         Rfq updated = service.assignStaff(id, body.getAssignedSalesId(), body.getAssignedPlanningId(), body.getApprovedById());
         return mapper.toDto(updated);
+    }
+
+    // MỞ RỘNG: endpoint riêng cho Sales chỉ định (cần header X-User-Id)
+    @Operation(summary = "Lấy RFQ cho Sales được giao",
+            description = "Chỉ Sales được gán vào RFQ mới có thể xem chi tiết thông qua endpoint này")
+    @GetMapping("/{id}/for-sales")
+    public RfqDto getForSales(@Parameter(description = "ID RFQ") @PathVariable Long id,
+                              @RequestHeader("X-User-Id") Long userId) {
+        Rfq rfq = service.findById(id);
+        if (rfq.getAssignedSales() == null || rfq.getAssignedSales().getId() == null || !userId.equals(rfq.getAssignedSales().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: not assigned sales");
+        }
+        return mapper.toDto(rfq);
+    }
+
+    // Endpoint riêng cho Planning được giao
+    @Operation(summary = "Lấy RFQ cho Planning được giao",
+            description = "Chỉ Planning được gán vào RFQ mới có thể xem chi tiết thông qua endpoint này")
+    @GetMapping("/{id}/for-planning")
+    public RfqDto getForPlanning(@Parameter(description = "ID RFQ") @PathVariable Long id,
+                                 @RequestHeader("X-User-Id") Long userId) {
+        Rfq rfq = service.findById(id);
+        if (rfq.getAssignedPlanning() == null || rfq.getAssignedPlanning().getId() == null || !userId.equals(rfq.getAssignedPlanning().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: not assigned planning");
+        }
+        return mapper.toDto(rfq);
+    }
+
+    // NEW: Danh sách RFQ cho Sales (chỉ RFQ được gán cho sales này)
+    @Operation(summary = "Danh sách RFQ được gán cho Sales",
+            description = "Trả về danh sách RFQ mà Sales (header X-User-Id) được gán vào")
+    @GetMapping("/for-sales")
+    public List<RfqDto> listForSales(@RequestHeader("X-User-Id") Long userId) {
+        return service.findByAssignedSales(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    // NEW: Danh sách RFQ cho Planning (chỉ RFQ được gán cho planning này)
+    @Operation(summary = "Danh sách RFQ được gán cho Planning",
+            description = "Trả về danh sách RFQ mà Planning (header X-User-Id) được gán vào")
+    @GetMapping("/for-planning")
+    public List<RfqDto> listForPlanning(@RequestHeader("X-User-Id") Long userId) {
+        return service.findByAssignedPlanning(userId).stream().map(mapper::toDto).collect(Collectors.toList());
     }
 }

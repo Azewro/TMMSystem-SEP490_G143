@@ -333,6 +333,15 @@ public class QuotationService {
                 .collect(Collectors.toList());
     }
 
+    // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation có RFQ được gán cho Sales này
+    public List<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId) {
+        return quotationRepository.findAll().stream()
+                .filter(q -> "DRAFT".equals(q.getStatus()))
+                .filter(q -> q.getRfq() != null && q.getRfq().getAssignedSales() != null)
+                .filter(q -> salesUserId.equals(q.getRfq().getAssignedSales().getId()))
+                .collect(Collectors.toList());
+    }
+
     // Sale Staff: Gửi báo giá cho Customer
     @Transactional
     public Quotation sendQuotationToCustomer(Long quotationId) {
