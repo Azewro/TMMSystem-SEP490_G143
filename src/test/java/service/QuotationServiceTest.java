@@ -300,4 +300,132 @@ class QuotationServiceTest {
             System.out.println(">> Returned Quotation: " + createdQuotation);
         }
     }
+
+    @Nested
+    @DisplayName("Update Quotation Tests")
+    class UpdateQuotationTests {
+
+        @Test
+        @DisplayName("Normal Case: Should update quotation successfully")
+        void updateQuotation_Normal_Success() {
+            // Given
+            Long quotationId = 1L;
+            Quotation existingQuotation = new Quotation();
+            existingQuotation.setId(quotationId);
+            existingQuotation.setQuotationNumber("QUO-OLD-001");
+            existingQuotation.setStatus("DRAFT");
+            existingQuotation.setTotalAmount(new BigDecimal("100.00"));
+
+            Quotation updatedInfo = new Quotation();
+            updatedInfo.setQuotationNumber("QUO-NEW-002");
+            updatedInfo.setStatus("SENT");
+            updatedInfo.setTotalAmount(new BigDecimal("200.00"));
+            updatedInfo.setValidUntil(LocalDate.now().plusDays(15));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(java.util.Optional.of(existingQuotation));
+
+            // When
+            Quotation updatedQuotation = quotationService.update(quotationId, updatedInfo);
+
+            // Then
+            assertNotNull(updatedQuotation);
+            assertEquals("QUO-NEW-002", updatedQuotation.getQuotationNumber(), "Quotation number should be updated.");
+            assertEquals("SENT", updatedQuotation.getStatus(), "Status should be updated.");
+            assertEquals(0, new BigDecimal("200.00").compareTo(updatedQuotation.getTotalAmount()), "Total amount should be updated.");
+            assertEquals(LocalDate.now().plusDays(15), updatedQuotation.getValidUntil(), "Valid until date should be updated.");
+            System.out.println("[SUCCESS] updateQuotation_Normal_Success: Quotation updated successfully.");
+            System.out.println(">> Updated Quotation: " + updatedQuotation);
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation not found")
+        void updateQuotation_Abnormal_NotFound() {
+            // Given
+            Long nonExistentId = 99L;
+            Quotation updatedInfo = new Quotation();
+            when(quotationRepository.findById(nonExistentId)).thenReturn(java.util.Optional.empty());
+
+            // When & Then
+            assertThrows(java.util.NoSuchElementException.class, () -> {
+                quotationService.update(nonExistentId, updatedInfo);
+            }, "Should throw NoSuchElementException when quotation is not found.");
+            System.out.println("[SUCCESS] updateQuotation_Abnormal_NotFound: Failed as expected. Quotation not found.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Update with null values")
+        void updateQuotation_Boundary_NullValues() {
+            // Given
+            Long quotationId = 1L;
+            Quotation existingQuotation = new Quotation();
+            existingQuotation.setId(quotationId);
+            existingQuotation.setQuotationNumber("QUO-EXISTING-001");
+
+            Quotation updatedInfoWithNulls = new Quotation();
+            updatedInfoWithNulls.setQuotationNumber(null);
+            updatedInfoWithNulls.setCustomer(null);
+            updatedInfoWithNulls.setStatus(null);
+
+            when(quotationRepository.findById(quotationId)).thenReturn(java.util.Optional.of(existingQuotation));
+
+            // When
+            Quotation updatedQuotation = quotationService.update(quotationId, updatedInfoWithNulls);
+
+            // Then
+            assertNotNull(updatedQuotation);
+            assertNull(updatedQuotation.getQuotationNumber(), "Quotation number should be updated to null.");
+            assertNull(updatedQuotation.getCustomer(), "Customer should be updated to null.");
+            assertNull(updatedQuotation.getStatus(), "Status should be updated to null.");
+            System.out.println("[SUCCESS] updateQuotation_Boundary_NullValues: Quotation updated with null values.");
+            System.out.println(">> Updated Quotation: " + updatedQuotation);
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Update with empty string for quotation number")
+        void updateQuotation_Boundary_EmptyQuotationNumber() {
+            // Given
+            Long quotationId = 1L;
+            Quotation existingQuotation = new Quotation();
+            existingQuotation.setId(quotationId);
+            existingQuotation.setQuotationNumber("QUO-EXISTING-001");
+
+            Quotation updatedInfo = new Quotation();
+            updatedInfo.setQuotationNumber("");
+
+            when(quotationRepository.findById(quotationId)).thenReturn(java.util.Optional.of(existingQuotation));
+
+            // When
+            Quotation updatedQuotation = quotationService.update(quotationId, updatedInfo);
+
+            // Then
+            assertNotNull(updatedQuotation);
+            assertEquals("", updatedQuotation.getQuotationNumber(), "Quotation number should be updated to an empty string.");
+            System.out.println("[SUCCESS] updateQuotation_Boundary_EmptyQuotationNumber: Quotation number updated to empty string.");
+            System.out.println(">> Updated Quotation: " + updatedQuotation);
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Update with negative total amount")
+        void updateQuotation_Boundary_NegativeTotalAmount() {
+            // Given
+            Long quotationId = 1L;
+            Quotation existingQuotation = new Quotation();
+            existingQuotation.setId(quotationId);
+            existingQuotation.setTotalAmount(new BigDecimal("1000.00"));
+
+            Quotation updatedInfo = new Quotation();
+            updatedInfo.setTotalAmount(new BigDecimal("-50.00"));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(java.util.Optional.of(existingQuotation));
+
+            // When
+            Quotation updatedQuotation = quotationService.update(quotationId, updatedInfo);
+
+            // Then
+            assertNotNull(updatedQuotation);
+            assertTrue(updatedQuotation.getTotalAmount().compareTo(BigDecimal.ZERO) < 0, "Total amount should be updated to a negative value.");
+            System.out.println("[SUCCESS] updateQuotation_Boundary_NegativeTotalAmount: Total amount updated to a negative value.");
+            System.out.println(">> Updated Quotation: " + updatedQuotation);
+        }
+    }
 }
