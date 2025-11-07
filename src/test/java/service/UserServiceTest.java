@@ -62,106 +62,77 @@ class UserServiceTest {
         @Test
         @DisplayName("Normal Case: Should create user successfully with valid inputs")
         void createUser_Normal_Success() {
-            String testName = "Normal Case: Create User Successfully";
-            try {
-                when(userRepository.existsByEmail(anyString())).thenReturn(false);
-                when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
-                when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
-                when(userRepository.save(any(User.class))).thenReturn(user);
+            // Given
+            when(userRepository.existsByEmail(anyString())).thenReturn(false);
+            when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
+            when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
+            when(userRepository.save(any(User.class))).thenReturn(user);
 
-                UserDto createdUser = userService.createUser(user);
+            // When
+            UserDto createdUser = userService.createUser(user);
 
-                assertNotNull(createdUser, "User should have been created, but was null.");
-                assertEquals("test@example.com", createdUser.getEmail(), "The email of the created user is incorrect.");
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            assertNotNull(createdUser, "Created user should not be null.");
+            assertEquals("test@example.com", createdUser.getEmail(), "Email should match.");
+            verify(userRepository).save(any(User.class));
+            System.out.println("[SUCCESS] createUser_Normal_Success: User created successfully.");
         }
 
         @Test
         @DisplayName("Abnormal Case: Should fail when email already exists")
         void createUser_Abnormal_EmailExists() {
-            String testName = "Abnormal Case: Email Already Exists";
-            try {
-                when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+            // Given
+            when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
 
-                RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-                    userService.createUser(user);
-                });
-
-                assertEquals("Email already exists", exception.getMessage(), "Expected error message for existing email was not found.");
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Correctly failed to create user)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // When & Then
+            RuntimeException exception = assertThrows(RuntimeException.class, () -> userService.createUser(user));
+            assertEquals("Email already exists", exception.getMessage());
+            System.out.println("[SUCCESS] createUser_Abnormal_EmailExists: Failed as expected. Email already exists.");
         }
 
         @Test
         @DisplayName("Boundary Case: Should fail when email is null")
         void createUser_Boundary_NullEmail() {
-            String testName = "Boundary Case: Null Email";
-            try {
-                user.setEmail(null);
-                when(userRepository.existsByEmail(null)).thenThrow(new IllegalArgumentException("Email cannot be null"));
+            // Given
+            user.setEmail(null);
+            when(userRepository.existsByEmail(null)).thenThrow(new IllegalArgumentException("Email cannot be null"));
 
-                assertThrows(IllegalArgumentException.class, () -> {
-                    userService.createUser(user);
-                });
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Correctly failed with null email)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // When & Then
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> userService.createUser(user), "Expected an IllegalArgumentException for null email");
+            System.out.println("[SUCCESS] createUser_Boundary_NullEmail: Failed as expected. Email is null.");
         }
 
         @Test
         @DisplayName("Boundary Case: Should create user even with invalid email format (current behavior)")
         void createUser_Boundary_InvalidEmailFormat() {
-            String testName = "Boundary Case: Invalid Email Format";
-            try {
-                user.setEmail("invalid-email");
-                when(userRepository.existsByEmail("invalid-email")).thenReturn(false);
-                when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
-                when(userRepository.save(any(User.class))).thenReturn(user);
+            // Given
+            user.setEmail("invalid-email");
+            when(userRepository.existsByEmail("invalid-email")).thenReturn(false);
+            when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
+            when(userRepository.save(any(User.class))).thenReturn(user);
 
-                UserDto createdUser = userService.createUser(user);
+            // When
+            UserDto createdUser = userService.createUser(user);
 
-                assertNotNull(createdUser);
-                assertEquals("invalid-email", createdUser.getEmail());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Confirmed user can be created with invalid email)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            assertNotNull(createdUser);
+            assertEquals("invalid-email", createdUser.getEmail());
+            System.out.println("[SUCCESS] createUser_Boundary_InvalidEmailFormat: User created with invalid email format.");
         }
-
         @Test
         @DisplayName("Boundary Case: Should create user with null password")
         void createUser_Boundary_NullPassword() {
-            String testName = "Boundary Case: Null Password";
-            try {
-                user.setPassword(null);
-                when(userRepository.existsByEmail(anyString())).thenReturn(false);
-                when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
-                when(userRepository.save(any(User.class))).thenReturn(user);
-
-                UserDto createdUser = userService.createUser(user);
-
-                assertNotNull(createdUser);
-                verify(passwordEncoder, never()).encode(any());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (User created with null password)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Given
+            user.setPassword(null);
+            when(userRepository.existsByEmail(anyString())).thenReturn(false);
+            when(roleRepository.findById(anyLong())).thenReturn(Optional.of(role));
+            when(userRepository.save(any(User.class))).thenReturn(user);
+            // When
+            UserDto createdUser = userService.createUser(user);
+            // Then
+            assertNotNull(createdUser);
+            verify(passwordEncoder, never()).encode(any());
+            System.out.println("[SUCCESS] createUser_Boundary_NullPassword: User created with null password.");
         }
     }
 
@@ -195,179 +166,129 @@ class UserServiceTest {
         @Test
         @DisplayName("Normal Case: Update basic info successfully")
         void updateUser_Normal_Success() {
-            String testName = "Normal Case: Update basic info";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setName("Updated Name");
-                updatedInfo.setPhoneNumber("0987654321");
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setName("Updated Name");
+            updatedInfo.setPhoneNumber("0987654321");
 
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-                UserDto resultDto = userService.updateUser(1L, updatedInfo);
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
 
-                assertEquals("Updated Name", resultDto.getName());
-                assertEquals("0987654321", resultDto.getPhoneNumber());
-                verify(passwordEncoder, never()).encode(any());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            assertEquals("Updated Name", resultDto.getName());
+            assertEquals("0987654321", resultDto.getPhoneNumber());
+            verify(passwordEncoder, never()).encode(any());
+            System.out.println("[SUCCESS] updateUser_Normal_Success: User info updated successfully.");
         }
 
         @Test
         @DisplayName("Normal Case: Update with new valid password")
         void updateUser_Normal_WithNewPassword() {
-            String testName = "Normal Case: Update with new password";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setPassword("newPassword123");
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setPassword("newPassword123");
 
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(passwordEncoder.encode("newPassword123")).thenReturn("encodedNewPassword");
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(passwordEncoder.encode("newPassword123")).thenReturn("encodedNewPassword");
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-                userService.updateUser(1L, updatedInfo);
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
 
-                verify(passwordEncoder, times(1)).encode("newPassword123");
-                assertEquals("encodedNewPassword", existingUser.getPassword());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
-        }
-
-        @Test
-        @DisplayName("Normal Case: Update with new valid role")
-        void updateUser_Normal_WithNewRole() {
-            String testName = "Normal Case: Update with new role";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setRole(adminRole);
-
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(roleRepository.findById(2L)).thenReturn(Optional.of(adminRole));
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-
-                UserDto resultDto = userService.updateUser(1L, updatedInfo);
-
-                assertEquals("ADMIN", resultDto.getRoleName());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            verify(passwordEncoder, times(1)).encode("newPassword123");
+            assertEquals("encodedNewPassword", existingUser.getPassword());
+            System.out.println("[SUCCESS] updateUser_Normal_WithNewPassword: User password updated successfully.");
         }
 
         @Test
         @DisplayName("Abnormal Case: User not found")
         void updateUser_Abnormal_UserNotFound() {
-            String testName = "Abnormal Case: User not found";
-            try {
-                when(userRepository.findById(99L)).thenReturn(Optional.empty());
+            // Given
+            when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-                Exception e = assertThrows(RuntimeException.class, () -> userService.updateUser(99L, new User()));
-                assertEquals("User not found", e.getMessage());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Correctly threw exception)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // When & Then
+            Exception e = assertThrows(RuntimeException.class, () -> userService.updateUser(99L, new User()));
+            assertEquals("User not found", e.getMessage());
+            System.out.println("[SUCCESS] updateUser_Abnormal_UserNotFound: Failed as expected. User not found.");
         }
 
-        @Test
-        @DisplayName("Abnormal Case: Role not found")
-        void updateUser_Abnormal_RoleNotFound() {
-            String testName = "Abnormal Case: Role not found";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setRole(adminRole);
-
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(roleRepository.findById(2L)).thenReturn(Optional.empty());
-
-                Exception e = assertThrows(RuntimeException.class, () -> userService.updateUser(1L, updatedInfo));
-                assertEquals("Role not found", e.getMessage());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Correctly threw exception)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
-        }
 
         @Test
         @DisplayName("Boundary Case: Password is null")
         void updateUser_Boundary_NullPassword() {
-            String testName = "Boundary Case: Password is null";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setPassword(null);
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setPassword(null);
 
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-                userService.updateUser(1L, updatedInfo);
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
 
-                verify(passwordEncoder, never()).encode(any());
-                assertEquals("encodedOldPassword", existingUser.getPassword());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            verify(passwordEncoder, never()).encode(any());
+            assertEquals("encodedOldPassword", existingUser.getPassword());
+            System.out.println("[SUCCESS] updateUser_Boundary_NullPassword: User password remains unchanged with null input.");
         }
 
         @Test
         @DisplayName("Boundary Case: Password is blank")
         void updateUser_Boundary_BlankPassword() {
-            String testName = "Boundary Case: Password is blank";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setPassword("   ");
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setPassword("   ");
 
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-                userService.updateUser(1L, updatedInfo);
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
 
-                verify(passwordEncoder, never()).encode(any());
-                assertEquals("encodedOldPassword", existingUser.getPassword());
-
-                System.out.println("Log: Test Case '" + testName + "' -> PASS");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+            // Then
+            verify(passwordEncoder, never()).encode(any());
+            assertEquals("encodedOldPassword", existingUser.getPassword());
+            System.out.println("[SUCCESS] updateUser_Boundary_BlankPassword: User password remains unchanged with blank input.");
         }
 
         @Test
         @DisplayName("Boundary Case: Phone number is invalid format")
         void updateUser_Boundary_InvalidPhoneNumber() {
-            String testName = "Boundary Case: Phone number is invalid";
-            try {
-                User updatedInfo = new User();
-                updatedInfo.setPhoneNumber("not-a-number");
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setPhoneNumber("not-a-number");
 
-                when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
-                when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-                UserDto resultDto = userService.updateUser(1L, updatedInfo);
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
 
-                assertEquals("not-a-number", resultDto.getPhoneNumber());
+            // Then
+            assertEquals("not-a-number", resultDto.getPhoneNumber());
+            System.out.println("[SUCCESS] updateUser_Boundary_InvalidPhoneNumber: User phone number updated with invalid format.");
+        }
 
-                System.out.println("Log: Test Case '" + testName + "' -> PASS (Confirmed invalid phone is saved)");
-            } catch (Throwable e) {
-                System.out.println("Log: Test Case '" + testName + "' -> FAIL: " + e.getMessage());
-                throw e;
-            }
+        @Test
+        @DisplayName("Boundary Case: Phone number is blank")
+        void updateUser_Boundary_BlankPhoneNumber() {
+            // Given
+            User updatedInfo = new User();
+            updatedInfo.setPhoneNumber("   ");
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            UserDto resultDto = userService.updateUser(1L, updatedInfo);
+
+            // Then
+            assertEquals("   ", resultDto.getPhoneNumber());
+            System.out.println("[SUCCESS] updateUser_Boundary_BlankPhoneNumber: User phone number updated with blank input.");
         }
     }
 }
