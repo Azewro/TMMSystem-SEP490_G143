@@ -202,6 +202,15 @@ public class UserService {
         User user = userRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // Check phone number duplicate (if changed)
+        if (updated.getPhoneNumber() != null && !updated.getPhoneNumber().isBlank()) {
+            if (!updated.getPhoneNumber().equals(user.getPhoneNumber())) {
+                if (userRepo.existsByPhoneNumber(updated.getPhoneNumber())) {
+                    throw new RuntimeException("Số điện thoại đã được sử dụng bởi user khác");
+                }
+            }
+        }
+
         user.setName(updated.getName());
         user.setPhoneNumber(updated.getPhoneNumber());
         user.setAvatar(updated.getAvatar());

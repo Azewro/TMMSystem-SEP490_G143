@@ -116,8 +116,19 @@ public class CustomerService {
         existing.setCustomerType(updated.getCustomerType());
         existing.setCreditLimit(updated.getCreditLimit());
         existing.setPaymentTerms(updated.getPaymentTerms());
-        existing.setActive(updated.getActive());
-        existing.setRegistrationType(updated.getRegistrationType());
+        
+        // Only update isActive, isVerified, and registrationType if explicitly provided (not null)
+        // This prevents customer self-updates from accidentally deactivating their account
+        if (updated.getActive() != null) {
+            existing.setActive(updated.getActive());
+        }
+        if (updated.getVerified() != null) {
+            existing.setVerified(updated.getVerified());
+        }
+        if (updated.getRegistrationType() != null) {
+            existing.setRegistrationType(updated.getRegistrationType());
+        }
+        
         return existing;
     }
 
