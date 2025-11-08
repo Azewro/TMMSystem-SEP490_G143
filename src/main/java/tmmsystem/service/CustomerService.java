@@ -44,9 +44,38 @@ public class CustomerService {
             .orElseThrow(() -> new RuntimeException("Customer not found")); }
     public Customer findByEmailOrThrow(String email) { return customerRepository.findByEmail(email).orElseThrow(); }
     public boolean existsByEmail(String email) { return customerRepository.existsByEmail(email); }
+    public boolean existsByPhoneNumber(String phoneNumber) { return customerRepository.existsByPhoneNumber(phoneNumber); }
+    
+    // Check if email exists for another customer (excluding current customer)
+    public boolean isEmailTakenByOtherCustomer(Long excludeCustomerId, String email) {
+        return customerRepository.findByEmail(email)
+                .map(c -> !c.getId().equals(excludeCustomerId))
+                .orElse(false);
+    }
+    
+    // Check if phone number exists for another customer (excluding current customer)
+    public boolean isPhoneNumberTakenByOtherCustomer(Long excludeCustomerId, String phoneNumber) {
+        return customerRepository.findByPhoneNumber(phoneNumber)
+                .map(c -> !c.getId().equals(excludeCustomerId))
+                .orElse(false);
+    }
 
     @Transactional
     public Customer create(Customer customer, Long createdByUserId) {
+        // Check email duplicate
+        if (customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            if (customerRepository.existsByEmail(customer.getEmail())) {
+                throw new RuntimeException("Email đã được sử dụng");
+            }
+        }
+        
+        // Check phone number duplicate
+        if (customer.getPhoneNumber() != null && !customer.getPhoneNumber().isBlank()) {
+            if (customerRepository.existsByPhoneNumber(customer.getPhoneNumber())) {
+                throw new RuntimeException("Số điện thoại đã được sử dụng");
+            }
+        }
+        
         if (createdByUserId != null) {
             User createdBy = userRepository.findById(createdByUserId).orElseThrow();
             customer.setCreatedBy(createdBy);
@@ -60,6 +89,21 @@ public class CustomerService {
     @Transactional
     public Customer update(Long id, Customer updated) {
         Customer existing = customerRepository.findById(id).orElseThrow();
+        
+        // Check email duplicate (if changed)
+        if (updated.getEmail() != null && !updated.getEmail().equals(existing.getEmail())) {
+            if (isEmailTakenByOtherCustomer(id, updated.getEmail())) {
+                throw new RuntimeException("Email đã được sử dụng bởi khách hàng khác");
+            }
+        }
+        
+        // Check phone number duplicate (if changed)
+        if (updated.getPhoneNumber() != null && !updated.getPhoneNumber().equals(existing.getPhoneNumber())) {
+            if (isPhoneNumberTakenByOtherCustomer(id, updated.getPhoneNumber())) {
+                throw new RuntimeException("Số điện thoại đã được sử dụng bởi khách hàng khác");
+            }
+        }
+        
         existing.setCompanyName(updated.getCompanyName());
         existing.setTaxCode(updated.getTaxCode());
         existing.setBusinessLicense(updated.getBusinessLicense());

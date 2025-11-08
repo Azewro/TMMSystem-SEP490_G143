@@ -150,9 +150,18 @@ public class UserService {
     }
 
     public UserDto createUser(User user) {
+        // Check email duplicate
         if (userRepo.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new RuntimeException("Email đã được sử dụng");
         }
+        
+        // Check phone number duplicate (if provided)
+        if (user.getPhoneNumber() != null && !user.getPhoneNumber().isBlank()) {
+            if (userRepo.existsByPhoneNumber(user.getPhoneNumber())) {
+                throw new RuntimeException("Số điện thoại đã được sử dụng");
+            }
+        }
+        
         if (user.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
