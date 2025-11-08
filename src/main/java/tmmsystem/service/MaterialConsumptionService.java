@@ -6,9 +6,7 @@ import tmmsystem.entity.*;
 import tmmsystem.repository.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class MaterialConsumptionService {
@@ -19,11 +17,12 @@ public class MaterialConsumptionService {
     private final MaterialStockRepository materialStockRepository;
     private final MaterialTransactionRepository materialTransactionRepository;
     private final ProductionPlanRepository productionPlanRepository;
-    private final ProductionPlanDetailRepository productionPlanDetailRepository;
     private final ProductRepository productRepository;
     private final MaterialRequisitionRepository materialRequisitionRepository;
     private final MaterialRequisitionDetailRepository materialRequisitionDetailRepository;
     private final UserRepository userRepository;
+    private final ProductionLotRepository productionLotRepository;
+    private final ProductionLotOrderRepository productionLotOrderRepository;
 
     public MaterialConsumptionService(BomRepository bomRepository,
                                      BomDetailRepository bomDetailRepository,
@@ -31,22 +30,24 @@ public class MaterialConsumptionService {
                                      MaterialStockRepository materialStockRepository,
                                      MaterialTransactionRepository materialTransactionRepository,
                                      ProductionPlanRepository productionPlanRepository,
-                                     ProductionPlanDetailRepository productionPlanDetailRepository,
                                      ProductRepository productRepository,
                                      MaterialRequisitionRepository materialRequisitionRepository,
                                      MaterialRequisitionDetailRepository materialRequisitionDetailRepository,
-                                     UserRepository userRepository) {
+                                     UserRepository userRepository,
+                                     ProductionLotRepository productionLotRepository,
+                                     ProductionLotOrderRepository productionLotOrderRepository) {
         this.bomRepository = bomRepository;
         this.bomDetailRepository = bomDetailRepository;
         this.materialRepository = materialRepository;
         this.materialStockRepository = materialStockRepository;
         this.materialTransactionRepository = materialTransactionRepository;
         this.productionPlanRepository = productionPlanRepository;
-        this.productionPlanDetailRepository = productionPlanDetailRepository;
         this.productRepository = productRepository;
         this.materialRequisitionRepository = materialRequisitionRepository;
         this.materialRequisitionDetailRepository = materialRequisitionDetailRepository;
         this.userRepository = userRepository;
+        this.productionLotRepository = productionLotRepository;
+        this.productionLotOrderRepository = productionLotOrderRepository;
     }
 
     /**
@@ -63,52 +64,50 @@ public class MaterialConsumptionService {
         ProductionPlan plan = productionPlanRepository.findById(planId)
             .orElseThrow(() -> new RuntimeException("Production plan not found"));
 
-        List<ProductionPlanDetail> planDetails = productionPlanDetailRepository.findByProductionPlanId(planId);
-        
+        // NEW: derive product & quantity list from lot orders instead of ProductionPlanDetail
+        java.util.List<ProductionLotOrder> lotOrders = plan.getLot()==null? java.util.List.of() : productionLotOrderRepository.findByLotId(plan.getLot().getId());
+        if (lotOrders.isEmpty()) {
+            MaterialConsumptionResult empty = new MaterialConsumptionResult();
+            empty.setPlanId(planId); empty.setPlanCode(plan.getPlanCode()); empty.setTotalProducts(0); empty.setWastePercentage(wastePercentage);
+            empty.setProductConsumptions(java.util.List.of()); empty.setMaterialSummaries(java.util.List.of());
+            empty.setTotalMaterialValue(BigDecimal.ZERO); empty.setTotalBasicQuantity(BigDecimal.ZERO); empty.setTotalWasteAmount(BigDecimal.ZERO);
+            return empty;
+        }
+
         MaterialConsumptionResult result = new MaterialConsumptionResult();
         result.setPlanId(planId);
         result.setPlanCode(plan.getPlanCode());
-        result.setTotalProducts(planDetails.size());
+        result.setTotalProducts(lotOrders.size());
         result.setWastePercentage(wastePercentage);
-        
-        List<MaterialConsumptionResult.ProductMaterialConsumption> productConsumptions = new ArrayList<>();
-        Map<Long, MaterialConsumptionResult.MaterialSummary> materialSummaryMap = new HashMap<>();
 
-        for (ProductionPlanDetail detail : planDetails) {
-            Product product = detail.getProduct();
-            BigDecimal quantity = detail.getPlannedQuantity();
-            
-            // Lấy BOM active cho sản phẩm
+        java.util.List<MaterialConsumptionResult.ProductMaterialConsumption> productConsumptions = new java.util.ArrayList<>();
+        java.util.Map<Long, MaterialConsumptionResult.MaterialSummary> materialSummaryMap = new java.util.HashMap<>();
+
+        for (ProductionLotOrder lo : lotOrders) {
+            QuotationDetail qd = lo.getQuotationDetail();
+            if (qd==null) continue;
+            Product product = qd.getProduct();
+            BigDecimal quantity = qd.getQuantity();
+
             Bom activeBom = bomRepository.findActiveBomByProductId(product.getId())
                 .orElseThrow(() -> new RuntimeException("No active BOM found for product: " + product.getName()));
-            
-            // Lấy chi tiết BOM
-            List<BomDetail> bomDetails = bomDetailRepository.findByBomId(activeBom.getId());
-            
-            MaterialConsumptionResult.ProductMaterialConsumption productConsumption = 
-                new MaterialConsumptionResult.ProductMaterialConsumption();
+            java.util.List<BomDetail> bomDetails = bomDetailRepository.findByBomId(activeBom.getId());
+
+            MaterialConsumptionResult.ProductMaterialConsumption productConsumption = new MaterialConsumptionResult.ProductMaterialConsumption();
             productConsumption.setProductId(product.getId());
             productConsumption.setProductCode(product.getCode());
             productConsumption.setProductName(product.getName());
             productConsumption.setPlannedQuantity(quantity);
             productConsumption.setBomVersion(activeBom.getVersion());
-            
-            List<MaterialConsumptionResult.MaterialConsumptionDetail> materialDetails = new ArrayList<>();
-            
+            java.util.List<MaterialConsumptionResult.MaterialConsumptionDetail> materialDetails = new java.util.ArrayList<>();
+
             for (BomDetail bomDetail : bomDetails) {
                 Material material = bomDetail.getMaterial();
                 BigDecimal materialQuantityPerUnit = bomDetail.getQuantity();
-                
-                // Tính nguyên liệu cơ bản (theo BOM)
                 BigDecimal basicMaterialQuantity = materialQuantityPerUnit.multiply(quantity);
-                
-                // Tính nguyên liệu với hao hụt (lấy dư để bù hao hụt)
                 BigDecimal wasteAmount = basicMaterialQuantity.multiply(wastePercentage);
                 BigDecimal totalMaterialQuantity = basicMaterialQuantity.add(wasteAmount);
-                
-                // Tính toán tổng nguyên vật liệu cần thiết
-                MaterialConsumptionResult.MaterialConsumptionDetail materialDetail = 
-                    new MaterialConsumptionResult.MaterialConsumptionDetail();
+                MaterialConsumptionResult.MaterialConsumptionDetail materialDetail = new MaterialConsumptionResult.MaterialConsumptionDetail();
                 materialDetail.setMaterialId(material.getId());
                 materialDetail.setMaterialCode(material.getCode());
                 materialDetail.setMaterialName(material.getName());
@@ -122,15 +121,10 @@ public class MaterialConsumptionService {
                 materialDetail.setStage(bomDetail.getStage());
                 materialDetail.setOptional(bomDetail.getOptional());
                 materialDetail.setNotes(bomDetail.getNotes());
-                
-                // Tính giá trị nguyên vật liệu
                 BigDecimal unitPrice = material.getStandardCost() != null ? material.getStandardCost() : BigDecimal.ZERO;
                 materialDetail.setUnitPrice(unitPrice);
                 materialDetail.setTotalValue(totalMaterialQuantity.multiply(unitPrice));
-                
                 materialDetails.add(materialDetail);
-                
-                // Cập nhật tổng kết nguyên vật liệu
                 MaterialConsumptionResult.MaterialSummary summary = materialSummaryMap.get(material.getId());
                 if (summary == null) {
                     summary = new MaterialConsumptionResult.MaterialSummary();
@@ -146,37 +140,28 @@ public class MaterialConsumptionService {
                     summary.setUnitPrice(unitPrice);
                     materialSummaryMap.put(material.getId(), summary);
                 }
-                
                 summary.setBasicQuantityRequired(summary.getBasicQuantityRequired().add(basicMaterialQuantity));
                 summary.setWasteAmount(summary.getWasteAmount().add(wasteAmount));
                 summary.setTotalQuantityRequired(summary.getTotalQuantityRequired().add(totalMaterialQuantity));
                 summary.setTotalValue(summary.getTotalValue().add(totalMaterialQuantity.multiply(unitPrice)));
             }
-            
             productConsumption.setMaterialDetails(materialDetails);
             productConsumptions.add(productConsumption);
         }
-        
         result.setProductConsumptions(productConsumptions);
-        result.setMaterialSummaries(new ArrayList<>(materialSummaryMap.values()));
-        
-        // Tính tổng giá trị nguyên vật liệu
+        result.setMaterialSummaries(new java.util.ArrayList<>(materialSummaryMap.values()));
         BigDecimal totalMaterialValue = materialSummaryMap.values().stream()
             .map(MaterialConsumptionResult.MaterialSummary::getTotalValue)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         result.setTotalMaterialValue(totalMaterialValue);
-        
-        // Tính tổng số lượng cơ bản và hao hụt
         BigDecimal totalBasicQuantity = materialSummaryMap.values().stream()
             .map(MaterialConsumptionResult.MaterialSummary::getBasicQuantityRequired)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalWasteAmount = materialSummaryMap.values().stream()
             .map(MaterialConsumptionResult.MaterialSummary::getWasteAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
         result.setTotalBasicQuantity(totalBasicQuantity);
         result.setTotalWasteAmount(totalWasteAmount);
-        
         return result;
     }
 
@@ -247,29 +232,26 @@ public class MaterialConsumptionService {
      * Tính tổng số lượng nguyên vật liệu đã được đặt trước (reserved) cho các Production Plan đã phê duyệt
      */
     private BigDecimal calculateReservedQuantity(Long materialId) {
-        // Lấy tất cả Production Plan đã được phê duyệt
         List<ProductionPlan> approvedPlans = productionPlanRepository.findByStatus(ProductionPlan.PlanStatus.APPROVED);
-        
         BigDecimal totalReserved = BigDecimal.ZERO;
-        
         for (ProductionPlan plan : approvedPlans) {
-            List<ProductionPlanDetail> details = productionPlanDetailRepository.findByProductionPlanId(plan.getId());
-            
-            for (ProductionPlanDetail detail : details) {
-                Bom activeBom = bomRepository.findActiveBomByProductId(detail.getProduct().getId()).orElse(null);
-                if (activeBom != null) {
-                    List<BomDetail> bomDetails = bomDetailRepository.findByBomId(activeBom.getId());
-                    
-                    for (BomDetail bomDetail : bomDetails) {
-                        if (bomDetail.getMaterial().getId().equals(materialId)) {
-                            BigDecimal reservedQuantity = bomDetail.getQuantity().multiply(detail.getPlannedQuantity());
-                            totalReserved = totalReserved.add(reservedQuantity);
-                        }
+            if (plan.getLot()==null) continue;
+            var lotOrders = productionLotOrderRepository.findByLotId(plan.getLot().getId());
+            for (ProductionLotOrder lo : lotOrders) {
+                QuotationDetail qd = lo.getQuotationDetail();
+                if (qd==null) continue;
+                Product product = qd.getProduct();
+                Bom activeBom = bomRepository.findActiveBomByProductId(product.getId()).orElse(null);
+                if (activeBom == null) continue;
+                List<BomDetail> bomDetails = bomDetailRepository.findByBomId(activeBom.getId());
+                for (BomDetail bomDetail : bomDetails) {
+                    if (bomDetail.getMaterial().getId().equals(materialId)) {
+                        BigDecimal reservedQuantity = bomDetail.getQuantity().multiply(qd.getQuantity());
+                        totalReserved = totalReserved.add(reservedQuantity);
                     }
                 }
             }
         }
-        
         return totalReserved;
     }
 

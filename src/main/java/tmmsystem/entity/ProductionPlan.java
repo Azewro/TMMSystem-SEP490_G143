@@ -7,7 +7,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
-import java.util.List;
 
 @Entity
 @Table(name = "production_plan",
@@ -18,7 +17,8 @@ import java.util.List;
                 @Index(name = "idx_production_plan_contract", columnList = "contract_id"),
                 @Index(name = "idx_production_plan_status", columnList = "status"),
                 @Index(name = "idx_production_plan_created_by", columnList = "created_by"),
-                @Index(name = "idx_production_plan_approved_by", columnList = "approved_by")
+                @Index(name = "idx_production_plan_approved_by", columnList = "approved_by"),
+                @Index(name = "idx_production_plan_lot", columnList = "lot_id")
         }
 )
 @Getter
@@ -61,14 +61,21 @@ public class ProductionPlan {
     @Column(name = "approval_notes", columnDefinition = "text")
     private String approvalNotes;
 
-    // One-to-many relationship với ProductionPlanDetail
-    @OneToMany(mappedBy = "productionPlan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<ProductionPlanDetail> details;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lot_id")
+    private ProductionLot lot; // NEW: liên kết lot
+
+    @Column(name = "version_no")
+    private Integer versionNo = 1; // versioning
+
+    @Column(name = "is_current_version")
+    private Boolean currentVersion = true;
 
     public enum PlanStatus {
         DRAFT,           // Nháp
         PENDING_APPROVAL, // Chờ phê duyệt
         APPROVED,        // Đã phê duyệt
-        REJECTED         // Từ chối
+        REJECTED,         // Từ chối
+        SUPERSEDED // NEW
     }
 }

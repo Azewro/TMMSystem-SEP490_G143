@@ -457,4 +457,61 @@ public class NotificationService {
             notificationRepository.save(notification);
         }
     }
+
+    @Transactional
+    public void notifySalesConfirmed(Rfq rfq) {
+        // Thông báo cho Planning Staff: Sales đã xác nhận RFQ và chuyển bước tiếp
+        List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
+        for (User user : planningStaff) {
+            Notification n = new Notification();
+            n.setUser(user);
+            n.setType("INFO");
+            n.setCategory("ORDER");
+            n.setTitle("Sales đã xác nhận RFQ");
+            n.setMessage("RFQ #" + rfq.getRfqNumber() + " đã được Sales xác nhận, chờ kiểm tra năng lực");
+            n.setReferenceType("RFQ");
+            n.setReferenceId(rfq.getId());
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
+
+    @Transactional
+    public void notifyCapacityInsufficient(Rfq rfq) {
+        // Thông báo cho Sales: Planning đánh giá không đủ năng lực và đề xuất ngày mới
+        if (rfq.getAssignedSales() != null) {
+            User user = userRepository.findById(rfq.getAssignedSales().getId()).orElse(null);
+            if (user != null) {
+                Notification n = new Notification();
+                n.setUser(user);
+                n.setType("WARNING");
+                n.setCategory("ORDER");
+                n.setTitle("Không đủ năng lực sản xuất");
+                n.setMessage("RFQ #" + rfq.getRfqNumber() + ": " + (rfq.getCapacityReason()!=null? rfq.getCapacityReason():"Không đủ công suất") +
+                        (rfq.getProposedNewDeliveryDate()!=null? ". Đề xuất ngày: "+rfq.getProposedNewDeliveryDate(): ""));
+                n.setReferenceType("RFQ");
+                n.setReferenceId(rfq.getId());
+                n.setRead(false);
+                n.setCreatedAt(Instant.now());
+                notificationRepository.save(n);
+                return;
+            }
+        }
+        // fallback: gửi cho tất cả Sale Staff
+        List<User> sales = userRepository.findByRoleName("SALE_STAFF");
+        for (User u : sales) {
+            Notification n = new Notification();
+            n.setUser(u);
+            n.setType("WARNING");
+            n.setCategory("ORDER");
+            n.setTitle("Không đủ năng lực sản xuất");
+            n.setMessage("RFQ #" + rfq.getRfqNumber() + ": cần thương lượng lại thời gian giao hàng");
+            n.setReferenceType("RFQ");
+            n.setReferenceId(rfq.getId());
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
 }

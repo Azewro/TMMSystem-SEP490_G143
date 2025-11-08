@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Setter
 public class ProductionPlanStageDto {
     private Long id;
-    private Long planDetailId;
+    private Long planDetailId; // reuse field: now carries planId
     private String stageType;
     private String stageTypeName; // Display name for stage type
     private Integer sequenceNo;

@@ -21,6 +21,21 @@ public class EmailService {
         System.out.println("===============================");
     }
 
+    // NEW: gửi email có login info (mật khẩu tạm nếu có)
+    public void sendQuotationEmailWithLogin(Quotation quotation, String tempPassword) {
+        StringBuilder content = new StringBuilder(generateQuotationEmailContent(quotation));
+        content.append("\nĐăng nhập để phê duyệt báo giá:\n");
+        content.append("Portal: https://portal.example.com/login\n");
+        content.append("Email đăng nhập: ").append(quotation.getCustomer().getEmail()).append("\n");
+        if (tempPassword != null) {
+            content.append("Mật khẩu tạm: ").append(tempPassword).append(" (hãy đổi mật khẩu sau khi đăng nhập)\n");
+        } else {
+            content.append("Bạn đã có tài khoản. Đăng nhập bằng mật khẩu hiện tại của bạn.\n");
+        }
+        content.append("Link báo giá: https://portal.example.com/quotations/").append(quotation.getId()).append("\n");
+        System.out.println("=== QUOTATION EMAIL ===\n" + content + "\n====================");
+    }
+
     public void sendOrderConfirmationEmail(Contract contract) {
         // TODO: Implement actual email sending
         String emailContent = generateOrderConfirmationEmailContent(contract);

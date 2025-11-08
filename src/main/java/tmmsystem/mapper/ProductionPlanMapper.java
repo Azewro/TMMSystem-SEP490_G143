@@ -4,8 +4,6 @@ import org.springframework.stereotype.Component;
 import tmmsystem.dto.production_plan.*;
 import tmmsystem.entity.*;
 
-import java.util.stream.Collectors;
-
 @Component
 public class ProductionPlanMapper {
     
@@ -37,51 +35,6 @@ public class ProductionPlanMapper {
             dto.setContractApprovedAt(plan.getContract().getDirectorApprovedAt());
         }
         
-        // Map details if available
-        if (plan.getDetails() != null) {
-            dto.setDetails(plan.getDetails().stream()
-                .map(this::toDto)
-                .collect(Collectors.toList()));
-        }
-        
-        return dto;
-    }
-    
-    public ProductionPlanDetailDto toDto(ProductionPlanDetail detail) {
-        if (detail == null) return null;
-        
-        ProductionPlanDetailDto dto = new ProductionPlanDetailDto();
-        dto.setId(detail.getId());
-        dto.setPlanId(detail.getProductionPlan() != null ? detail.getProductionPlan().getId() : null);
-        dto.setProductId(detail.getProduct() != null ? detail.getProduct().getId() : null);
-        dto.setProductCode(detail.getProduct() != null ? detail.getProduct().getCode() : null);
-        dto.setProductName(detail.getProduct() != null ? detail.getProduct().getName() : null);
-        dto.setProductDescription(detail.getProduct() != null ? detail.getProduct().getDescription() : null);
-        dto.setPlannedQuantity(detail.getPlannedQuantity());
-        dto.setRequiredDeliveryDate(detail.getRequiredDeliveryDate());
-        dto.setProposedStartDate(detail.getProposedStartDate());
-        dto.setProposedEndDate(detail.getProposedEndDate());
-        dto.setWorkCenterId(detail.getWorkCenter() != null ? detail.getWorkCenter().getId() : null);
-        dto.setWorkCenterName(detail.getWorkCenter() != null ? detail.getWorkCenter().getName() : null);
-        dto.setWorkCenterCode(detail.getWorkCenter() != null ? detail.getWorkCenter().getCode() : null);
-        dto.setExpectedCapacityPerDay(detail.getExpectedCapacityPerDay());
-        dto.setLeadTimeDays(detail.getLeadTimeDays());
-        dto.setNotes(detail.getNotes());
-        
-        // Map stages if available
-        if (detail.getStages() != null) {
-            dto.setStages(detail.getStages().stream()
-                .map(this::toDto)
-                .collect(Collectors.toList()));
-            dto.setTotalStages(detail.getStages().size());
-        }
-        
-        // Calculate total duration
-        if (detail.getProposedStartDate() != null && detail.getProposedEndDate() != null) {
-            dto.setTotalDurationDays(java.math.BigDecimal.valueOf(java.time.temporal.ChronoUnit.DAYS.between(
-                detail.getProposedStartDate(), detail.getProposedEndDate())));
-        }
-        
         return dto;
     }
     
@@ -90,7 +43,7 @@ public class ProductionPlanMapper {
         
         ProductionPlanStageDto dto = new ProductionPlanStageDto();
         dto.setId(stage.getId());
-        dto.setPlanDetailId(stage.getPlanDetail() != null ? stage.getPlanDetail().getId() : null);
+        dto.setPlanDetailId(stage.getPlan() != null ? stage.getPlan().getId() : null);
         dto.setStageType(stage.getStageType());
         dto.setStageTypeName(getStageTypeDisplayName(stage.getStageType()));
         dto.setSequenceNo(stage.getSequenceNo());

@@ -50,14 +50,30 @@ public class Quotation {
     @Column(name = "total_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal totalAmount;
 
+    // New: attached quotation file
+    @Column(name = "file_path", length = 500)
+    private String filePath;
+
     @Column(length = 20)
     private String status = "DRAFT"; // DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED, CANCELED
+
+    @Column(name = "sent_at")
+    private Instant sentAt;
 
     @Column(name = "is_accepted")
     private Boolean accepted = false;
 
+    @Column(name = "accepted_at")
+    private Instant acceptedAt;
+
     @Column(name = "is_canceled")
     private Boolean canceled = false;
+
+    @Column(name = "rejected_at")
+    private Instant rejectedAt;
+
+    @Column(name = "reject_reason", columnDefinition = "text")
+    private String rejectReason;
 
     // Capacity check (Planning Department)
     @ManyToOne(fetch = FetchType.LAZY)
@@ -81,5 +97,3 @@ public class Quotation {
     @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuotationDetail> details = new ArrayList<>();
 }
-
-

@@ -48,7 +48,7 @@ public class Rfq {
     private LocalDate expectedDeliveryDate;
 
     @Column(length = 100)
-    private String status = "DRAFT"; // DRAFT, SUBMITTED, APPROVED, REJECTED, QUOTED, CANCELED (or legacy flow)
+    private String status = "DRAFT"; // DRAFT, SENT, PRELIMINARY_CHECKED, FORWARDED_TO_PLANNING, RECEIVED_BY_PLANNING, QUOTED, CANCELED
 
     @Column(name = "is_sent")
     private Boolean sent = false;
@@ -74,6 +74,27 @@ public class Rfq {
 
     @Column(name = "approval_date")
     private Instant approvalDate;
+
+    // Sales confirmation & locking
+    @Column(name = "sales_confirmed_at")
+    private Instant salesConfirmedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sales_confirmed_by")
+    private User salesConfirmedBy;
+
+    @Column(name = "is_locked")
+    private Boolean locked = false;
+
+    // Capacity evaluation result
+    @Column(name = "capacity_status", length = 20)
+    private String capacityStatus; // SUFFICIENT / INSUFFICIENT
+
+    @Column(name = "capacity_reason", columnDefinition = "text")
+    private String capacityReason;
+
+    @Column(name = "proposed_new_delivery_date")
+    private LocalDate proposedNewDeliveryDate;
 
     @OneToMany(mappedBy = "rfq", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RfqDetail> details = new ArrayList<>();

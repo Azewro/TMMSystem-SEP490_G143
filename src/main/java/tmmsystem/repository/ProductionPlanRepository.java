@@ -37,4 +37,10 @@ public interface ProductionPlanRepository extends JpaRepository<ProductionPlan, 
     // Tìm kế hoạch theo mã hợp đồng
     @Query("SELECT pp FROM ProductionPlan pp WHERE pp.contract.contractNumber = :contractNumber")
     Optional<ProductionPlan> findByContractNumber(@Param("contractNumber") String contractNumber);
+
+    // Tìm kế hoạch theo lot
+    List<ProductionPlan> findByLotId(Long lotId);
+
+    // Tìm kế hoạch theo lot và phiên bản hiện tại
+    List<ProductionPlan> findByLotIdAndCurrentVersionTrue(Long lotId);
 }

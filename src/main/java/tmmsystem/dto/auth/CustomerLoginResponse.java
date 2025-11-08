@@ -8,5 +8,6 @@ public record CustomerLoginResponse(
     String accessToken,
     long expiresIn,
     Long customerId,
-    String companyName
+    String companyName,
+    Boolean forcePasswordChange // NEW
 ) {}

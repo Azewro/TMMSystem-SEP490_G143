@@ -4,12 +4,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
 import tmmsystem.repository.*;
-import tmmsystem.dto.sales.QuotationDto;
-import tmmsystem.dto.sales.QuotationDetailDto;
-import tmmsystem.dto.sales.RfqDetailDto;
 import tmmsystem.dto.sales.PriceCalculationDto;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -27,10 +25,9 @@ public class QuotationService {
     private final ContractRepository contractRepository;
     private final NotificationService notificationService;
     private final EmailService emailService;
-
-    // Chi phí công cố định
-    private static final BigDecimal PROCESS_COST_PER_KG = new BigDecimal("45000"); // 20k + 15k + 10k
-    private static final BigDecimal PROFIT_MARGIN = new BigDecimal("1.10"); // 10% lợi nhuận
+    private final FileStorageService fileStorageService;
+    // NEW: inject CustomerService to provision password when needed
+    private final CustomerService customerService;
 
     public QuotationService(QuotationRepository quotationRepository, 
                            QuotationDetailRepository quotationDetailRepository,
@@ -41,7 +38,9 @@ public class QuotationService {
                            MaterialStockRepository materialStockRepository,
                            ContractRepository contractRepository,
                            NotificationService notificationService,
-                           EmailService emailService) {
+                           EmailService emailService,
+                           FileStorageService fileStorageService,
+                           CustomerService customerService) {
         this.quotationRepository = quotationRepository;
         this.quotationDetailRepository = quotationDetailRepository;
         this.rfqRepository = rfqRepository;
@@ -52,6 +51,8 @@ public class QuotationService {
         this.contractRepository = contractRepository;
         this.notificationService = notificationService;
         this.emailService = emailService;
+        this.fileStorageService = fileStorageService;
+        this.customerService = customerService;
     }
 
     public List<Quotation> findAll() { 
@@ -145,97 +146,91 @@ public class QuotationService {
         detail.setProductId(product.getId());
         detail.setProductName(product.getName());
         detail.setQuantity(quantity);
-        
-        // Tính trọng lượng đơn vị (kg)
-        BigDecimal unitWeightKg = product.getStandardWeight().divide(new BigDecimal("1000")); // gram to kg
+        BigDecimal unitWeightKg = product.getStandardWeight().divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
         detail.setUnitWeight(unitWeightKg);
-        
-        // Xác định thành phần sợi từ tên sản phẩm và tính giá trung bình
         String productName = product.getName().toLowerCase();
         BigDecimal materialPricePerKg;
-        
         if (productName.contains("cotton") && productName.contains("bambo")) {
-            // 50-50 cotton + bamboo
             BigDecimal cottonAvgPrice = getAverageMaterialPrice("Ne 32/1CD");
             BigDecimal bambooAvgPrice = getAverageMaterialPrice("Ne 30/1");
-            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"));
+            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
         } else if (productName.contains("bambo")) {
-            // 100% bamboo
             materialPricePerKg = getAverageMaterialPrice("Ne 30/1");
         } else {
-            // 100% cotton (mặc định)
             materialPricePerKg = getAverageMaterialPrice("Ne 32/1CD");
         }
-
-        // Tính giá theo công thức
         BigDecimal materialCostPerUnit = unitWeightKg.multiply(materialPricePerKg);
-        BigDecimal processCostPerUnit = unitWeightKg.multiply(PROCESS_COST_PER_KG);
+        BigDecimal processCostPerUnit = unitWeightKg.multiply(new BigDecimal("45000"));
         BigDecimal baseCostPerUnit = materialCostPerUnit.add(processCostPerUnit);
         BigDecimal unitPrice = baseCostPerUnit.multiply(profitMargin);
-
         detail.setMaterialCostPerUnit(materialCostPerUnit);
         detail.setProcessCostPerUnit(processCostPerUnit);
         detail.setBaseCostPerUnit(baseCostPerUnit);
         detail.setUnitPrice(unitPrice);
         detail.setTotalPrice(unitPrice.multiply(quantity));
-
         return detail;
     }
 
     // Planning Department: Tạo báo giá từ RFQ
     @Transactional
-    public Quotation createQuotationFromRfq(Long rfqId, Long planningUserId, BigDecimal profitMargin, String capacityCheckNotes) {
+    public Quotation createQuotationFromRfq(Long rfqId, java.lang.Long planningUserId, java.math.BigDecimal profitMargin, String capacityCheckNotes) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
-        
-        // Kiểm tra trạng thái RFQ
         if (!"RECEIVED_BY_PLANNING".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be received by planning to create quotation");
         }
-
-        // Tạo Quotation
+        // Require capacity evaluation done
+        if (rfq.getCapacityStatus() == null) {
+            throw new IllegalStateException("Capacity evaluation not performed yet (capacityStatus is null)");
+        }
+        if (!"SUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
+            // Allow INS UFFICIENT only if proposedNewDeliveryDate accepted by updating expectedDeliveryDate
+            if ("INSUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
+                if (rfq.getProposedNewDeliveryDate() == null) {
+                    throw new IllegalStateException("Capacity insufficient. Proposed new delivery date missing");
+                }
+                if (!rfq.getProposedNewDeliveryDate().equals(rfq.getExpectedDeliveryDate())) {
+                    throw new IllegalStateException("Capacity insufficient. Please update expectedDeliveryDate to proposedNewDeliveryDate before creating quotation");
+                }
+            } else {
+                throw new IllegalStateException("RFQ capacityStatus must be SUFFICIENT to create quotation");
+            }
+        }
         Quotation quotation = new Quotation();
         quotation.setQuotationNumber(generateQuotationNumber());
         quotation.setRfq(rfq);
         quotation.setCustomer(rfq.getCustomer());
-        quotation.setValidUntil(LocalDate.now().plusDays(30)); // 30 ngày hiệu lực
+        quotation.setValidUntil(LocalDate.now().plusDays(30));
         quotation.setStatus("DRAFT");
-        quotation.setCapacityCheckedBy(new User());
-        quotation.getCapacityCheckedBy().setId(planningUserId);
+        User planningUser = new User(); planningUser.setId(planningUserId);
+        quotation.setCapacityCheckedBy(planningUser);
         quotation.setCapacityCheckedAt(java.time.Instant.now());
         quotation.setCapacityCheckNotes(capacityCheckNotes != null ? capacityCheckNotes : "Khả năng sản xuất đã được kiểm tra - Kho đủ nguyên liệu, máy móc sẵn sàng");
-        quotation.setCreatedBy(new User());
-        quotation.getCreatedBy().setId(planningUserId);
-
-        // Lấy chi tiết RFQ và tính giá
+        quotation.setCreatedBy(planningUser);
         List<RfqDetail> rfqDetails = rfqDetailRepository.findByRfqId(rfqId);
         BigDecimal totalAmount = BigDecimal.ZERO;
-
+        List<QuotationDetail> qDetails = new java.util.ArrayList<>();
         for (RfqDetail rfqDetail : rfqDetails) {
             Product product = productRepository.findById(rfqDetail.getProduct().getId()).orElseThrow();
-            
-            // Tính giá theo công thức với profit margin có thể thay đổi
             QuotationDetail quotationDetail = calculateQuotationDetail(product, rfqDetail.getQuantity(), profitMargin);
             quotationDetail.setQuotation(quotation);
-            quotation.getDetails().add(quotationDetail);
-            
+            qDetails.add(quotationDetail);
             totalAmount = totalAmount.add(quotationDetail.getTotalPrice());
         }
-
         quotation.setTotalAmount(totalAmount);
+        quotation.setDetails(qDetails);
         Quotation savedQuotation = quotationRepository.save(quotation);
-
-        // Lưu chi tiết báo giá
-        for (QuotationDetail detail : quotation.getDetails()) {
-            quotationDetailRepository.save(detail);
-        }
-
-        // Cập nhật trạng thái RFQ
+        quotationDetailRepository.saveAll(qDetails);
         rfq.setStatus("QUOTED");
         rfqRepository.save(rfq);
-
-        // Gửi thông báo cho Sale Staff
         notificationService.notifyQuotationCreated(savedQuotation);
 
+        // NEW: nếu customer chưa có mật khẩu, cấp mật khẩu tạm và gửi email kèm URL báo giá
+        Customer customer = rfq.getCustomer();
+        String tempPassword = null;
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank())) {
+            try { tempPassword = customerService.provisionTemporaryPassword(customer.getId()); } catch (Exception ignore) {}
+        }
+        try { emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword); } catch (Exception ignore) {}
         return savedQuotation;
     }
 
@@ -244,35 +239,25 @@ public class QuotationService {
         detail.setProduct(product);
         detail.setQuantity(quantity);
         detail.setUnit("CÁI");
-
-        // Xác định thành phần sợi từ tên sản phẩm và tính giá trung bình
         String productName = product.getName().toLowerCase();
         BigDecimal materialPricePerKg;
-        
         if (productName.contains("cotton") && productName.contains("bambo")) {
-            // 50-50 cotton + bamboo
             BigDecimal cottonAvgPrice = getAverageMaterialPrice("Ne 32/1CD");
             BigDecimal bambooAvgPrice = getAverageMaterialPrice("Ne 30/1");
-            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"));
+            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
         } else if (productName.contains("bambo")) {
-            // 100% bamboo
             materialPricePerKg = getAverageMaterialPrice("Ne 30/1");
         } else {
-            // 100% cotton (mặc định)
             materialPricePerKg = getAverageMaterialPrice("Ne 32/1CD");
         }
-
-        // Tính giá theo công thức
-        BigDecimal unitWeightKg = product.getStandardWeight().divide(new BigDecimal("1000")); // gram to kg
+        BigDecimal unitWeightKg = product.getStandardWeight().divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
         BigDecimal materialCostPerUnit = unitWeightKg.multiply(materialPricePerKg);
-        BigDecimal processCostPerUnit = unitWeightKg.multiply(PROCESS_COST_PER_KG);
+        BigDecimal processCostPerUnit = unitWeightKg.multiply(new BigDecimal("45000"));
         BigDecimal basePricePerUnit = materialCostPerUnit.add(processCostPerUnit);
-        BigDecimal unitPrice = basePricePerUnit.multiply(profitMargin); // Lợi nhuận có thể thay đổi
-
+        BigDecimal unitPrice = basePricePerUnit.multiply(profitMargin);
         detail.setUnitPrice(unitPrice);
         detail.setTotalPrice(unitPrice.multiply(quantity));
-        detail.setNoteColor(null); // Không có noteColor từ RfqDetail
-
+        detail.setNoteColor(null);
         return detail;
     }
 
@@ -287,7 +272,6 @@ public class QuotationService {
      * Công thức: (quantity1 * price1 + quantity2 * price2 + ...) / (quantity1 + quantity2 + ...)
      */
     private BigDecimal getAverageMaterialPrice(String materialCode) {
-        // Tìm material theo code
         Material material = materialRepository.findAll().stream()
                 .filter(m -> materialCode.equals(m.getCode()))
                 .findFirst()
@@ -319,7 +303,7 @@ public class QuotationService {
         }
         
         if (totalQuantity.compareTo(BigDecimal.ZERO) > 0) {
-            return totalValue.divide(totalQuantity, 2, BigDecimal.ROUND_HALF_UP);
+            return totalValue.divide(totalQuantity, 2, RoundingMode.HALF_UP);
         } else {
             // Fallback về giá chuẩn
             return "Ne 32/1CD".equals(materialCode) ? new BigDecimal("68000") : new BigDecimal("78155");
@@ -351,6 +335,7 @@ public class QuotationService {
         }
         
         quotation.setStatus("SENT");
+        quotation.setSentAt(java.time.Instant.now());
         Quotation savedQuotation = quotationRepository.save(quotation);
 
         // Gửi thông báo cho Customer
@@ -379,6 +364,7 @@ public class QuotationService {
         
         quotation.setStatus("ACCEPTED");
         quotation.setAccepted(true);
+        quotation.setAcceptedAt(java.time.Instant.now());
         Quotation savedQuotation = quotationRepository.save(quotation);
 
         // Gửi thông báo cho Sale Staff
@@ -400,11 +386,27 @@ public class QuotationService {
         }
         
         quotation.setStatus("REJECTED");
+        quotation.setRejectedAt(java.time.Instant.now());
+        // reject reason can be set via a separate API that updates reject_reason
         Quotation savedQuotation = quotationRepository.save(quotation);
 
         // Gửi thông báo cho Sale Staff
         notificationService.notifyQuotationRejected(savedQuotation);
 
+        return savedQuotation;
+    }
+
+    @Transactional
+    public Quotation rejectQuotation(Long quotationId, String reason) {
+        Quotation quotation = quotationRepository.findById(quotationId).orElseThrow();
+        if (!"SENT".equals(quotation.getStatus())) {
+            throw new IllegalStateException("Quotation must be SENT to reject");
+        }
+        quotation.setStatus("REJECTED");
+        quotation.setRejectedAt(java.time.Instant.now());
+        quotation.setRejectReason(reason);
+        Quotation savedQuotation = quotationRepository.save(quotation);
+        notificationService.notifyQuotationRejected(savedQuotation);
         return savedQuotation;
     }
 
@@ -425,7 +427,7 @@ public class QuotationService {
         contract.setContractDate(java.time.LocalDate.now());
         contract.setDeliveryDate(quotation.getValidUntil()); // Sử dụng ngày hết hạn của báo giá
         contract.setTotalAmount(quotation.getTotalAmount());
-        contract.setStatus("DRAFT");
+        contract.setStatus("PENDING_APPROVAL"); // set to pending as requested
         contract.setCreatedBy(quotation.getCreatedBy());
 
         // Lưu Contract
@@ -444,9 +446,56 @@ public class QuotationService {
         return savedContract;
     }
 
+    // Helper to attach quotation PDF/file
+    @Transactional
+    public Quotation attachQuotationFile(Long quotationId, org.springframework.web.multipart.MultipartFile file) {
+        Quotation quotation = quotationRepository.findById(quotationId).orElseThrow();
+        try {
+            String path = fileStorageService.uploadQuotationFile(file, quotationId);
+            quotation.setFilePath(path);
+            return quotationRepository.save(quotation);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload quotation file: " + e.getMessage(), e);
+        }
+    }
+
     private String generateContractNumber() {
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         long count = contractRepository.count() + 1;
         return String.format("CON-%s-%03d", dateStr, count);
+    }
+
+    // Planning Department: Kiểm tra khả năng cung ứng của RFQ
+    private boolean isRfqCapacitySufficient(Long rfqId, BigDecimal profitMargin) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+
+        // Lấy chi tiết RFQ
+        List<RfqDetail> rfqDetails = rfqDetailRepository.findByRfqId(rfqId);
+
+        for (RfqDetail rfqDetail : rfqDetails) {
+            Product product = productRepository.findById(rfqDetail.getProduct().getId()).orElseThrow();
+
+            // Tính toán khả năng cung ứng dựa trên tồn kho nguyên liệu và năng lực sản xuất
+            BigDecimal requiredMaterialQty = rfqDetail.getQuantity().multiply(product.getStandardWeight()).divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
+            BigDecimal availableMaterialQty = materialStockRepository.findByMaterialId(product.getId()).stream()
+                    .map(MaterialStock::getQuantity)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (availableMaterialQty.compareTo(requiredMaterialQty) < 0) {
+                return false; // Tồn kho không đủ
+            }
+        }
+
+        return true; // Đủ khả năng cung ứng
+    }
+
+    public String getQuotationFileUrl(Long quotationId) {
+        return fileStorageService.getQuotationFileUrl(quotationId);
+    }
+    public byte[] downloadQuotationFile(Long quotationId) {
+        try { return fileStorageService.downloadQuotationFile(quotationId); } catch (Exception e) { throw new RuntimeException(e); }
+    }
+    public String getQuotationFileName(Long quotationId) {
+        try { return fileStorageService.getQuotationFileName(quotationId); } catch (Exception e) { throw new RuntimeException(e); }
     }
 }

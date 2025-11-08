@@ -100,21 +100,14 @@ public class CustomerService {
         Customer customer = findByEmailOrPhoneOrThrow(emailOrPhone);
         OtpToken latest = otpTokenRepository.findTopByCustomerIdAndUsedFalseOrderByCreatedAtDesc(customer.getId())
                 .orElseThrow(() -> new RuntimeException("No OTP requested"));
-        if (Boolean.TRUE.equals(latest.getUsed())) {
-            throw new RuntimeException("OTP already used");
-        }
-        if (java.time.Instant.now().isAfter(latest.getExpiredAt())) {
-            throw new RuntimeException("OTP expired");
-        }
-        if (!latest.getOtpCode().equals(otpCode)) {
-            throw new RuntimeException("Invalid OTP");
-        }
-        latest.setUsed(true);
-        otpTokenRepository.save(latest);
-
+        if (Boolean.TRUE.equals(latest.getUsed())) { throw new RuntimeException("OTP already used"); }
+        if (java.time.Instant.now().isAfter(latest.getExpiredAt())) { throw new RuntimeException("OTP expired"); }
+        if (!latest.getOtpCode().equals(otpCode)) { throw new RuntimeException("Invalid OTP"); }
+        latest.setUsed(true); otpTokenRepository.save(latest);
         String token = jwtService.generateToken(customer.getEmail(), java.util.Map.of(
                 "cid", customer.getId(),
-                "role", "CUSTOMER"
+                "role", "CUSTOMER",
+                "fpc", customer.getForcePasswordChange()
         ));
         long expiresIn = jwtService.getExpirationMillis();
         customer.setLastLoginAt(java.time.Instant.now());
@@ -126,8 +119,131 @@ public class CustomerService {
                 token,
                 expiresIn,
                 customer.getId(),
-                customer.getCompanyName()
+                customer.getCompanyName(),
+                customer.getForcePasswordChange()
         );
+    }
+
+    // ===== Password-based flows for customers (optional) =====
+
+    /** Cấp mật khẩu tạm cho khách hàng (hash lưu trong customer.password). */
+    @Transactional
+    public String provisionTemporaryPassword(Long customerId) {
+        Customer customer = customerRepository.findById(customerId).orElseThrow();
+        String raw = generateTempPassword();
+        customer.setPassword(passwordEncoder.encode(raw));
+        customer.setForcePasswordChange(true); // bắt buộc đổi lần đầu
+        customerRepository.save(customer);
+        return raw; // trả về để gửi email/SMS
+    }
+
+    /** Đăng nhập bằng email HOẶC số điện thoại + password cho customer. */
+    public tmmsystem.dto.auth.CustomerLoginResponse customerPasswordLoginEmailOrPhone(String emailOrPhone, String password) {
+        Customer customer = findByEmailOrPhoneOrThrow(emailOrPhone);
+        if (customer.getPassword() == null || !passwordEncoder.matches(password, customer.getPassword())) {
+            throw new RuntimeException("Invalid credentials");
+        }
+        customer.setLastLoginAt(java.time.Instant.now());
+        return buildCustomerLoginResponse(customer);
+    }
+
+    /** Đăng nhập bằng email + password cho customer. */
+    public tmmsystem.dto.auth.CustomerLoginResponse customerPasswordLogin(String email, String password) {
+        Customer customer = customerRepository.findByEmail(email.toLowerCase().trim())
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        if (customer.getPassword() == null || !passwordEncoder.matches(password, customer.getPassword())) {
+            throw new RuntimeException("Invalid credentials");
+        }
+        customer.setLastLoginAt(java.time.Instant.now());
+        return buildCustomerLoginResponse(customer);
+    }
+
+    private tmmsystem.dto.auth.CustomerLoginResponse buildCustomerLoginResponse(Customer customer){
+        String subject = customer.getEmail()!=null && !customer.getEmail().isBlank() ? customer.getEmail() : customer.getPhoneNumber();
+        if (subject==null || subject.isBlank()) { subject = "customer-"+customer.getId(); }
+        String token = jwtService.generateToken(subject, java.util.Map.of(
+                "cid", customer.getId(),
+                "role", "CUSTOMER",
+                "fpc", customer.getForcePasswordChange()
+        ));
+        long expiresIn = jwtService.getExpirationMillis();
+        return new tmmsystem.dto.auth.CustomerLoginResponse(
+                customer.getContactPerson(),
+                customer.getEmail(),
+                "CUSTOMER",
+                Boolean.TRUE.equals(customer.getActive()),
+                token,
+                expiresIn,
+                customer.getId(),
+                customer.getCompanyName(),
+                customer.getForcePasswordChange()
+        );
+    }
+
+    /** Đổi mật khẩu (lần đầu sau khi được cấp). */
+    @Transactional
+    public void changeCustomerPassword(Long customerId, String oldPassword, String newPassword) {
+        Customer customer = customerRepository.findById(customerId).orElseThrow();
+        if (customer.getPassword() != null && !passwordEncoder.matches(oldPassword, customer.getPassword())) {
+            throw new RuntimeException("Sai mật khẩu hiện tại");
+        }
+        customer.setPassword(passwordEncoder.encode(newPassword));
+        customer.setForcePasswordChange(false); // đã đổi xong lần đầu
+        customerRepository.save(customer);
+    }
+
+    /** Yêu cầu reset mật khẩu cho customer (gửi code). */
+    @Transactional
+    public void requestCustomerPasswordReset(String email) {
+        Customer customer = customerRepository.findByEmail(email.toLowerCase().trim())
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        if (!Boolean.TRUE.equals(customer.getActive())) {
+            throw new RuntimeException("Customer inactive");
+        }
+        String code = generateNumericCode(6);
+        OtpToken otp = new OtpToken();
+        otp.setCustomer(customer);
+        otp.setOtpCode(code);
+        otp.setExpiredAt(java.time.Instant.now().plus(java.time.Duration.ofMinutes(10)));
+        otpTokenRepository.save(otp);
+        mailService.send(customer.getEmail(), "Customer Password Reset Code", "Your reset code: " + code + "\nExpires in 10 minutes.");
+    }
+
+    /** Xác thực mã reset & đặt mật khẩu mới ngẫu nhiên (gửi qua email). */
+    @Transactional
+    public void verifyCustomerResetCode(String email, String code) {
+        Customer customer = customerRepository.findByEmail(email.toLowerCase().trim())
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        OtpToken latest = otpTokenRepository.findTopByCustomerIdAndUsedFalseOrderByCreatedAtDesc(customer.getId())
+                .orElseThrow(() -> new RuntimeException("No reset code requested"));
+        if (java.time.Instant.now().isAfter(latest.getExpiredAt())) {
+            throw new RuntimeException("Code expired");
+        }
+        if (!latest.getOtpCode().equals(code)) {
+            throw new RuntimeException("Invalid code");
+        }
+        latest.setUsed(true);
+        otpTokenRepository.save(latest);
+        String newPass = generateTempPassword();
+        customer.setPassword(passwordEncoder.encode(newPass));
+        customerRepository.save(customer);
+        mailService.send(customer.getEmail(), "Your new password", "New password: " + newPass + "\nPlease change after login.");
+    }
+
+    /** Đổi mật khẩu qua email + currentPassword giống user flow. */
+    @Transactional
+    public void changeCustomerPasswordByEmail(String email, String currentPassword, String newPassword) {
+        Customer customer = customerRepository.findByEmail(email.toLowerCase().trim())
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        if (customer.getPassword() == null || !passwordEncoder.matches(currentPassword, customer.getPassword())) {
+            throw new RuntimeException("Current password incorrect");
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new RuntimeException("New password must not be empty");
+        }
+        customer.setPassword(passwordEncoder.encode(newPassword));
+        customer.setForcePasswordChange(false); // đã đổi xong lần đầu
+        customerRepository.save(customer);
     }
 
     private Customer findByEmailOrPhoneOrThrow(String emailOrPhone) {
@@ -161,10 +277,6 @@ public class CustomerService {
         }
     }
 
-    
-
-    // Legacy password-based flows removed for customers in favor of OTP
-
     private String generateNumericCode(int length) {
         java.security.SecureRandom random = new java.security.SecureRandom();
         StringBuilder sb = new StringBuilder(length);
@@ -178,6 +290,16 @@ public class CustomerService {
         String suffix = generateNumericCode(3);
         return "CUS-" + yyyymm + "-" + suffix;
     }
-}
 
+    private String generateTempPassword() {
+        // 10-ký tự: chữ + số, dễ đọc
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        java.security.SecureRandom r = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            sb.append(chars.charAt(r.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+}
 

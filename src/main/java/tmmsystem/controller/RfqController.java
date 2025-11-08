@@ -27,10 +27,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
+import tmmsystem.dto.sales.SalesRfqCreateRequest;
+import tmmsystem.dto.sales.SalesRfqEditRequest;
 
 @RestController
 @RequestMapping("/v1/rfqs")
 @Validated
+@Tag(name = "RFQ")
 public class RfqController {
     private final RfqService service;
     private final RfqMapper mapper;
@@ -308,5 +314,43 @@ public class RfqController {
     public List<RfqDto> listDraftsUnassigned(@RequestHeader(value = "X-User-Id", required = false) Long directorUserId) {
         // Hiện chưa kiểm tra role thật sự của user; giả sử caller là director.
         return service.findDraftUnassigned().stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    // 1) Sales tạo RFQ hộ khách không dùng hệ thống (tự assign bản thân)
+    @Operation(summary = "Sales tạo RFQ thay khách hàng (không dùng hệ thống)",
+            description = "Sales tự tạo RFQ bằng thông tin liên hệ khách (email/phone). Sales sẽ tự được gán vào RFQ. Nếu customer chưa tồn tại sẽ tự tạo mới.")
+    @PostMapping("/by-sales")
+    public RfqDto createBySales(
+            @RequestHeader("X-User-Id") Long salesUserId,
+            @RequestBody(description = "Payload tạo RFQ bởi Sales", required = true,
+                    content = @Content(schema = @Schema(implementation = SalesRfqCreateRequest.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody SalesRfqCreateRequest body) {
+        Rfq created = service.createBySales(body, salesUserId);
+        return mapper.toDto(created);
+    }
+
+    // 2) Sales sửa thông tin RFQ + Customer trước khi preliminary-checked
+    @Operation(summary = "Sales chỉnh sửa RFQ và thông tin khách (trước Preliminary Check)",
+            description = "Chỉ cho phép khi RFQ chưa PRELIMINARY_CHECKED. Cập nhật các trường cơ bản của RFQ và Customer (tên, email, phone, địa chỉ, ghi chú)")
+    @PatchMapping("/{id}/sales-edit")
+    public RfqDto salesEditRfqAndCustomer(
+            @PathVariable Long id,
+            @RequestHeader("X-User-Id") Long salesUserId,
+            @RequestBody(description = "Payload chỉnh sửa RFQ + Customer", required = true,
+                    content = @Content(schema = @Schema(implementation = SalesRfqEditRequest.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody SalesRfqEditRequest body) {
+        Rfq updated = service.salesEditRfqAndCustomer(id, salesUserId, body);
+        return mapper.toDto(updated);
+    }
+
+    @Operation(summary = "Đánh giá năng lực (Planning ghi kết quả)",
+            description = "Planning gửi kết quả đánh giá năng lực: SUFFICIENT/INSUFFICIENT + lý do + ngày đề xuất mới")
+    @PostMapping("/{id}/capacity-evaluate")
+    public RfqDto capacityEvaluate(@Parameter(description = "ID RFQ") @PathVariable Long id,
+                                   @RequestParam String status,
+                                   @RequestParam(required = false) String reason,
+                                   @RequestParam(required = false) java.time.LocalDate proposedNewDate) {
+        service.persistCapacityEvaluation(id, status, reason, proposedNewDate);
+        return mapper.toDto(service.findById(id));
     }
 }

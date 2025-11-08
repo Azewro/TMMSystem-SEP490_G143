@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -151,6 +152,68 @@ public class FileStorageService {
     }
     
     /**
+     * Upload quotation file (PDF/Doc/Excel/Images)
+     */
+    public String uploadQuotationFile(MultipartFile file, Long quotationId) throws IOException {
+        validateFile(file);
+        Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
+        Files.createDirectories(dir);
+        String extension = getFileExtension(file.getOriginalFilename());
+        String fileName = "quotation_" + quotationId + "_" + System.currentTimeMillis() + extension;
+        Path filePath = dir.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        log.info("Quotation file uploaded successfully: {}", filePath);
+        return "quotations/" + quotationId + "/" + fileName;
+    }
+
+    /**
+     * Get quotation file URL
+     */
+    public String getQuotationFileUrl(Long quotationId) {
+        try {
+            Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
+            if (!Files.exists(dir)) return null;
+            return Files.list(dir)
+                    .filter(Files::isRegularFile)
+                    .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            log.error("Error getting quotation file URL for ID {}", quotationId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Download quotation file
+     */
+    public byte[] downloadQuotationFile(Long quotationId) throws IOException {
+        Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
+        if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
+        Path filePath = Files.list(dir)
+                .filter(Files::isRegularFile)
+                .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                .findFirst()
+                .orElseThrow(() -> new IOException("Quotation file not found"));
+        return Files.readAllBytes(filePath);
+    }
+
+    /**
+     * Get quotation file name for download
+     */
+    public String getQuotationFileName(Long quotationId) throws IOException {
+        Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
+        if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
+        return Files.list(dir)
+                .filter(Files::isRegularFile)
+                .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                .findFirst()
+                .map(p -> p.getFileName().toString())
+                .orElseThrow(() -> new IOException("Quotation file not found"));
+    }
+
+    /**
      * Get file by filename (for API endpoint)
      */
     public byte[] getFileByFilename(String filename) throws IOException {
@@ -176,7 +239,7 @@ public class FileStorageService {
     }
     
     /**
-     * Validate uploaded file - Only allow image files
+     * Validate uploaded file - Allow images + PDF + Word + Excel
      */
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
@@ -188,10 +251,23 @@ public class FileStorageService {
             throw new IllegalArgumentException("File size exceeds 10MB limit");
         }
         
-        // Check file type - Only allow image files
+        // Allow common types
         String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw new IllegalArgumentException("Only image files are allowed (JPG, PNG, GIF, BMP, WEBP)");
+        String ext = getFileExtension(file.getOriginalFilename()).toLowerCase();
+        java.util.Set<String> allowedTypes = Set.of(
+                // images
+                "image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp",
+                // pdf/doc/xls
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        java.util.Set<String> allowedExt = Set.of(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx");
+        boolean ok = (contentType != null && allowedTypes.contains(contentType)) || allowedExt.contains(ext);
+        if (!ok) {
+            throw new IllegalArgumentException("Only image/PDF/Word/Excel files are allowed");
         }
     }
     

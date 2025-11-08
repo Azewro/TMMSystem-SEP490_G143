@@ -32,6 +32,10 @@ public class CapacityCheckResultDto {
         private SequentialStageDto cuttingStage;
         private SequentialStageDto sewingStage;
         private BigDecimal totalWaitTime;
+
+        // NEW
+        private String status; // SUFFICIENT | INSUFFICIENT
+        private String mergeSuggestion; // Gợi ý gộp đơn hoặc ngày có thể sản xuất
     }
     
     @Getter

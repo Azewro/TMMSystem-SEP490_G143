@@ -15,7 +15,6 @@ import tmmsystem.dto.sales.CreateQuotationRequest;
 import tmmsystem.dto.sales.PriceCalculationDto;
 import tmmsystem.dto.sales.RecalculatePriceRequest;
 
-import java.math.BigDecimal;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.Quotation;
 import tmmsystem.entity.Rfq;
@@ -24,6 +23,8 @@ import tmmsystem.service.QuotationService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/v1/quotations")
@@ -189,5 +190,20 @@ public class QuotationController {
     @PostMapping("/{id}/create-order")
     public Object createOrderFromQuotation(@Parameter(description = "ID Quotation") @PathVariable Long id) {
         return service.createOrderFromQuotation(id);
+    }
+
+    @Operation(summary = "Upload báo giá đã ký",
+            description = "Sale upload file PDF báo giá đã ký")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Upload thành công"),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy báo giá")
+    })
+    @PostMapping(value = "/{id}/upload-signed", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public QuotationDto uploadSignedQuotation(
+            @Parameter(description = "ID báo giá") @PathVariable Long id,
+            @Parameter(description = "File báo giá đã ký", content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                    schema = @Schema(type = "string", format = "binary")))
+            @RequestParam("file") MultipartFile file) {
+        return mapper.toDto(service.attachQuotationFile(id, file));
     }
 }

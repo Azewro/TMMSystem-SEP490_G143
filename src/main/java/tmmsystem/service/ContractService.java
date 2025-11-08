@@ -3,8 +3,7 @@ package tmmsystem.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import tmmsystem.entity.Contract;
-import tmmsystem.entity.User;
+import tmmsystem.entity.*;
 import tmmsystem.repository.ContractRepository;
 import tmmsystem.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +12,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
 import org.springframework.beans.factory.annotation.Autowired;
+import tmmsystem.repository.ProductionLotOrderRepository;
+import tmmsystem.repository.ProductionLotRepository;
 
 @Service
 @Slf4j
@@ -22,18 +23,24 @@ public class ContractService {
     private final NotificationService notificationService;
     private final FileStorageService fileStorageService;
     private final ProductionPlanService productionPlanService;
+    private final ProductionLotRepository lotRepo;
+    private final ProductionLotOrderRepository lotOrderRepo;
 
     @Autowired
     public ContractService(ContractRepository repository, 
                          UserRepository userRepository,
                          NotificationService notificationService,
                          FileStorageService fileStorageService,
-                         ProductionPlanService productionPlanService) { 
-        this.repository = repository; 
+                         ProductionPlanService productionPlanService,
+                         ProductionLotRepository lotRepo,
+                         ProductionLotOrderRepository lotOrderRepo) {
+        this.repository = repository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.fileStorageService = fileStorageService;
         this.productionPlanService = productionPlanService;
+        this.lotRepo = lotRepo;
+        this.lotOrderRepo = lotOrderRepo;
     }
 
     public List<Contract> findAll() { return repository.findAll(); }
@@ -106,17 +113,11 @@ public class ContractService {
         contract.setUpdatedAt(Instant.now());
         
         Contract savedContract = repository.save(contract);
-        
-        // Automatically create Production Plan for approved contract
-        try {
-            createProductionPlanForContract(savedContract);
-        } catch (Exception e) {
-            log.error("Failed to create production plan for contract {}: {}", contractId, e.getMessage());
-            // Don't fail the contract approval if production plan creation fails
-            // Just log the error and continue
-        }
-        
-        // Send notification to Planning Department
+
+        // Merge Lots cho tất cả hợp đồng APPROVED chưa có kế hoạch
+        mergeLotsForApprovedContracts();
+
+        // Gửi thông báo cho Planning Department
         notificationService.notifyContractApproved(savedContract);
         
         return savedContract;
@@ -278,6 +279,58 @@ public class ContractService {
             throw e;
         }
     }
+
+    private void mergeLotsForApprovedContracts() {
+        List<Contract> approved = repository.findApprovedWithoutPlan();
+        record Key(String productName, java.time.LocalDate delivery, java.time.LocalDate contractDate) {}
+        java.util.Map<Key, java.util.List<Contract>> groups = new java.util.HashMap<>();
+        for (Contract c : approved) {
+            if (c.getQuotation()==null || c.getQuotation().getDetails()==null || c.getQuotation().getDetails().isEmpty()) continue;
+            var d = c.getQuotation().getDetails().get(0);
+            String name = d.getProduct().getName();
+            java.time.LocalDate del = c.getDeliveryDate();
+            java.time.LocalDate con = c.getContractDate();
+            Key k = new Key(name, del, con);
+            groups.computeIfAbsent(k, x -> new java.util.ArrayList<>()).add(c);
+        }
+        for (var e : groups.entrySet()) {
+            var list = e.getValue();
+            if (list.isEmpty()) continue;
+            Contract base = list.get(0);
+            var qd0 = base.getQuotation().getDetails().get(0);
+            Product product = qd0.getProduct();
+            java.math.BigDecimal totalQty = java.math.BigDecimal.ZERO;
+            for (Contract c : list) {
+                for (var qd : c.getQuotation().getDetails()) totalQty = totalQty.add(qd.getQuantity());
+            }
+            ProductionLot lot = lotRepo.findAll().stream()
+                    .filter(l -> l.getProduct()!=null && l.getProduct().getId().equals(product.getId()))
+                    .filter(l -> "READY_FOR_PLANNING".equals(l.getStatus()) || "FORMING".equals(l.getStatus()))
+                    .findFirst().orElse(null);
+            if (lot==null) {
+                lot = new ProductionLot();
+                lot.setLotCode("LOT-"+java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format("%03d", lotRepo.count()+1));
+                lot.setProduct(product);
+                // size snapshot: ưu tiên kích thước tiêu chuẩn nếu có
+                try { lot.setSizeSnapshot(product.getStandardDimensions()); } catch (Exception ignore) { lot.setSizeSnapshot(product.getName()); }
+                lot.setDeliveryDateTarget(base.getDeliveryDate());
+                lot.setContractDateMin(base.getContractDate());
+                lot.setContractDateMax(base.getContractDate());
+                lot.setStatus("FORMING");
+                lot.setTotalQuantity(java.math.BigDecimal.ZERO);
+                lot = lotRepo.save(lot);
+            }
+            for (Contract c : list) {
+                for (var qd : c.getQuotation().getDetails()) {
+                    ProductionLotOrder lo = new ProductionLotOrder();
+                    lo.setLot(lot); lo.setContract(c); lo.setQuotationDetail(qd); lo.setAllocatedQuantity(qd.getQuantity());
+                    lotOrderRepo.save(lo);
+                    lot.setTotalQuantity(lot.getTotalQuantity().add(qd.getQuantity()));
+                }
+            }
+            lot.setStatus("READY_FOR_PLANNING");
+            lotRepo.save(lot);
+            productionPlanService.createPlanVersion(lot.getId());
+        }
+    }
 }
-
-

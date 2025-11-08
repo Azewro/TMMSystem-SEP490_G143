@@ -10,6 +10,8 @@ import tmmsystem.repository.*;
 import tmmsystem.dto.sales.RfqDetailDto;
 import tmmsystem.dto.sales.RfqCreateDto;
 import tmmsystem.dto.sales.RfqPublicCreateDto;
+import tmmsystem.dto.sales.SalesRfqCreateRequest;
+import tmmsystem.dto.sales.SalesRfqEditRequest;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -218,74 +220,51 @@ public class RfqService {
     @Transactional
     public RfqDetail addDetail(Long rfqId, RfqDetailDto dto) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        if (isImmutableStatus(rfq.getStatus())) {
+            throw new IllegalStateException("RFQ is not editable at current status");
+        }
         RfqDetail detail = new RfqDetail();
         detail.setRfq(rfq);
-        
-        if (dto.getProductId() != null) {
-            Product product = new Product();
-            product.setId(dto.getProductId());
-            detail.setProduct(product);
-        }
-        
+        if (dto.getProductId() != null) { Product product = new Product(); product.setId(dto.getProductId()); detail.setProduct(product); }
         detail.setQuantity(dto.getQuantity());
         detail.setUnit(dto.getUnit());
         detail.setNoteColor(dto.getNoteColor());
         detail.setNotes(dto.getNotes());
-        
         return detailRepository.save(detail);
     }
 
     @Transactional
     public RfqDetail updateDetail(Long id, RfqDetailDto dto) {
         RfqDetail detail = detailRepository.findById(id).orElseThrow();
-        
-        if (dto.getProductId() != null) {
-            Product product = new Product();
-            product.setId(dto.getProductId());
-            detail.setProduct(product);
+        Rfq rfq = detail.getRfq();
+        if (isImmutableStatus(rfq.getStatus())) {
+            throw new IllegalStateException("RFQ is not editable at current status");
         }
-        
+        if (dto.getProductId() != null) { Product product = new Product(); product.setId(dto.getProductId()); detail.setProduct(product); }
         detail.setQuantity(dto.getQuantity());
         detail.setUnit(dto.getUnit());
         detail.setNoteColor(dto.getNoteColor());
         detail.setNotes(dto.getNotes());
-        
         return detailRepository.save(detail);
     }
 
-    public void deleteDetail(Long id) { 
-        detailRepository.deleteById(id); 
-    }
-    
-    @Transactional
-    public Rfq updateExpectedDeliveryDate(Long id, String expectedDeliveryDate) {
-        Rfq rfq = rfqRepository.findById(id).orElseThrow();
-        
-        // Parse ngày từ string với hỗ trợ 2 định dạng
-        java.time.LocalDate deliveryDate = parseDeliveryDate(expectedDeliveryDate);
-        
-        // Cập nhật chỉ ngày giao hàng mong muốn
-        rfq.setExpectedDeliveryDate(deliveryDate);
-        
-        return rfqRepository.save(rfq);
-    }
-    
-    private java.time.LocalDate parseDeliveryDate(String dateString) {
-        try {
-            // Thử định dạng yyyy-MM-dd trước
-            return java.time.LocalDate.parse(dateString);
-        } catch (java.time.format.DateTimeParseException e1) {
-            try {
-                // Thử định dạng dd-MM-yyyy
-                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy");
-                return java.time.LocalDate.parse(dateString, formatter);
-            } catch (java.time.format.DateTimeParseException e2) {
-                throw new IllegalArgumentException("Ngày không hợp lệ. Hỗ trợ định dạng: yyyy-MM-dd hoặc dd-MM-yyyy. Ví dụ: 2025-05-10 hoặc 10-05-2025");
-            }
+    public void deleteDetail(Long id) {
+        RfqDetail detail = detailRepository.findById(id).orElseThrow();
+        Rfq rfq = detail.getRfq();
+        if (isImmutableStatus(rfq.getStatus())) {
+            throw new IllegalStateException("RFQ is not editable at current status");
         }
+        detailRepository.deleteById(id);
     }
 
-    // RFQ Workflow Methods
+    private boolean isImmutableStatus(String status) {
+        if (status == null) return false;
+        return switch (status) {
+            case "PRELIMINARY_CHECKED", "FORWARDED_TO_PLANNING", "RECEIVED_BY_PLANNING", "QUOTED", "CANCELED" -> true;
+            default -> false;
+        };
+    }
+
     @Transactional
     public Rfq sendRfq(Long id) {
         Rfq rfq = rfqRepository.findById(id).orElseThrow();
@@ -309,8 +288,7 @@ public class RfqService {
         if (!"SENT".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be in SENT status to preliminary check");
         }
-        // Kiểm tra sơ bộ: phải có ít nhất một dòng chi tiết và có ngày giao mong muốn
-        List<RfqDetail> details = detailRepository.findByRfqId(rfq.getId());
+        var details = detailRepository.findByRfqId(rfq.getId());
         if (details == null || details.isEmpty()) {
             throw new IllegalStateException("RFQ must contain at least one product line");
         }
@@ -318,7 +296,11 @@ public class RfqService {
             throw new IllegalStateException("Expected delivery date is required");
         }
         rfq.setStatus("PRELIMINARY_CHECKED");
-        return rfqRepository.save(rfq);
+        rfq.setSalesConfirmedAt(java.time.Instant.now());
+        rfq.setSalesConfirmedBy(rfq.getAssignedSales());
+        Rfq saved = rfqRepository.save(rfq);
+        notificationService.notifySalesConfirmed(saved);
+        return saved;
     }
 
     @Transactional
@@ -428,5 +410,123 @@ public class RfqService {
         // Fallback random suffix to avoid collisions
         int rand = new java.security.SecureRandom().nextInt(900) + 100;
         return "RFQ-" + dateStr + "-" + String.format("%03d", rand);
+    }
+
+    // Hook to persist capacity evaluation summary into RFQ
+    @Transactional
+    public void persistCapacityEvaluation(Long rfqId, String capacityStatus, String reason, java.time.LocalDate proposedNewDate) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        rfq.setCapacityStatus(capacityStatus);
+        rfq.setCapacityReason(reason);
+        rfq.setProposedNewDeliveryDate(proposedNewDate);
+        rfqRepository.save(rfq);
+        if ("INSUFFICIENT".equalsIgnoreCase(capacityStatus)) {
+            notificationService.notifyCapacityInsufficient(rfq);
+        }
+    }
+
+    @Transactional
+    public Rfq createBySales(SalesRfqCreateRequest req, Long salesUserId) {
+        if (salesUserId == null) throw new IllegalArgumentException("Missing salesUserId header");
+        if ((req.getContactEmail() == null || req.getContactEmail().isBlank()) && (req.getContactPhone() == null || req.getContactPhone().isBlank())) {
+            throw new IllegalArgumentException("Must provide contactEmail or contactPhone");
+        }
+        String email = normalizeEmail(req.getContactEmail());
+        String phone = normalizePhone(req.getContactPhone());
+        Customer customer = null;
+        if (email != null) customer = customerRepository.findByEmail(email).orElse(null);
+        if (customer == null && phone != null) customer = customerRepository.findByPhoneNumber(phone).orElse(null);
+        if (customer == null) {
+            customer = new Customer();
+            String prefix = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
+            int rand = new java.security.SecureRandom().nextInt(900) + 100;
+            customer.setCustomerCode("CUS-" + prefix + "-" + rand);
+            customer.setContactPerson(req.getContactPerson());
+            if (email != null) customer.setEmail(email);
+            if (phone != null) customer.setPhoneNumber(phone);
+            customer.setAddress(req.getContactAddress());
+            customer.setVerified(false);
+            customer.setRegistrationType("SALES_CREATED_ON_BEHALF");
+            customer = customerRepository.save(customer);
+        }
+        Rfq rfq = new Rfq();
+        rfq.setCustomer(customer);
+        rfq.setSourceType("BY_SALES");
+        rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        rfq.setStatus("DRAFT");
+        rfq.setNotes(req.getNotes());
+        User sales = new User(); sales.setId(salesUserId); rfq.setAssignedSales(sales);
+        return createWithDetails(rfq, req.getDetails());
+    }
+
+    @Transactional
+    public Rfq salesEditRfqAndCustomer(Long rfqId, Long salesUserId, SalesRfqEditRequest req) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ sửa khi RFQ ở DRAFT hoặc SENT trước preliminary-check");
+        }
+        if (Boolean.TRUE.equals(rfq.getLocked())) {
+            throw new IllegalStateException("RFQ locked");
+        }
+        if (rfq.getAssignedSales() == null || !salesUserId.equals(rfq.getAssignedSales().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not assigned sales");
+        }
+        // Update RFQ fields
+        if (req.getExpectedDeliveryDate() != null) rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        if (req.getNotes() != null) rfq.setNotes(req.getNotes());
+        // Update customer snapshot data
+        Customer cust = rfq.getCustomer();
+        if (cust != null) {
+            if (req.getContactPerson() != null) cust.setContactPerson(req.getContactPerson());
+            if (req.getContactEmail() != null) cust.setEmail(normalizeEmail(req.getContactEmail()));
+            if (req.getContactPhone() != null) cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
+            if (req.getContactAddress() != null) cust.setAddress(req.getContactAddress());
+            customerRepository.save(cust);
+        }
+        // Replace details if provided
+        if (req.getDetails() != null) {
+            // remove old
+            detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
+            for (RfqDetailDto d : req.getDetails()) {
+                RfqDetail nd = new RfqDetail();
+                nd.setRfq(rfq);
+                if (d.getProductId() != null) { Product p = new Product(); p.setId(d.getProductId()); nd.setProduct(p); }
+                nd.setQuantity(d.getQuantity()); nd.setUnit(d.getUnit()); nd.setNoteColor(d.getNoteColor()); nd.setNotes(d.getNotes());
+                detailRepository.save(nd);
+            }
+        }
+        return rfqRepository.save(rfq);
+    }
+
+    @Transactional
+    public Rfq updateExpectedDeliveryDate(Long id, String expectedDateStr) {
+        Rfq rfq = rfqRepository.findById(id).orElseThrow();
+        if (Boolean.TRUE.equals(rfq.getLocked())) {
+            throw new IllegalStateException("RFQ is locked and cannot change expected delivery date");
+        }
+        java.time.LocalDate date = parseFlexibleDate(expectedDateStr);
+        rfq.setExpectedDeliveryDate(date);
+        return rfqRepository.save(rfq);
+    }
+
+    private java.time.LocalDate parseFlexibleDate(String value) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("expectedDeliveryDate is required");
+        String v = value.trim();
+        try {
+            return java.time.LocalDate.parse(v); // yyyy-MM-dd
+        } catch (java.time.format.DateTimeParseException e) {
+            try {
+                java.time.format.DateTimeFormatter f = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy");
+                return java.time.LocalDate.parse(v, f);
+            } catch (java.time.format.DateTimeParseException ex) {
+                try {
+                    int day = Integer.parseInt(v);
+                    java.time.LocalDate now = java.time.LocalDate.now();
+                    return now.withDayOfMonth(day);
+                } catch (NumberFormatException ex2) {
+                    throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd or dd-MM-yyyy or day of month (1-31)");
+                }
+            }
+        }
     }
 }

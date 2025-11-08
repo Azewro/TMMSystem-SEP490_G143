@@ -369,10 +369,13 @@ public class ProductionPlanController {
             @Parameter(description = "ID của công đoạn sản xuất", required = true, example = "1")
             @PathVariable Long stageId) {
         tmmsystem.entity.ProductionPlanStage stage = service.findStageById(stageId);
+        var lot = stage.getPlan().getLot();
+        Long productId = lot != null && lot.getProduct()!=null ? lot.getProduct().getId() : null;
+        java.math.BigDecimal qty = lot != null ? lot.getTotalQuantity() : java.math.BigDecimal.ZERO;
         return service.getMachineSuggestionsForStage(
             stage.getStageType(),
-            stage.getPlanDetail().getProduct().getId(),
-            stage.getPlanDetail().getPlannedQuantity(),
+            productId,
+            qty,
             stage.getPlannedStartTime(),
             stage.getPlannedEndTime()
         );

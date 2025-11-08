@@ -142,6 +142,16 @@ public class CapacityCheckService {
         // Populate thông tin chi tiết các công đoạn tuần tự
         populateSequentialStages(machineCapacity, capacityResult, productionStartDate);
         
+        // After machineCapacity populated:
+        if (machineCapacity.isSufficient()) {
+            machineCapacity.setStatus("SUFFICIENT");
+            machineCapacity.setMergeSuggestion("Có thể tiến hành lập báo giá ngay");
+        } else {
+            machineCapacity.setStatus("INSUFFICIENT");
+            // Gợi ý: nếu có ngày conflict rải rác, tìm ngày bắt đầu mới khả thi = productionEndDate + 2
+            java.time.LocalDate suggestionDate = machineCapacity.getProductionEndDate().plusDays(2);
+            machineCapacity.setMergeSuggestion("Đề xuất dời lịch sản xuất sang ngày " + suggestionDate + " hoặc gộp với đơn cùng sản phẩm nếu còn slot.");
+        }
         result.setMachineCapacity(machineCapacity);
         
         // Kho luôn đủ

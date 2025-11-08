@@ -53,6 +53,13 @@ public class Customer {
     @Column(name = "last_login_at")
     private java.time.Instant lastLoginAt;
 
+    // NEW: password (nullable, cho khách hàng chưa từng được cấp mật khẩu)
+    @Column(name = "password", length = 255, nullable = true)
+    private String password; // BCrypt hash hoặc null nếu chưa cấp
+    // NEW: flag bắt buộc đổi mật khẩu lần đầu sau khi cấp mật khẩu tạm
+    @Column(name = "force_password_change")
+    private Boolean forcePasswordChange = false;
+
     // Additional contacts (JSON)
     @Column(name = "additional_contacts", columnDefinition = "json")
     private String additionalContacts;
@@ -83,5 +90,3 @@ public class Customer {
     @JoinColumn(name = "created_by")
     private User createdBy;
 }
-
-
