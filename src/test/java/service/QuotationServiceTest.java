@@ -25,7 +25,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class QuotationServiceTest {
@@ -901,6 +901,440 @@ class QuotationServiceTest {
             assertEquals(0, result.getBaseCostPerUnit().compareTo(BigDecimal.ZERO));
             assertEquals(0, result.getTotalPrice().compareTo(BigDecimal.ZERO));
             System.out.println("[SUCCESS] calculateProductPriceDetail_Boundary_ZeroProductWeight: All costs are zero for zero weight product.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Product with null name")
+        void calculateProductPriceDetail_Abnormal_NullProductName() {
+            // Given
+            Product product = new Product();
+            product.setId(1L);
+            product.setName(null); // Null name
+            product.setStandardWeight(new BigDecimal("500"));
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = new BigDecimal("1.10");
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(quotationService, product, quantity, profitMargin);
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculateProductPriceDetail_Abnormal_NullProductName: Threw exception for null product name.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Product with null weight")
+        void calculateProductPriceDetail_Abnormal_NullProductWeight() {
+            // Given
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("100% cotton");
+            product.setStandardWeight(null); // Null weight
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = new BigDecimal("1.10");
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(quotationService, product, quantity, profitMargin);
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculateProductPriceDetail_Abnormal_NullProductWeight: Threw exception for null product weight.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Negative quantity")
+        void calculateProductPriceDetail_Boundary_NegativeQuantity() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("100% cotton");
+            product.setStandardWeight(new BigDecimal("500"));
+            BigDecimal quantity = new BigDecimal("-10"); // Negative quantity
+            BigDecimal profitMargin = new BigDecimal("1.10");
+
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            PriceCalculationDto.ProductPriceDetailDto result = (PriceCalculationDto.ProductPriceDetailDto) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertTrue(result.getTotalPrice().compareTo(BigDecimal.ZERO) < 0);
+            System.out.println("[SUCCESS] calculateProductPriceDetail_Boundary_NegativeQuantity: Total price is negative for negative quantity.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Negative profit margin")
+        void calculateProductPriceDetail_Boundary_NegativeProfitMargin() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("100% cotton");
+            product.setStandardWeight(new BigDecimal("500"));
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = new BigDecimal("-1.10"); // Negative profit margin
+
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            PriceCalculationDto.ProductPriceDetailDto result = (PriceCalculationDto.ProductPriceDetailDto) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertTrue(result.getUnitPrice().compareTo(BigDecimal.ZERO) < 0);
+            assertTrue(result.getTotalPrice().compareTo(BigDecimal.ZERO) < 0);
+            System.out.println("[SUCCESS] calculateProductPriceDetail_Boundary_NegativeProfitMargin: Unit and total price are negative.");
+        }
+    }
+
+    @Nested
+    @DisplayName("Create Quotation From RFQ Parameter Tests")
+    class CreateQuotationFromRfqTests {
+
+        @Test
+        @DisplayName("Normal Case: Valid inputs")
+        void createQuotationFromRfq_Normal_ValidInputs() {
+            // Given
+            Long rfqId = 1L;
+            Long planningUserId = 10L;
+            BigDecimal profitMargin = new BigDecimal("1.15");
+            String capacityCheckNotes = "Capacity is sufficient.";
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            Product product = new Product();
+            product.setId(101L);
+            product.setName("Test Product");
+            product.setStandardWeight(new BigDecimal("500"));
+
+            RfqDetail rfqDetail = new RfqDetail();
+            rfqDetail.setProduct(product);
+            rfqDetail.setQuantity(new BigDecimal("10"));
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.singletonList(rfqDetail));
+            when(productRepository.findById(anyLong())).thenReturn(Optional.of(product));
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(0L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, planningUserId, profitMargin, capacityCheckNotes);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(planningUserId, result.getCreatedBy().getId());
+            assertEquals(capacityCheckNotes, result.getCapacityCheckNotes());
+            assertEquals("DRAFT", result.getStatus());
+            verify(notificationService, times(1)).notifyQuotationCreated(any(Quotation.class));
+            System.out.println("[SUCCESS] createQuotationFromRfq_Normal_ValidInputs: Quotation created successfully.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null rfqId")
+        void createQuotationFromRfq_Abnormal_NullRfqId() {
+            // Given
+            Long planningUserId = 10L;
+            BigDecimal profitMargin = new BigDecimal("1.15");
+            String capacityCheckNotes = "Notes";
+            when(rfqRepository.findById(null)).thenThrow(new IllegalArgumentException());
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                quotationService.createQuotationFromRfq(null, planningUserId, profitMargin, capacityCheckNotes);
+            });
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_NullRfqId: Threw exception for null rfqId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null planningUserId")
+        void createQuotationFromRfq_Abnormal_NullPlanningUserId() {
+            // Given
+            Long rfqId = 1L;
+            BigDecimal profitMargin = new BigDecimal("1.15");
+            String capacityCheckNotes = "Notes";
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.emptyList());
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(0L);
+
+            // When & Then
+            assertThrows(NullPointerException.class, () -> {
+                quotationService.createQuotationFromRfq(rfqId, null, profitMargin, capacityCheckNotes);
+            });
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_NullPlanningUserId: Threw exception for null planningUserId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null profitMargin")
+        void createQuotationFromRfq_Abnormal_NullProfitMargin() {
+            // Given
+            Long rfqId = 1L;
+            Long planningUserId = 10L;
+            String capacityCheckNotes = "Notes";
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            Product product = new Product();
+            product.setId(101L);
+            product.setName("Test Product");
+            product.setStandardWeight(new BigDecimal("500"));
+
+            RfqDetail rfqDetail = new RfqDetail();
+            rfqDetail.setProduct(product);
+            rfqDetail.setQuantity(new BigDecimal("10"));
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.singletonList(rfqDetail));
+            when(productRepository.findById(anyLong())).thenReturn(Optional.of(product));
+
+            // When & Then
+            assertThrows(NullPointerException.class, () -> {
+                quotationService.createQuotationFromRfq(rfqId, planningUserId, null, capacityCheckNotes);
+            });
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_NullProfitMargin: Threw exception for null profitMargin.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Null capacityCheckNotes")
+        void createQuotationFromRfq_Boundary_NullCapacityCheckNotes() {
+            // Given
+            Long rfqId = 1L;
+            Long planningUserId = 10L;
+            BigDecimal profitMargin = new BigDecimal("1.15");
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.emptyList());
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(0L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, planningUserId, profitMargin, null);
+
+            // Then
+            assertNotNull(result);
+            assertEquals("Khả năng sản xuất đã được kiểm tra - Kho đủ nguyên liệu, máy móc sẵn sàng", result.getCapacityCheckNotes());
+            System.out.println("[SUCCESS] createQuotationFromRfq_Boundary_NullCapacityCheckNotes: Used default notes for null input.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Empty capacityCheckNotes")
+        void createQuotationFromRfq_Boundary_EmptyCapacityCheckNotes() {
+            // Given
+            Long rfqId = 1L;
+            Long planningUserId = 10L;
+            BigDecimal profitMargin = new BigDecimal("1.15");
+            String capacityCheckNotes = "";
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.emptyList());
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(0L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, planningUserId, profitMargin, capacityCheckNotes);
+
+            // Then
+            assertNotNull(result);
+            assertEquals("", result.getCapacityCheckNotes());
+            System.out.println("[SUCCESS] createQuotationFromRfq_Boundary_EmptyCapacityCheckNotes: Handled empty notes correctly.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Negative profitMargin")
+        void createQuotationFromRfq_Boundary_NegativeProfitMargin() {
+            // Given
+            Long rfqId = 1L;
+            Long planningUserId = 10L;
+            BigDecimal profitMargin = new BigDecimal("-1.0");
+            String capacityCheckNotes = "Notes";
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            Product product = new Product();
+            product.setId(101L);
+            product.setName("Test Product");
+            product.setStandardWeight(new BigDecimal("500"));
+
+            RfqDetail rfqDetail = new RfqDetail();
+            rfqDetail.setProduct(product);
+            rfqDetail.setQuantity(new BigDecimal("10"));
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.singletonList(rfqDetail));
+            when(productRepository.findById(anyLong())).thenReturn(Optional.of(product));
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(0L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, planningUserId, profitMargin, capacityCheckNotes);
+
+            // Then
+            assertNotNull(result);
+            assertTrue(result.getTotalAmount().compareTo(BigDecimal.ZERO) < 0);
+            System.out.println("[SUCCESS] createQuotationFromRfq_Boundary_NegativeProfitMargin: Total amount is negative with negative profit margin.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: RFQ with multiple products")
+        void createQuotationFromRfq_Normal_MultipleProducts() {
+            // Given
+            Long rfqId = 2L;
+            Long planningUserId = 11L;
+            BigDecimal profitMargin = new BigDecimal("1.20");
+
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            Product product1 = new Product();
+            product1.setId(101L);
+            product1.setName("Cotton Product");
+            product1.setStandardWeight(new BigDecimal("200"));
+
+            Product product2 = new Product();
+            product2.setId(102L);
+            product2.setName("Bambo Product");
+            product2.setStandardWeight(new BigDecimal("300"));
+
+            RfqDetail rfqDetail1 = new RfqDetail();
+            rfqDetail1.setProduct(product1);
+            rfqDetail1.setQuantity(new BigDecimal("50"));
+
+            RfqDetail rfqDetail2 = new RfqDetail();
+            rfqDetail2.setProduct(product2);
+            rfqDetail2.setQuantity(new BigDecimal("30"));
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(java.util.Arrays.asList(rfqDetail1, rfqDetail2));
+            when(productRepository.findById(101L)).thenReturn(Optional.of(product1));
+            when(productRepository.findById(102L)).thenReturn(Optional.of(product2));
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList()); // Use fallback prices
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(5L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, planningUserId, profitMargin, "Capacity checked for two products.");
+
+            // Then
+            assertNotNull(result);
+            assertEquals(2, result.getDetails().size(), "Quotation should have two detail items.");
+            assertTrue(result.getTotalAmount().compareTo(BigDecimal.ZERO) > 0, "Total amount should be greater than zero.");
+            verify(notificationService, times(1)).notifyQuotationCreated(result);
+            System.out.println("[SUCCESS] createQuotationFromRfq_Normal_MultipleProducts: Quotation created successfully with multiple products.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: RFQ status is not 'RECEIVED_BY_PLANNING'")
+        void createQuotationFromRfq_Abnormal_InvalidRfqStatus() {
+            // Given
+            Long rfqId = 3L;
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("QUOTED"); // Invalid status
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+
+            // When & Then
+            IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+                quotationService.createQuotationFromRfq(rfqId, 10L, new BigDecimal("1.1"), "notes");
+            });
+
+            assertEquals("RFQ must be received by planning to create quotation", exception.getMessage());
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_InvalidRfqStatus: Threw exception for invalid RFQ status.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: RFQ not found")
+        void createQuotationFromRfq_Abnormal_RfqNotFound() {
+            // Given
+            Long nonExistentRfqId = 99L;
+            when(rfqRepository.findById(nonExistentRfqId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NoSuchElementException.class, () -> {
+                quotationService.createQuotationFromRfq(nonExistentRfqId, 10L, new BigDecimal("1.1"), "notes");
+            });
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_RfqNotFound: Threw exception for non-existent RFQ.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Product in RFQ detail not found")
+        void createQuotationFromRfq_Abnormal_ProductNotFoundInDetail() {
+            // Given
+            Long rfqId = 4L;
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+
+            Product nonExistentProduct = new Product();
+            nonExistentProduct.setId(999L);
+
+            RfqDetail rfqDetail = new RfqDetail();
+            rfqDetail.setProduct(nonExistentProduct);
+            rfqDetail.setQuantity(new BigDecimal("10"));
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.singletonList(rfqDetail));
+            when(productRepository.findById(999L)).thenReturn(Optional.empty()); // Product not found
+
+            // When & Then
+            assertThrows(NoSuchElementException.class, () -> {
+                quotationService.createQuotationFromRfq(rfqId, 10L, new BigDecimal("1.1"), "notes");
+            });
+            System.out.println("[SUCCESS] createQuotationFromRfq_Abnormal_ProductNotFoundInDetail: Threw exception when product in detail is not found.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: RFQ with no details")
+        void createQuotationFromRfq_Boundary_RfqWithNoDetails() {
+            // Given
+            Long rfqId = 5L;
+            Rfq rfq = new Rfq();
+            rfq.setId(rfqId);
+            rfq.setStatus("RECEIVED_BY_PLANNING");
+            rfq.setCustomer(new Customer());
+
+            when(rfqRepository.findById(rfqId)).thenReturn(Optional.of(rfq));
+            when(rfqDetailRepository.findByRfqId(rfqId)).thenReturn(Collections.emptyList()); // No details
+            when(quotationRepository.save(any(Quotation.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(quotationRepository.count()).thenReturn(10L);
+
+            // When
+            Quotation result = quotationService.createQuotationFromRfq(rfqId, 10L, new BigDecimal("1.1"), "notes");
+
+            // Then
+            assertNotNull(result);
+            assertTrue(result.getDetails().isEmpty(), "Details list should be empty.");
+            assertEquals(0, result.getTotalAmount().compareTo(BigDecimal.ZERO), "Total amount should be zero.");
+            System.out.println("[SUCCESS] createQuotationFromRfq_Boundary_RfqWithNoDetails: Quotation created with zero total amount for RFQ with no details.");
         }
     }
 }
