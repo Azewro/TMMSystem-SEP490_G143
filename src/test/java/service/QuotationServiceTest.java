@@ -1337,4 +1337,187 @@ class QuotationServiceTest {
             System.out.println("[SUCCESS] createQuotationFromRfq_Boundary_RfqWithNoDetails: Quotation created with zero total amount for RFQ with no details.");
         }
     }
+
+    @Nested
+    @DisplayName("Calculate Quotation Detail (Private Method) Tests")
+    class CalculateQuotationDetailTests {
+
+        private Method method;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = QuotationService.class.getDeclaredMethod("calculateQuotationDetail", Product.class, BigDecimal.class, BigDecimal.class);
+            method.setAccessible(true);
+        }
+
+        @Test
+        @DisplayName("Normal Case: Calculate for 100% Cotton Product")
+        void calculateQuotationDetail_Normal_CottonProduct() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("Premium 100% Cotton Towel");
+            product.setStandardWeight(new BigDecimal("450")); // 450g
+            BigDecimal quantity = new BigDecimal("200");
+            BigDecimal profitMargin = new BigDecimal("1.25"); // 25%
+
+            // Mock getAverageMaterialPrice to return fallback price for cotton
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(product, result.getProduct());
+            assertEquals(quantity, result.getQuantity());
+            assertEquals("CÁI", result.getUnit());
+            // Expected unit price = (0.45kg * 68000 + 0.45kg * 45000) * 1.25 = 63562.5
+            assertEquals(0, new BigDecimal("63562.5").compareTo(result.getUnitPrice()));
+            // Expected total price = 63562.5 * 200 = 12712500
+            assertEquals(0, new BigDecimal("12712500.0").compareTo(result.getTotalPrice()));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Normal_CottonProduct: Correctly calculated for cotton product.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Calculate for 100% Bamboo Product")
+        void calculateQuotationDetail_Normal_BambooProduct() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setId(2L);
+            product.setName("Luxury Bambo Fiber Towel");
+            product.setStandardWeight(new BigDecimal("500")); // 500g
+            BigDecimal quantity = new BigDecimal("150");
+            BigDecimal profitMargin = new BigDecimal("1.30"); // 30%
+
+            // Mock getAverageMaterialPrice to return fallback price for bamboo
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            // Expected unit price = (0.5kg * 78155 + 0.5kg * 45000) * 1.30 = 79950.625, which is then rounded by the business logic.
+            assertEquals(0, new BigDecimal("79950.63").compareTo(result.getUnitPrice()));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Normal_BambooProduct: Correctly calculated for bamboo product.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Calculate for Mixed Cotton-Bamboo Product")
+        void calculateQuotationDetail_Normal_MixedProduct() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setId(3L);
+            product.setName("Mixed Cotton Bambo Towel");
+            product.setStandardWeight(new BigDecimal("480")); // 480g
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = new BigDecimal("1.20"); // 20%
+
+            // Mock getAverageMaterialPrice to return fallback prices
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            // Expected avg material price = (68000 + 78155) / 2 = 73077.5. The logic then calculates the final price.
+            // Expected unit price = (0.48kg * 73077.5 + 0.48kg * 45000) * 1.20 = 67910.4, which is then rounded.
+            assertEquals(0, new BigDecimal("67910.40").compareTo(result.getUnitPrice()));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Normal_MixedProduct: Correctly calculated for mixed product.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero quantity")
+        void calculateQuotationDetail_Boundary_ZeroQuantity() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setName("Test Product");
+            product.setStandardWeight(new BigDecimal("500"));
+            BigDecimal quantity = BigDecimal.ZERO;
+            BigDecimal profitMargin = new BigDecimal("1.10");
+
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, result.getTotalPrice().compareTo(BigDecimal.ZERO));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Boundary_ZeroQuantity: Total price is zero for zero quantity.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero profit margin")
+        void calculateQuotationDetail_Boundary_ZeroProfitMargin() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setName("Test Product");
+            product.setStandardWeight(new BigDecimal("500"));
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = BigDecimal.ZERO;
+
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, result.getUnitPrice().compareTo(BigDecimal.ZERO));
+            assertEquals(0, result.getTotalPrice().compareTo(BigDecimal.ZERO));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Boundary_ZeroProfitMargin: Unit and total price are zero for zero profit margin.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero product weight")
+        void calculateQuotationDetail_Boundary_ZeroProductWeight() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setName("Test Product");
+            product.setStandardWeight(BigDecimal.ZERO);
+            BigDecimal quantity = new BigDecimal("100");
+            BigDecimal profitMargin = new BigDecimal("1.10");
+
+            when(materialRepository.findAll()).thenReturn(Collections.emptyList());
+
+            // When
+            QuotationDetail result = (QuotationDetail) method.invoke(quotationService, product, quantity, profitMargin);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, result.getUnitPrice().compareTo(BigDecimal.ZERO));
+            assertEquals(0, result.getTotalPrice().compareTo(BigDecimal.ZERO));
+            System.out.println("[SUCCESS] calculateQuotationDetail_Boundary_ZeroProductWeight: All costs are zero for zero weight product.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null product")
+        void calculateQuotationDetail_Abnormal_NullProduct() {
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(quotationService, null, new BigDecimal("10"), new BigDecimal("1.1"));
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+                System.out.println("[SUCCESS] calculateQuotationDetail_Abnormal_NullProduct: Threw exception for null product.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null quantity")
+        void calculateQuotationDetail_Abnormal_NullQuantity() {
+            // Given
+            Product product = new Product();
+            product.setName("Test");
+            product.setStandardWeight(new BigDecimal("100"));
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(quotationService, product, null, new BigDecimal("1.1"));
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculateQuotationDetail_Abnormal_NullQuantity: Threw exception for null quantity.");
+        }
+    }
 }
