@@ -11,6 +11,8 @@ public class CustomerUpdateRequest {
     private String email;
     @Schema(description = "SĐT")
     private String phoneNumber;
+    @Schema(description = "Vị trí (Giám đốc, Sales, HR, ...)")
+    private String position;
     @Schema(description = "Địa chỉ")
     private String address;
     @Schema(description = "Mã số thuế")
@@ -40,6 +42,8 @@ public class CustomerUpdateRequest {
     public void setEmail(String email) { this.email = email; }
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+    public String getPosition() { return position; }
+    public void setPosition(String position) { this.position = position; }
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
     public String getTaxCode() { return taxCode; }

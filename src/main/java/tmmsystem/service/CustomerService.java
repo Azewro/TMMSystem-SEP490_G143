@@ -79,6 +79,14 @@ public class CustomerService {
 
     public void delete(Long id) { customerRepository.deleteById(id); }
 
+    @Transactional
+    public void setActive(Long id, boolean active) {
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Customer not found"));
+        customer.setActive(active);
+        customerRepository.save(customer);
+    }
+
     // ===== Customer portal OTP auth =====
     @Transactional
     public void requestOtp(String emailOrPhone) {

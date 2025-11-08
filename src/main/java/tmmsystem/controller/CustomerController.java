@@ -43,6 +43,7 @@ public class CustomerController {
         customer.setContactPerson(request.contactPerson());
         customer.setEmail(request.email());
         customer.setPhoneNumber(request.phoneNumber());
+        customer.setPosition(request.position());
         customer.setAddress(request.address());
         customer.setTaxCode(request.taxCode());
         customer.setActive(request.isActive() != null ? request.isActive() : true);
@@ -64,6 +65,7 @@ public class CustomerController {
         updated.setContactPerson(body.getContactPerson());
         updated.setEmail(body.getEmail());
         updated.setPhoneNumber(body.getPhoneNumber());
+        updated.setPosition(body.getPosition());
         updated.setAddress(body.getAddress());
         updated.setTaxCode(body.getTaxCode());
         updated.setIndustry(body.getIndustry());
@@ -81,6 +83,12 @@ public class CustomerController {
     public ResponseEntity<?> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/active")
+    public ResponseEntity<?> setActive(@PathVariable Long id, @RequestParam boolean value) {
+        service.setActive(id, value);
+        return ResponseEntity.ok().build();
     }
 }
 
