@@ -18,6 +18,7 @@ import tmmsystem.service.QuotationService;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -542,7 +543,7 @@ class QuotationServiceTest {
         void calculateQuotationPrice_Abnormal_NullProfitMargin() {
             // Given
             Long rfqId = 1L;
-            
+
             Rfq rfq = new Rfq();
             rfq.setId(rfqId);
             rfq.setStatus("RECEIVED_BY_PLANNING");
@@ -567,7 +568,7 @@ class QuotationServiceTest {
             });
             System.out.println("[SUCCESS] calculateQuotationPrice_Abnormal_NullProfitMargin: Threw exception for null profitMargin.");
         }
-        
+
         @Test
         @DisplayName("Abnormal Case: rfqId is null")
         void calculateQuotationPrice_Abnormal_NullRfqId() {
@@ -748,7 +749,7 @@ class QuotationServiceTest {
             System.out.println("[SUCCESS] calculateQuotationPrice_Boundary_LargeProfitMargin: Price calculated with a very large profit margin.");
         }
     }
-    
+
     @Nested
     @DisplayName("Calculate Product Price Detail Parameter Tests")
     class CalculateProductPriceDetailTests {
@@ -1501,7 +1502,7 @@ class QuotationServiceTest {
                 method.invoke(quotationService, null, new BigDecimal("10"), new BigDecimal("1.1"));
             });
             assertInstanceOf(NullPointerException.class, exception.getCause());
-                System.out.println("[SUCCESS] calculateQuotationDetail_Abnormal_NullProduct: Threw exception for null product.");
+            System.out.println("[SUCCESS] calculateQuotationDetail_Abnormal_NullProduct: Threw exception for null product.");
         }
 
         @Test
@@ -1520,4 +1521,213 @@ class QuotationServiceTest {
             System.out.println("[SUCCESS] calculateQuotationDetail_Abnormal_NullQuantity: Threw exception for null quantity.");
         }
     }
+    @Nested
+    @DisplayName("Create Order From Quotation Parameter Tests")
+    class CreateOrderFromQuotationTests {
+
+        @Test
+        @DisplayName("Normal Case: Valid and ACCEPTED quotationId")
+        void createOrderFromQuotation_Normal_Success() {
+            // Given
+            Long quotationId = 1L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("ACCEPTED");
+            quotation.setCustomer(new Customer());
+            quotation.setCreatedBy(new User());
+            quotation.setTotalAmount(new BigDecimal("12345.67"));
+            quotation.setValidUntil(LocalDate.now().plusDays(10));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+            when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(contractRepository.count()).thenReturn(0L);
+
+            // When
+            Object result = quotationService.createOrderFromQuotation(quotationId);
+
+            // Then
+            assertNotNull(result);
+            assertInstanceOf(Contract.class, result);
+            assertEquals("ORDER_CREATED", quotation.getStatus());
+            verify(quotationRepository, times(1)).save(quotation);
+            verify(contractRepository, times(1)).save(any(Contract.class));
+            verify(notificationService, times(1)).notifyOrderCreated(any(Contract.class));
+            verify(emailService, times(1)).sendOrderConfirmationEmail(any(Contract.class));
+            System.out.println("[SUCCESS] createOrderFromQuotation_Normal_Success: Contract created successfully.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: quotationId is null")
+        void createOrderFromQuotation_Abnormal_NullId() {
+            // Given
+            when(quotationRepository.findById(null)).thenThrow(new IllegalArgumentException());
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                quotationService.createOrderFromQuotation(null);
+            });
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_NullId: Threw exception for null quotationId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation not found")
+        void createOrderFromQuotation_Abnormal_NotFound() {
+            // Given
+            Long nonExistentId = 99L;
+            when(quotationRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NoSuchElementException.class, () -> {
+                quotationService.createOrderFromQuotation(nonExistentId);
+            });
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_NotFound: Threw exception for non-existent quotationId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation status is not 'ACCEPTED'")
+        void createOrderFromQuotation_Abnormal_WrongStatus() {
+            // Given
+            Long quotationId = 2L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("DRAFT"); // Invalid status
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+
+            // When & Then
+            Exception exception = assertThrows(IllegalStateException.class, () -> {
+                quotationService.createOrderFromQuotation(quotationId);
+            });
+            assertEquals("Quotation must be ACCEPTED to create order", exception.getMessage());
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_WrongStatus: Threw exception for wrong quotation status.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: quotationId is zero")
+        void createOrderFromQuotation_Boundary_ZeroId() {
+            // Given
+            Long quotationId = 0L;
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NoSuchElementException.class, () -> {
+                quotationService.createOrderFromQuotation(quotationId);
+            });
+            System.out.println("[SUCCESS] createOrderFromQuotation_Boundary_ZeroId: Threw exception for quotationId = 0.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: quotationId is negative")
+        void createOrderFromQuotation_Boundary_NegativeId() {
+            // Given
+            Long quotationId = -1L;
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NoSuchElementException.class, () -> {
+                quotationService.createOrderFromQuotation(quotationId);
+            });
+            System.out.println("[SUCCESS] createOrderFromQuotation_Boundary_NegativeId: Threw exception for negative quotationId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation with null Customer")
+        void createOrderFromQuotation_Abnormal_NullCustomer() {
+            // Given
+            Long quotationId = 3L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("ACCEPTED");
+            quotation.setCustomer(null); // Null customer
+            quotation.setCreatedBy(new User());
+            quotation.setTotalAmount(new BigDecimal("100"));
+            quotation.setValidUntil(LocalDate.now().plusDays(1));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+            when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(contractRepository.count()).thenReturn(1L);
+
+            // When
+            Contract result = (Contract) quotationService.createOrderFromQuotation(quotationId);
+
+            // Then
+            assertNotNull(result);
+            assertNull(result.getCustomer());
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_NullCustomer: Contract created with null customer.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation with null CreatedBy")
+        void createOrderFromQuotation_Abnormal_NullCreatedBy() {
+            // Given
+            Long quotationId = 4L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("ACCEPTED");
+            quotation.setCustomer(new Customer());
+            quotation.setCreatedBy(null); // Null createdBy
+            quotation.setTotalAmount(new BigDecimal("200"));
+            quotation.setValidUntil(LocalDate.now().plusDays(1));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+            when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(contractRepository.count()).thenReturn(2L);
+
+            // When
+            Contract result = (Contract) quotationService.createOrderFromQuotation(quotationId);
+
+            // Then
+            assertNotNull(result);
+            assertNull(result.getCreatedBy());
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_NullCreatedBy: Contract created with null createdBy user.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Quotation status is REJECTED")
+        void createOrderFromQuotation_Abnormal_RejectedStatus() {
+            // Given
+            Long quotationId = 5L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("REJECTED"); // Invalid status
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+
+            // When & Then
+            Exception exception = assertThrows(IllegalStateException.class, () -> {
+                quotationService.createOrderFromQuotation(quotationId);
+            });
+            assertEquals("Quotation must be ACCEPTED to create order", exception.getMessage());
+            System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_RejectedStatus: Threw exception for REJECTED status.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Contract count is large")
+        void createOrderFromQuotation_Boundary_LargeContractCount() {
+            // Given
+            Long quotationId = 6L;
+            Quotation quotation = new Quotation();
+            quotation.setId(quotationId);
+            quotation.setStatus("ACCEPTED");
+            quotation.setCustomer(new Customer());
+            quotation.setCreatedBy(new User());
+            quotation.setTotalAmount(new BigDecimal("300"));
+            quotation.setValidUntil(LocalDate.now().plusDays(1));
+
+            when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+            when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(contractRepository.count()).thenReturn(998L); // Large count
+
+            // When
+            Contract result = (Contract) quotationService.createOrderFromQuotation(quotationId);
+
+            // Then
+            assertNotNull(result);
+            assertTrue(result.getContractNumber().endsWith("-999"));
+            System.out.println("[SUCCESS] createOrderFromQuotation_Boundary_LargeContractCount: Correctly generated contract number with large count.");
+        }
+    }
 }
+
+
+
