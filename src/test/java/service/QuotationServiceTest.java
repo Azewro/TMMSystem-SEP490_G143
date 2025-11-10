@@ -1577,7 +1577,7 @@ class QuotationServiceTest {
             when(quotationRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
             // When & Then
-            assertThrows(NoSuchElementException.class, () -> {
+                assertThrows(NoSuchElementException.class, () -> {
                 quotationService.createOrderFromQuotation(nonExistentId);
             });
             System.out.println("[SUCCESS] createOrderFromQuotation_Abnormal_NotFound: Threw exception for non-existent quotationId.");
@@ -1634,7 +1634,7 @@ class QuotationServiceTest {
         @DisplayName("Abnormal Case: Quotation with null Customer")
         void createOrderFromQuotation_Abnormal_NullCustomer() {
             // Given
-            Long quotationId = 3L;
+            Long quotationId = 2L;
             Quotation quotation = new Quotation();
             quotation.setId(quotationId);
             quotation.setStatus("ACCEPTED");
