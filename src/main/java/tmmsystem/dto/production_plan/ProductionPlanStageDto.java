@@ -19,6 +19,9 @@ public class ProductionPlanStageDto {
     private String assignedMachineCode;
     private Long inChargeUserId;
     private String inChargeUserName;
+    // NEW: QC user information
+    private Long qcUserId;
+    private String qcUserName;
     private LocalDateTime plannedStartTime;
     private LocalDateTime plannedEndTime;
     private Integer minRequiredDurationMinutes;

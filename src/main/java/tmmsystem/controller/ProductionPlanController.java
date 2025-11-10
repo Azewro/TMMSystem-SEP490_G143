@@ -477,4 +477,28 @@ public class ProductionPlanController {
         return service.getMachineSuggestionsForStage(
             stageType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
     }
+
+    @Operation(summary = "Cập nhật công đoạn sản xuất",
+               description = "Cập nhật máy, người phụ trách, thời gian và ghi chú cho một stage")
+    @PutMapping("/stages/{stageId}")
+    public tmmsystem.dto.production_plan.ProductionPlanStageDto updateStage(
+            @PathVariable Long stageId,
+            @RequestBody @Valid tmmsystem.dto.production_plan.ProductionPlanStageRequest request){
+        return service.updateStage(stageId, request);
+    }
+
+    @Operation(summary = "Gán QC cho công đoạn",
+               description = "Gán người kiểm tra chất lượng (QC) cho stage")
+    @PutMapping("/stages/{stageId}/assign-qc")
+    public tmmsystem.dto.production_plan.ProductionPlanStageDto assignQc(
+            @PathVariable Long stageId,
+            @RequestParam Long userId){
+        return service.assignQcUser(stageId, userId);
+    }
+
+    @Operation(summary = "Danh sách công đoạn của kế hoạch", description = "Lấy tất cả stage theo planId phục vụ hiển thị form lập kế hoạch")
+    @GetMapping("/{planId}/stages")
+    public java.util.List<ProductionPlanStageDto> listStages(@PathVariable Long planId){
+        return service.listStagesOfPlan(planId);
+    }
 }

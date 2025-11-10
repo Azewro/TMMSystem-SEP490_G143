@@ -52,6 +52,9 @@ public class ProductionPlanMapper {
         dto.setAssignedMachineCode(stage.getAssignedMachine() != null ? stage.getAssignedMachine().getCode() : null);
         dto.setInChargeUserId(stage.getInChargeUser() != null ? stage.getInChargeUser().getId() : null);
         dto.setInChargeUserName(stage.getInChargeUser() != null ? stage.getInChargeUser().getName() : null);
+        // NEW: QC mapping
+        dto.setQcUserId(stage.getQcUser() != null ? stage.getQcUser().getId() : null);
+        dto.setQcUserName(stage.getQcUser() != null ? stage.getQcUser().getName() : null);
         dto.setPlannedStartTime(stage.getPlannedStartTime());
         dto.setPlannedEndTime(stage.getPlannedEndTime());
         dto.setMinRequiredDurationMinutes(stage.getMinRequiredDurationMinutes());
@@ -72,6 +75,34 @@ public class ProductionPlanMapper {
                 .divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
         }
         
+        return dto;
+    }
+
+    public tmmsystem.dto.ProductionLotDto toDto(ProductionLot lot){
+        if (lot==null) return null;
+        var dto = new tmmsystem.dto.ProductionLotDto();
+        dto.setId(lot.getId());
+        dto.setLotCode(lot.getLotCode());
+        if (lot.getProduct()!=null){
+            dto.setProductId(lot.getProduct().getId());
+            dto.setProductCode(lot.getProduct().getCode());
+            dto.setProductName(lot.getProduct().getName());
+        }
+        dto.setSizeSnapshot(lot.getSizeSnapshot());
+        dto.setTotalQuantity(lot.getTotalQuantity());
+        dto.setDeliveryDateTarget(lot.getDeliveryDateTarget());
+        dto.setContractDateMin(lot.getContractDateMin());
+        dto.setContractDateMax(lot.getContractDateMax());
+        dto.setStatus(lot.getStatus());
+        // order numbers
+        java.util.List<String> orderNos = new java.util.ArrayList<>();
+        if (lot.getLotOrders()!=null){
+            for (var lo : lot.getLotOrders()){
+                if (lo.getContract()!=null) orderNos.add(lo.getContract().getContractNumber());
+            }
+        }
+        dto.setOrderNumbers(orderNos);
+        // currentPlanId/currentPlanStatus sẽ được set ở controller nếu cần
         return dto;
     }
     

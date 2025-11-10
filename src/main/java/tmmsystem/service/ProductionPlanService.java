@@ -110,6 +110,11 @@ public class ProductionPlanService {
     @Transactional
     public ProductionPlan createPlanVersion(Long lotId) {
         ProductionLot lot = lotRepo.findById(lotId).orElseThrow();
+        // lock lot for planning so it can't accept more merges
+        if (!"PLANNING".equals(lot.getStatus())) {
+            lot.setStatus("PLANNING");
+            lotRepo.save(lot);
+        }
         planRepo.findByLotIdAndCurrentVersionTrue(lotId).forEach(p->{ p.setCurrentVersion(false); p.setStatus(ProductionPlan.PlanStatus.SUPERSEDED); planRepo.save(p); });
         ProductionPlan plan = new ProductionPlan();
         plan.setLot(lot);
@@ -144,7 +149,16 @@ public class ProductionPlanService {
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
-    
+
+    // NEW: create plan directly from an existing lot
+    @Transactional
+    public ProductionPlanDto createPlanFromLot(Long lotId){
+        ProductionPlan plan = createPlanVersion(lotId);
+        ProductionPlan saved = planRepo.save(plan);
+        notificationService.notifyProductionPlanCreated(saved);
+        return mapper.toDto(saved);
+    }
+
     // ===== Approval Workflow (adapted) =====
     @Transactional
     public ProductionPlanDto submitForApproval(Long planId, SubmitForApprovalRequest request){
@@ -275,4 +289,20 @@ public class ProductionPlanService {
     public List<ProductionPlanDto> findApprovedPlansNotConverted(){ return planRepo.findApprovedPlansNotConverted().stream().map(mapper::toDto).toList(); }
     public ProductionPlanStage findStageById(Long stageId){ return stageRepo.findById(stageId).orElseThrow(() -> new RuntimeException("Production plan stage not found")); }
     @Transactional public ProductionPlanStageDto assignInChargeUser(Long stageId, Long userId){ var stage = stageRepo.findById(stageId).orElseThrow(() -> new RuntimeException("Production plan stage not found")); var user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found")); stage.setInChargeUser(user); return mapper.toDto(stageRepo.save(stage)); }
+    @Transactional public ProductionPlanStageDto assignQcUser(Long stageId, Long userId){ var stage = stageRepo.findById(stageId).orElseThrow(() -> new RuntimeException("Production plan stage not found")); var user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found")); stage.setQcUser(user); return mapper.toDto(stageRepo.save(stage)); }
+    @Transactional public ProductionPlanStageDto updateStage(Long stageId, ProductionPlanStageRequest req){ var stage = stageRepo.findById(stageId).orElseThrow(() -> new RuntimeException("Production plan stage not found"));
+        if (req.getAssignedMachineId()!=null){ stage.setAssignedMachine(machineRepo.findById(req.getAssignedMachineId()).orElseThrow(() -> new RuntimeException("Machine not found"))); }
+        if (req.getInChargeUserId()!=null){ stage.setInChargeUser(userRepo.findById(req.getInChargeUserId()).orElseThrow(() -> new RuntimeException("User not found"))); }
+        if (req.getQcUserId()!=null){ stage.setQcUser(userRepo.findById(req.getQcUserId()).orElseThrow(() -> new RuntimeException("User not found"))); }
+        if (req.getPlannedStartTime()!=null){ stage.setPlannedStartTime(req.getPlannedStartTime()); }
+        if (req.getPlannedEndTime()!=null){ stage.setPlannedEndTime(req.getPlannedEndTime()); }
+        if (req.getMinRequiredDurationMinutes()!=null){ stage.setMinRequiredDurationMinutes(req.getMinRequiredDurationMinutes()); }
+        if (req.getTransferBatchQuantity()!=null){ stage.setTransferBatchQuantity(req.getTransferBatchQuantity()); }
+        if (req.getCapacityPerHour()!=null){ stage.setCapacityPerHour(req.getCapacityPerHour()); }
+        if (req.getNotes()!=null){ stage.setNotes(req.getNotes()); }
+        return mapper.toDto(stageRepo.save(stage)); }
+
+    public java.util.List<ProductionPlanStageDto> listStagesOfPlan(Long planId){
+        return stageRepo.findByPlanIdOrderBySequenceNo(planId).stream().map(mapper::toDto).toList();
+    }
 }

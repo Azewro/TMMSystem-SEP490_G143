@@ -13,6 +13,7 @@ public class ProductionPlanStageRequest {
     private Integer sequenceNo;
     private Long assignedMachineId;
     private Long inChargeUserId;
+    private Long qcUserId;
     private LocalDateTime plannedStartTime;
     private LocalDateTime plannedEndTime;
     private Integer minRequiredDurationMinutes;
