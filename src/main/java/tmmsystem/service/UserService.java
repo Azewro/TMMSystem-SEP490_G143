@@ -214,8 +214,13 @@ public class UserService {
         user.setName(updated.getName());
         user.setPhoneNumber(updated.getPhoneNumber());
         user.setAvatar(updated.getAvatar());
-        user.setActive(updated.getActive());
-        user.setVerified(updated.getVerified());
+        // Only update active and verified if explicitly provided
+        if (updated.getActive() != null) {
+            user.setActive(updated.getActive());
+        }
+        if (updated.getVerified() != null) {
+            user.setVerified(updated.getVerified());
+        }
 
         if (updated.getPassword() != null && !updated.getPassword().isBlank()) {
             user.setPassword(passwordEncoder.encode(updated.getPassword()));
