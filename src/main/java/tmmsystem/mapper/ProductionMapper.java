@@ -116,6 +116,9 @@ public class ProductionMapper {
         dto.setPlannedStartAt(s.getPlannedStartAt());
         dto.setPlannedEndAt(s.getPlannedEndAt());
         dto.setPlannedDurationHours(s.getPlannedDurationHours());
+        dto.setQrToken(s.getQrToken());
+        dto.setQcLastResult(s.getQcLastResult());
+        dto.setQcLastCheckedAt(s.getQcLastCheckedAt());
         return dto;
     }
 }

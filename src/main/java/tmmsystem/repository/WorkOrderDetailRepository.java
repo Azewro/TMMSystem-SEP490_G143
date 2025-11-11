@@ -8,5 +8,3 @@ import java.util.List;
 public interface WorkOrderDetailRepository extends JpaRepository<WorkOrderDetail, Long> {
     List<WorkOrderDetail> findByWorkOrderId(Long workOrderId);
 }
-
-

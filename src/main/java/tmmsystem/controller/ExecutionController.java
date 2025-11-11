@@ -36,6 +36,7 @@ public class ExecutionController {
         if (body.getProductionStageId() != null) { ProductionStage s = new ProductionStage(); s.setId(body.getProductionStageId()); e.setProductionStage(s); }
         if (body.getOperatorId() != null) { User u = new User(); u.setId(body.getOperatorId()); e.setOperator(u); }
         e.setAction(body.getAction()); e.setQuantityCompleted(body.getQuantityCompleted()); e.setNotes(body.getNotes());
+        e.setEvidencePhotoUrl(body.getEvidencePhotoUrl());
         return mapper.toDto(service.createTracking(e));
     }
     @DeleteMapping("/trackings/{id}")
@@ -197,5 +198,3 @@ public class ExecutionController {
     @DeleteMapping("/requisition-details/{id}")
     public void deleteReqDetail(@PathVariable Long id) { service.deleteReqDetail(id); }
 }
-
-

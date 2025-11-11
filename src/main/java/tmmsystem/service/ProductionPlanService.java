@@ -79,11 +79,22 @@ public class ProductionPlanService {
         QuotationDetail first = contract.getQuotation().getDetails().get(0);
         Product product = first.getProduct();
         LocalDate delivery = contract.getDeliveryDate();
-        LocalDate min = delivery.minusDays(1), max = delivery.plusDays(1);
+        LocalDate contractDate = contract.getContractDate();
+        // windows ±1 day both for delivery and contract date
+        LocalDate deliveryMin = delivery.minusDays(1), deliveryMax = delivery.plusDays(1);
+        LocalDate contractMin = contractDate.minusDays(1), contractMax = contractDate.plusDays(1);
+        // Find existing lot matching ALL 3 criteria: product + delivery window + contract date window + status FORMING/READY_FOR_PLANNING
         ProductionLot lot = lotRepo.findAll().stream()
                 .filter(l -> l.getProduct()!=null && l.getProduct().getId().equals(product.getId()))
-                .filter(l -> l.getDeliveryDateTarget()!=null && !l.getDeliveryDateTarget().isBefore(min) && !l.getDeliveryDateTarget().isAfter(max))
                 .filter(l -> List.of("FORMING","READY_FOR_PLANNING").contains(l.getStatus()))
+                .filter(l -> l.getDeliveryDateTarget()!=null && !l.getDeliveryDateTarget().isBefore(deliveryMin) && !l.getDeliveryDateTarget().isAfter(deliveryMax))
+                .filter(l -> {
+                    // contract date range stored in lot: contractDateMin/Max must overlap window
+                    if (l.getContractDateMin()==null || l.getContractDateMax()==null) return false;
+                    // overlap check between [contractMin,contractMax] and [lot.contractDateMin, lot.contractDateMax]
+                    boolean overlap = !(l.getContractDateMax().isBefore(contractMin) || l.getContractDateMin().isAfter(contractMax));
+                    return overlap;
+                })
                 .findFirst().orElse(null);
         if (lot==null){
             lot = new ProductionLot();
@@ -91,18 +102,22 @@ public class ProductionPlanService {
             lot.setProduct(product);
             lot.setSizeSnapshot(product.getStandardDimensions());
             lot.setDeliveryDateTarget(delivery);
-            lot.setContractDateMin(contract.getContractDate());
-            lot.setContractDateMax(contract.getContractDate());
+            lot.setContractDateMin(contractDate);
+            lot.setContractDateMax(contractDate);
             lot.setStatus("FORMING");
             lot.setTotalQuantity(java.math.BigDecimal.ZERO);
             lot = lotRepo.save(lot);
         }
+        // Merge quotation details into lot
         for (QuotationDetail qd : contract.getQuotation().getDetails()) {
             ProductionLotOrder lo = new ProductionLotOrder();
             lo.setLot(lot); lo.setContract(contract); lo.setQuotationDetail(qd); lo.setAllocatedQuantity(qd.getQuantity());
             lotOrderRepo.save(lo);
             lot.setTotalQuantity(lot.getTotalQuantity().add(qd.getQuantity()));
         }
+        // widen contract date range if needed
+        if (contract.getContractDate().isBefore(lot.getContractDateMin())) lot.setContractDateMin(contract.getContractDate());
+        if (contract.getContractDate().isAfter(lot.getContractDateMax())) lot.setContractDateMax(contract.getContractDate());
         lot.setStatus("READY_FOR_PLANNING");
         return lotRepo.save(lot);
     }

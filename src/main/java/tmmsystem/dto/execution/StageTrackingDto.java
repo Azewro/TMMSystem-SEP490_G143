@@ -14,6 +14,5 @@ public class StageTrackingDto {
     private BigDecimal quantityCompleted;
     private String notes;
     private Instant timestamp;
+    private String evidencePhotoUrl;
 }
-
-

@@ -16,6 +16,7 @@ public class ExecutionMapper {
         dto.setQuantityCompleted(e.getQuantityCompleted());
         dto.setNotes(e.getNotes());
         dto.setTimestamp(e.getTimestamp());
+        dto.setEvidencePhotoUrl(e.getEvidencePhotoUrl());
         return dto;
     }
 
@@ -104,5 +105,3 @@ public class ExecutionMapper {
         return dto;
     }
 }
-
-

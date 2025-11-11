@@ -117,7 +117,14 @@ public class ContractService {
         
         Contract savedContract = repository.save(contract);
 
-        // Merge Lots cho tất cả hợp đồng APPROVED chưa có kế hoạch
+        // Merge Lot ngay sau khi hợp đồng được duyệt (theo 3 tiêu chí: cùng sản phẩm, ngày giao ±1, ngày ký ±1)
+        try {
+            productionPlanService.createOrMergeLotFromContract(savedContract.getId());
+        } catch (Exception e) {
+            log.warn("Merge lot after contract approval failed: {}", e.getMessage());
+        }
+
+        // Merge Lots cho tất cả hợp đồng APPROVED chưa có kế hoạch (batch) vẫn giữ để đảm bảo đồng bộ
         mergeLotsForApprovedContracts();
 
         // Gửi thông báo cho Planning Department

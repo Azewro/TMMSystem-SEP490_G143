@@ -38,6 +38,7 @@ public class StageTracking {
     @CreationTimestamp
     @Column(name = "timestamp", updatable = false)
     private Instant timestamp;
+
+    @Column(name = "evidence_photo_url", length = 500)
+    private String evidencePhotoUrl;
 }
-
-

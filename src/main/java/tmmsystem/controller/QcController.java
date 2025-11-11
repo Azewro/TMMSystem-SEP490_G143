@@ -11,6 +11,7 @@ import tmmsystem.dto.qc.*;
 import tmmsystem.entity.*;
 import tmmsystem.mapper.QcMapper;
 import tmmsystem.service.QcService;
+import tmmsystem.service.ProductionService;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -21,8 +22,9 @@ import java.util.stream.Collectors;
 public class QcController {
     private final QcService service;
     private final QcMapper mapper;
+    private final ProductionService productionService;
 
-    public QcController(QcService service, QcMapper mapper) { this.service = service; this.mapper = mapper; }
+    public QcController(QcService service, QcMapper mapper, ProductionService productionService) { this.service = service; this.mapper = mapper; this.productionService = productionService; }
 
     // Checkpoints
     @GetMapping("/checkpoints")
@@ -70,7 +72,11 @@ public class QcController {
         if (body.getQcCheckpointId() != null) { QcCheckpoint cp = new QcCheckpoint(); cp.setId(body.getQcCheckpointId()); e.setQcCheckpoint(cp); }
         if (body.getInspectorId() != null) { User u = new User(); u.setId(body.getInspectorId()); e.setInspector(u); }
         e.setSampleSize(body.getSampleSize()); e.setPassCount(body.getPassCount()); e.setFailCount(body.getFailCount()); e.setResult(body.getResult()); e.setNotes(body.getNotes());
-        return mapper.toDto(service.createInspection(e));
+        QcInspection saved = service.createInspection(e);
+        if ("PASS".equalsIgnoreCase(saved.getResult())) {
+            productionService.markStageQcPass(saved.getProductionStage().getId());
+        }
+        return mapper.toDto(saved);
     }
     @PutMapping("/inspections/{id}")
     public QcInspectionDto updateInspection(@PathVariable Long id, @RequestBody QcInspectionDto body) {
@@ -153,5 +159,3 @@ public class QcController {
     @DeleteMapping("/standards/{id}")
     public void deleteStandard(@PathVariable Long id) { service.deleteStandard(id); }
 }
-
-

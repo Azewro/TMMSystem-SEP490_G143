@@ -28,4 +28,7 @@ public class ProductionStageDto {
     private Instant plannedStartAt;
     private Instant plannedEndAt;
     private BigDecimal plannedDurationHours;
+    private String qrToken;
+    private String qcLastResult;
+    private Instant qcLastCheckedAt;
 }

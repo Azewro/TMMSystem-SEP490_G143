@@ -15,7 +15,7 @@ Tài liệu này mô tả luồng lập kế hoạch sau khi báo giá được 
 ## 2. Tổng quan luồng (End-to-End API Flow)
 1. Quotation ACCEPTED → sinh Contract (status=PENDING_APPROVAL).
 2. Director duyệt Contract → status=APPROVED.
-3. Merge vào Lot: logic trong `ProductionPlanService#createOrMergeLotFromContract(contractId)` (gọi ngầm khi POST /v1/production-plans).
+3. Merge vào Lot: logic trong `ProductionPlanService#createOrMergeLotFromContract(contractId)` (gọi ngầm khi POST /v1/production-plans) và cũng được gọi NGAY SAU khi hợp đồng được duyệt để tự động gom đơn.
 4. Tạo Production Plan phiên bản mới (DRAFT): POST `/v1/production-plans` với `contractId`.
 5. Lấy danh sách Lot: GET `/v1/production-lots?status=READY_FOR_PLANNING` và chi tiết Lot: GET `/v1/production-lots/{id}`.
 6. Lấy kế hoạch chi tiết: GET `/v1/production-plans/{id}`.
@@ -39,6 +39,7 @@ Tài liệu này mô tả luồng lập kế hoạch sau khi báo giá được 
 Điều kiện đưa Contract vào Lot hiện hữu:
 - Cùng `productId` (lấy từ QuotationDetail đầu tiên).
 - Ngày giao hàng contract nằm trong [lot.deliveryDateTarget ± 1 ngày].
+- Ngày ký hợp đồng nằm trong [contractDate ± 1 ngày].
 - Lot.status ∈ {FORMING, READY_FOR_PLANNING}.
 Nếu không có Lot phù hợp → tạo Lot mới:
 ```
@@ -59,6 +60,11 @@ Lot Status chính:
 | IN_PRODUCTION | Đã thành Production Order, đang sản xuất |
 | COMPLETED | Đã hoàn thành sản xuất |
 | CANCELED | Hủy |
+
+Lưu ý trạng thái & chuyển tiếp hiện có:
+- Khi tạo version kế hoạch: `createPlanVersion(lotId)` sẽ đặt `lot.status = PLANNING`.
+- Khi Director duyệt kế hoạch: đặt `lot.status = PLAN_APPROVED`.
+- Trạng thái `IN_PRODUCTION` và `COMPLETED` hiện được phản ánh chính xác ở cấp PO/WO; việc đồng bộ ngược lại sang Lot là tùy chọn, có thể bổ sung sau (roadmap).
 
 ## 3.1 Quy tắc khóa Lot khi bắt đầu lập kế hoạch
 - Trong `createPlanVersion(lotId)` hệ thống đặt `lot.status = PLANNING`.
@@ -90,7 +96,8 @@ Mỗi lần tạo version mới (createPlanVersion):
 Database entity chính (các field quan trọng cho UI Form):
 - id
 - plan (tham chiếu kế hoạch)
-- stageType (WARPING, WEAVING, DYEING, CUTTING, HEMMING, SEWING?, PACKAGING) – trong dto hiển thị stageTypeName.
+- stageType (WARPING, WEAVING, DYEING, CUTTING, HEMMING, PACKAGING)
+  - Lưu ý: HEMMING tương ứng “viền/may”. Một số UI có thể gọi SEWING, nhưng giá trị stageType chuẩn trên backend là HEMMING.
 - sequenceNo (thứ tự hiển thị 1.,2.,3., ...)
 - assignedMachine (id, code, name) – có thể null với DYEING (outsourced) & PACKAGING (manual).
 - inChargeUser (Người phụ trách)
@@ -352,3 +359,48 @@ Response (rút gọn):
 
 ---
 Kết thúc tài liệu.
+
+## 20. Bổ sung cập nhật (2025-11-11)
+### 20.1 Chuẩn hóa gộp Lot theo 3 tiêu chí
+- Cùng sản phẩm (productId)
+- Ngày giao hàng nằm trong [deliveryDate ±1 ngày]
+- Ngày ký hợp đồng nằm trong [contractDate ±1 ngày]
+- Chỉ Lot ở trạng thái FORMING hoặc READY_FOR_PLANNING mới nhận thêm merge.
+- Khi merge: cập nhật `contractDateMin/Max` nếu hợp đồng mới nằm ngoài khoảng hiện tại.
+
+### 20.2 Tự động gộp ngay sau duyệt hợp đồng
+- Sau `POST /v1/contracts/{id}/approve` service gọi `createOrMergeLotFromContract(contractId)` để đưa hợp đồng vào Lot phù hợp hoặc tạo Lot mới.
+- Batch merge các hợp đồng APPROVED chưa được lập kế hoạch vẫn chạy để đảm bảo đồng bộ.
+
+### 20.3 Tạo kế hoạch từ Lot hiện có
+- Endpoint nội bộ service đã có `createPlanFromLot(lotId)`; có thể mở rộng controller (nếu cần) để: `POST /v1/production-plans/create-from-lot?lotId=...`.
+
+### 20.4 Wizard tạo Work Order chuẩn
+- Endpoint mới: `POST /v1/production/orders/{poId}/work-orders/create-standard` → Sinh 1 Work Order với các stage mặc định: WARPING → WEAVING → DYEING (outsourced) → CUTTING → HEMMING → PACKAGING cho mỗi ProductionOrderDetail.
+- Mặc định status stage = PENDING, chưa gán máy/leader.
+
+### 20.5 Leader actions (công đoạn sản xuất)
+| Hành động | Endpoint | Params bắt buộc | Ghi chú |
+|----------|----------|-----------------|---------|
+| Bắt đầu | POST `/v1/production/stages/{id}/start` | leaderUserId | Optional: evidencePhotoUrl, qtyCompleted |
+| Tạm dừng | POST `/v1/production/stages/{id}/pause` | leaderUserId, pauseReason | Lưu StagePauseLog |
+| Tiếp tục | POST `/v1/production/stages/{id}/resume` | leaderUserId | Tính duration pause |
+| Hoàn thành | POST `/v1/production/stages/{id}/complete` | leaderUserId | Optional: evidencePhotoUrl, qtyCompleted |
+
+- Các action ghi StageTracking (START/PAUSE/RESUME/COMPLETE) + ảnh chứng cứ.
+- Kiểm tra quyền: leaderUserId phải trùng với `assignedLeaderId` của stage.
+
+### 20.6 Điều kiện hoàn tất Production Order
+- Trước đây: hoàn tất ngay khi Packaging PASS của một WorkOrderDetail.
+- Nay: Khi một Packaging stage PASS → kiểm tra toàn bộ WorkOrderDetail thuộc cùng PO:
+  - Mỗi WorkOrderDetail phải có đầy đủ các stage.
+  - Tất cả stage QC phải PASS.
+  - Packaging stage của từng WorkOrderDetail đã COMPLETE.
+- Nếu thỏa: PO.status = ORDER_COMPLETED và gửi notify đến Sales, Planning, Director, Technical, PM.
+
+### 20.7 QC PASS hook
+- PASS Inspection gọi `markStageQcPass(stageId)` → nếu là PACKAGING chạy logic kiểm tra hoàn tất PO như trên.
+
+### 20.8 Lưu ý tương thích
+- Các Lot đang ở trạng thái PLANNING / PLAN_APPROVED / IN_PRODUCTION không nhận merge mới.
+- Nếu cần thêm hợp đồng mới sau khi Lot đã PLANNING → tạo Lot mới thay vì ép merge.

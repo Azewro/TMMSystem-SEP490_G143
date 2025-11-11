@@ -8,6 +8,7 @@ import tmmsystem.entity.User;
 import tmmsystem.entity.Quotation;
 import tmmsystem.entity.Contract;
 import tmmsystem.entity.ProductionOrder;
+import tmmsystem.entity.WorkOrder;
 import tmmsystem.repository.NotificationRepository;
 import tmmsystem.repository.UserRepository;
 
@@ -509,6 +510,68 @@ public class NotificationService {
             n.setMessage("RFQ #" + rfq.getRfqNumber() + ": cần thương lượng lại thời gian giao hàng");
             n.setReferenceType("RFQ");
             n.setReferenceId(rfq.getId());
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
+
+    @Transactional
+    public void notifyWorkOrderApproved(WorkOrder wo) {
+        // Notify leaders and production staff
+        java.util.List<User> productionStaff = userRepository.findByRoleName("PRODUCTION_STAFF");
+        for (User user : productionStaff) {
+            Notification n = new Notification();
+            n.setUser(user);
+            n.setType("SUCCESS");
+            n.setCategory("WORK_ORDER");
+            n.setTitle("Work Order đã được PM duyệt");
+            n.setMessage("WO #" + wo.getWoNumber() + " đã được PM duyệt, công đoạn có thể bắt đầu");
+            n.setReferenceType("WORK_ORDER");
+            n.setReferenceId(wo.getId());
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
+
+    @Transactional
+    public void notifyWorkOrderRejected(WorkOrder wo) {
+        // Notify technical/production planning
+        java.util.List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
+        for (User user : planningStaff) {
+            Notification n = new Notification();
+            n.setUser(user);
+            n.setType("WARNING");
+            n.setCategory("WORK_ORDER");
+            n.setTitle("Work Order bị PM từ chối");
+            n.setMessage("WO #" + wo.getWoNumber() + " đã bị từ chối. Lý do: " + (wo.getSendStatus() != null ? wo.getSendStatus() : "N/A"));
+            n.setReferenceType("WORK_ORDER");
+            n.setReferenceId(wo.getId());
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
+
+    @Transactional
+    public void notifyOrderCompleted(ProductionOrder po) {
+        // Notify all stakeholders: Sales, Planning, Director, Technical, PM
+        java.util.List<User> users = new java.util.ArrayList<>();
+        users.addAll(userRepository.findByRoleName("SALE_STAFF"));
+        users.addAll(userRepository.findByRoleName("PLANNING_STAFF"));
+        users.addAll(userRepository.findByRoleName("DIRECTOR"));
+        users.addAll(userRepository.findByRoleName("TECHNICAL_STAFF"));
+        users.addAll(userRepository.findByRoleName("PRODUCTION_MANAGER"));
+        for (User user : users) {
+            Notification n = new Notification();
+            n.setUser(user);
+            n.setType("SUCCESS");
+            n.setCategory("PRODUCTION");
+            n.setTitle("Đơn hàng đã hoàn tất");
+            n.setMessage("Lệnh sản xuất #" + po.getPoNumber() + " đã hoàn tất (PACKAGING PASS)");
+            n.setReferenceType("PRODUCTION_ORDER");
+            n.setReferenceId(po.getId());
             n.setRead(false);
             n.setCreatedAt(Instant.now());
             notificationRepository.save(n);

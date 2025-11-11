@@ -21,5 +21,3 @@ public class WorkOrderDto {
     private Instant updatedAt;
     private List<WorkOrderDetailDto> details;
 }
-
-

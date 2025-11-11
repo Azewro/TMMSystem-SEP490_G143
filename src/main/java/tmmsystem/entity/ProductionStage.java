@@ -86,4 +86,13 @@ public class ProductionStage {
 
     @Column(name = "planned_duration_hours", precision = 10, scale = 2)
     private BigDecimal plannedDurationHours;
+
+    @Column(name = "qr_token", length = 64, unique = true)
+    private String qrToken;
+
+    @Column(name = "qc_last_result", length = 20)
+    private String qcLastResult; // PASS / FAIL / CONDITIONAL
+
+    @Column(name = "qc_last_checked_at")
+    private Instant qcLastCheckedAt;
 }

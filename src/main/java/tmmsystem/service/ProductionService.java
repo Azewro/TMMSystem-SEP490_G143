@@ -5,8 +5,11 @@ import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
 import tmmsystem.repository.*;
 
+import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HexFormat;
 import java.util.List;
 
 @Service
@@ -26,6 +29,8 @@ public class ProductionService {
     @SuppressWarnings("unused")
     private final ProductionOrderDetailRepository productionOrderDetailRepository;
     private final ProductionPlanService productionPlanService;
+    private final StageTrackingRepository stageTrackingRepository;
+    private final StagePauseLogRepository stagePauseLogRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
                              ProductionOrderDetailRepository podRepo,
@@ -38,7 +43,9 @@ public class ProductionService {
                              ContractRepository contractRepository,
                              BomRepository bomRepository,
                              ProductionOrderDetailRepository productionOrderDetailRepository,
-                             ProductionPlanService productionPlanService) {
+                             ProductionPlanService productionPlanService,
+                             StageTrackingRepository stageTrackingRepository,
+                             StagePauseLogRepository stagePauseLogRepository) {
         this.poRepo = poRepo; this.podRepo = podRepo; this.techRepo = techRepo;
         this.woRepo = woRepo; this.wodRepo = wodRepo; this.stageRepo = stageRepo;
         this.userRepository = userRepository;
@@ -47,6 +54,8 @@ public class ProductionService {
         this.bomRepository = bomRepository;
         this.productionOrderDetailRepository = productionOrderDetailRepository;
         this.productionPlanService = productionPlanService;
+        this.stageTrackingRepository = stageTrackingRepository;
+        this.stagePauseLogRepository = stagePauseLogRepository;
     }
 
     // Production Order
@@ -220,6 +229,193 @@ public class ProductionService {
     public List<tmmsystem.dto.production_plan.ProductionPlanDto> getProductionPlansPendingApproval() {
         return productionPlanService.findPendingApprovalPlans();
     }
+
+    // Helper: generate QR token
+    private String generateQrToken() {
+        byte[] bytes = new byte[24]; // 32 chars in hex
+        new SecureRandom().nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    // Work Order approval flow
+    @Transactional
+    public WorkOrder submitWorkOrderApproval(Long woId) {
+        WorkOrder wo = woRepo.findById(woId).orElseThrow();
+        wo.setStatus("PENDING_APPROVAL");
+        return woRepo.save(wo);
+    }
+
+    @Transactional
+    public WorkOrder approveWorkOrder(Long woId, Long pmUserId) {
+        WorkOrder wo = woRepo.findById(woId).orElseThrow();
+        User pm = userRepository.findById(pmUserId).orElseThrow();
+        wo.setStatus("APPROVED");
+        wo.setApprovedBy(pm);
+        WorkOrder saved = woRepo.save(wo);
+        // generate QR token for all stages under this WO
+        List<WorkOrderDetail> details = wodRepo.findByWorkOrderId(saved.getId());
+        for (WorkOrderDetail d : details) {
+            List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(d.getId());
+            for (ProductionStage s : stages) {
+                if (s.getQrToken() == null || s.getQrToken().isBlank()) {
+                    s.setQrToken(generateQrToken());
+                }
+            }
+            stageRepo.saveAll(stages);
+        }
+        notificationService.notifyWorkOrderApproved(saved);
+        return saved;
+    }
+
+    @Transactional
+    public WorkOrder rejectWorkOrder(Long woId, Long pmUserId, String reason) {
+        WorkOrder wo = woRepo.findById(woId).orElseThrow();
+        User pm = userRepository.findById(pmUserId).orElseThrow();
+        wo.setStatus("REJECTED");
+        wo.setApprovedBy(pm);
+        wo.setSendStatus(reason);
+        WorkOrder saved = woRepo.save(wo);
+        notificationService.notifyWorkOrderRejected(saved);
+        return saved;
+    }
+
+    public ProductionStage findStageByQrToken(String token) {
+        return stageRepo.findByQrToken(token).orElseThrow(() -> new RuntimeException("Invalid QR token"));
+    }
+
+    // Redo stage (fail nhẹ)
+    @Transactional
+    public ProductionStage redoStage(Long stageId) {
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        s.setStatus("PENDING");
+        s.setStartAt(null); s.setCompleteAt(null);
+        s.setQcLastResult(null); s.setQcLastCheckedAt(null);
+        return stageRepo.save(s);
+    }
+
+    // Filter lists for roles
+    public List<ProductionStage> findStagesForLeader(Long leaderUserId) {
+        return stageRepo.findByAssignedLeaderIdAndStatusIn(leaderUserId, java.util.List.of("PENDING","IN_PROGRESS"));
+    }
+
+    public List<ProductionStage> findStagesForKcs(String status) {
+        // example rule: stages completed and waiting QC
+        if (status == null || status.isBlank()) {
+            return stageRepo.findByStatus("COMPLETED");
+        }
+        return stageRepo.findByStatus(status);
+    }
+
+    // QC hook: called when inspection PASS
+    @Transactional
+    public void markStageQcPass(Long stageId) {
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        s.setQcLastResult("PASS");
+        s.setQcLastCheckedAt(Instant.now());
+        stageRepo.save(s);
+        if ("PACKAGING".equalsIgnoreCase(s.getStageType())) {
+            // Check all WorkOrderDetails under the same PO have all stages PASS
+            WorkOrderDetail wodOfStage = s.getWorkOrderDetail();
+            ProductionOrder po = wodOfStage.getProductionOrderDetail().getProductionOrder();
+            // Collect all WOD of this PO
+            List<WorkOrderDetail> allWod = wodRepo.findAll().stream()
+                    .filter(w -> w.getProductionOrderDetail()!=null && w.getProductionOrderDetail().getProductionOrder()!=null
+                            && w.getProductionOrderDetail().getProductionOrder().getId().equals(po.getId()))
+                    .toList();
+            boolean allOk = true;
+            for (WorkOrderDetail w : allWod) {
+                List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(w.getId());
+                if (stages.isEmpty()) { allOk=false; break; }
+                // Require every stage QC PASS
+                for (ProductionStage st : stages) {
+                    if (!"PASS".equalsIgnoreCase(st.getQcLastResult())) { allOk=false; break; }
+                }
+                if (!allOk) break;
+                // And packaging stage must exist and be completed
+                ProductionStage pkg = stages.stream().filter(st->"PACKAGING".equalsIgnoreCase(st.getStageType())).findFirst().orElse(null);
+                if (pkg==null || pkg.getCompleteAt()==null) { allOk=false; break; }
+            }
+            if (allOk) {
+                po.setStatus("ORDER_COMPLETED");
+                poRepo.save(po);
+                notificationService.notifyOrderCompleted(po);
+            }
+        }
+    }
+
+    /** Create a standard Work Order with 6 default stages for each ProductionOrderDetail under the PO */
+    @Transactional
+    public WorkOrder createStandardWorkOrder(Long poId, Long createdById){
+        ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
+        WorkOrder wo = new WorkOrder();
+        wo.setProductionOrder(po);
+        wo.setWoNumber("WO-"+System.currentTimeMillis());
+        wo.setStatus("DRAFT");
+        wo.setSendStatus("NOT_SENT");
+        wo.setProduction(true);
+        if (createdById!=null){ userRepository.findById(createdById).ifPresent(wo::setCreatedBy); }
+        WorkOrder saved = woRepo.save(wo);
+        List<ProductionOrderDetail> pods = podRepo.findByProductionOrderId(poId);
+        int seq=1;
+        for (ProductionOrderDetail pod : pods){
+            WorkOrderDetail wod = new WorkOrderDetail();
+            wod.setWorkOrder(saved); wod.setProductionOrderDetail(pod); wod.setStageSequence(seq++); wod.setWorkStatus("PENDING");
+            wod = wodRepo.save(wod);
+            createDefaultStage(wod, "WARPING", 1, false);
+            createDefaultStage(wod, "WEAVING", 2, false);
+            createDefaultStage(wod, "DYEING", 3, true);
+            createDefaultStage(wod, "CUTTING", 4, false);
+            createDefaultStage(wod, "HEMMING", 5, false);
+            createDefaultStage(wod, "PACKAGING", 6, false);
+        }
+        return saved;
+    }
+    private void createDefaultStage(WorkOrderDetail wod, String type, int sequence, boolean outsourced){
+        ProductionStage s = new ProductionStage();
+        s.setWorkOrderDetail(wod); s.setStageType(type); s.setStageSequence(sequence); s.setStatus("PENDING"); s.setOutsourced(outsourced);
+        stageRepo.save(s);
+    }
+    private void ensureLeader(Long stageId, Long leaderUserId){
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        if (s.getAssignedLeader()==null || s.getAssignedLeader().getId()==null || !s.getAssignedLeader().getId().equals(leaderUserId)){
+            throw new RuntimeException("Access denied: not assigned leader");
+        }
+    }
+    @Transactional
+    public ProductionStage startStage(Long stageId, Long leaderUserId, String evidencePhotoUrl, BigDecimal qtyCompleted){
+        ensureLeader(stageId, leaderUserId);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        if (s.getStartAt()==null) s.setStartAt(Instant.now());
+        s.setStatus("IN_PROGRESS");
+        stageRepo.save(s);
+        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+        tr.setAction("START"); tr.setEvidencePhotoUrl(evidencePhotoUrl); tr.setQuantityCompleted(qtyCompleted); stageTrackingRepository.save(tr);
+        return s;
+    }
+    @Transactional
+    public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes){
+        ensureLeader(stageId, leaderUserId);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("PAUSED"); stageRepo.save(s);
+        StagePauseLog pl = new StagePauseLog(); pl.setProductionStage(s); pl.setPausedBy(userRepository.findById(leaderUserId).orElseThrow());
+        pl.setPauseReason(pauseReason); pl.setPauseNotes(pauseNotes); pl.setPausedAt(Instant.now()); stagePauseLogRepository.save(pl);
+        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(pl.getPausedBy()); tr.setAction("PAUSE"); stageTrackingRepository.save(tr);
+        return s;
+    }
+    @Transactional
+    public ProductionStage resumeStage(Long stageId, Long leaderUserId){
+        ensureLeader(stageId, leaderUserId);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("IN_PROGRESS"); stageRepo.save(s);
+        // close last open pause
+        List<StagePauseLog> pauses = stagePauseLogRepository.findByProductionStageIdOrderByPausedAtDesc(s.getId());
+        for (StagePauseLog p : pauses){ if (p.getResumedAt()==null){ p.setResumedAt(Instant.now()); if (p.getPausedAt()!=null){ long mins = java.time.Duration.between(p.getPausedAt(), p.getResumedAt()).toMinutes(); p.setDurationMinutes((int)mins);} stagePauseLogRepository.save(p); break; } }
+        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow()); tr.setAction("RESUME"); stageTrackingRepository.save(tr);
+        return s;
+    }
+    @Transactional
+    public ProductionStage completeStage(Long stageId, Long leaderUserId, String evidencePhotoUrl, BigDecimal qtyCompleted){
+        ensureLeader(stageId, leaderUserId);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("COMPLETED"); s.setCompleteAt(Instant.now()); stageRepo.save(s);
+        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow()); tr.setAction("COMPLETE"); tr.setEvidencePhotoUrl(evidencePhotoUrl); tr.setQuantityCompleted(qtyCompleted); stageTrackingRepository.save(tr);
+        return s;
+    }
 }
-
-

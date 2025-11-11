@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import tmmsystem.dto.production.*;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/v1/production")
 @Validated
+@Tag(name = "Production")
 public class ProductionController {
     private final ProductionService service;
     private final ProductionMapper mapper;
@@ -351,5 +353,82 @@ public class ProductionController {
     public List<tmmsystem.dto.production_plan.ProductionPlanDto> getProductionPlansPendingApproval() {
         return service.getProductionPlansPendingApproval();
     }
-}
 
+    @Operation(summary = "Submit Work Order for approval")
+    @PostMapping("/work-orders/{id}/submit-approval")
+    public WorkOrderDto submitWoApproval(@PathVariable Long id) {
+        return mapper.toDto(service.submitWorkOrderApproval(id));
+    }
+
+    @Operation(summary = "Approve Work Order")
+    @PostMapping("/work-orders/{id}/approve")
+    public WorkOrderDto approveWo(@PathVariable Long id, @RequestParam Long pmId) {
+        return mapper.toDto(service.approveWorkOrder(id, pmId));
+    }
+
+    @Operation(summary = "Reject Work Order")
+    @PostMapping("/work-orders/{id}/reject")
+    public WorkOrderDto rejectWo(@PathVariable Long id, @RequestParam Long pmId, @RequestParam String reason) {
+        return mapper.toDto(service.rejectWorkOrder(id, pmId, reason));
+    }
+
+    @Operation(summary = "Resolve Stage by QR token", description = "KCS quét QR để lấy stage + checklist")
+    @GetMapping("/stages/qr/{token}")
+    public ProductionStageDto getStageByQr(@PathVariable String token) {
+        return mapper.toDto(service.findStageByQrToken(token));
+    }
+
+    @Operation(summary = "Redo Stage (minor fail)")
+    @PostMapping("/stages/{id}/redo")
+    public ProductionStageDto redoStage(@PathVariable Long id) {
+        return mapper.toDto(service.redoStage(id));
+    }
+
+    @Operation(summary = "List stages for Leader")
+    @GetMapping("/stages/for-leader")
+    public java.util.List<ProductionStageDto> listForLeader(@RequestParam Long userId) {
+        return service.findStagesForLeader(userId).stream().map(mapper::toDto).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Operation(summary = "List stages for KCS")
+    @GetMapping("/stages/for-kcs")
+    public java.util.List<ProductionStageDto> listForKcs(@RequestParam(required = false) String status) {
+        return service.findStagesForKcs(status).stream().map(mapper::toDto).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Operation(summary = "Tạo Work Order chuẩn từ PO")
+    @PostMapping("/orders/{poId}/work-orders/create-standard")
+    public WorkOrderDto createStandardWo(@PathVariable Long poId, @RequestParam(required = false) Long createdById){
+        return mapper.toDto(service.createStandardWorkOrder(poId, createdById));
+    }
+
+    @Operation(summary = "Leader bắt đầu công đoạn")
+    @PostMapping("/stages/{id}/start")
+    public ProductionStageDto leaderStart(@PathVariable Long id, @RequestParam Long leaderUserId,
+                                          @RequestParam(required=false) String evidencePhotoUrl,
+                                          @RequestParam(required=false) java.math.BigDecimal qtyCompleted){
+        return mapper.toDto(service.startStage(id, leaderUserId, evidencePhotoUrl, qtyCompleted));
+    }
+
+    @Operation(summary = "Leader tạm dừng công đoạn")
+    @PostMapping("/stages/{id}/pause")
+    public ProductionStageDto leaderPause(@PathVariable Long id, @RequestParam Long leaderUserId,
+                                          @RequestParam String pauseReason,
+                                          @RequestParam(required=false) String pauseNotes){
+        return mapper.toDto(service.pauseStage(id, leaderUserId, pauseReason, pauseNotes));
+    }
+
+    @Operation(summary = "Leader tiếp tục công đoạn")
+    @PostMapping("/stages/{id}/resume")
+    public ProductionStageDto leaderResume(@PathVariable Long id, @RequestParam Long leaderUserId){
+        return mapper.toDto(service.resumeStage(id, leaderUserId));
+    }
+
+    @Operation(summary = "Leader hoàn thành công đoạn")
+    @PostMapping("/stages/{id}/complete")
+    public ProductionStageDto leaderComplete(@PathVariable Long id, @RequestParam Long leaderUserId,
+                                             @RequestParam(required=false) String evidencePhotoUrl,
+                                             @RequestParam(required=false) java.math.BigDecimal qtyCompleted){
+        return mapper.toDto(service.completeStage(id, leaderUserId, evidencePhotoUrl, qtyCompleted));
+    }
+}
