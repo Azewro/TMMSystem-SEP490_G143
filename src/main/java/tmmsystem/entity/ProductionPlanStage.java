@@ -25,8 +25,8 @@ public class ProductionPlanStage {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "plan_id")
-    private ProductionPlan plan; // CHANGED: tham chiếu trực tiếp plan
+    @JoinColumn(name = "plan_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private ProductionPlan plan; // CHANGED: tham chiếu trực tiếp plan, disable auto FK creation
 
     @Column(name = "stage_type", length = 20, nullable = false)
     private String stageType; // Công đoạn sản xuất (WARPING, WEAVING, DYEING, CUTTING, HEMMING, PACKAGING)
