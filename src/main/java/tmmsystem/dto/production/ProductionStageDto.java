@@ -25,6 +25,7 @@ public class ProductionStageDto {
     private String notes;
     private Instant createdAt;
     private Instant updatedAt;
+    private Instant plannedStartAt;
+    private Instant plannedEndAt;
+    private BigDecimal plannedDurationHours;
 }
-
-

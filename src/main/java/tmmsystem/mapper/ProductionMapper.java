@@ -113,8 +113,9 @@ public class ProductionMapper {
         dto.setNotes(s.getNotes());
         dto.setCreatedAt(s.getCreatedAt());
         dto.setUpdatedAt(s.getUpdatedAt());
+        dto.setPlannedStartAt(s.getPlannedStartAt());
+        dto.setPlannedEndAt(s.getPlannedEndAt());
+        dto.setPlannedDurationHours(s.getPlannedDurationHours());
         return dto;
     }
 }
-
-

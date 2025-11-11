@@ -205,6 +205,7 @@ public class ProductionController {
         s.setBatchNumber(body.getBatchNumber()); s.setPlannedOutput(body.getPlannedOutput()); s.setActualOutput(body.getActualOutput());
         s.setStartAt(body.getStartAt()); s.setCompleteAt(body.getCompleteAt()); s.setStatus(body.getStatus());
         s.setOutsourced(body.getIsOutsourced()); s.setOutsourceVendor(body.getOutsourceVendor()); s.setNotes(body.getNotes());
+        s.setPlannedStartAt(body.getPlannedStartAt()); s.setPlannedEndAt(body.getPlannedEndAt()); s.setPlannedDurationHours(body.getPlannedDurationHours());
         return mapper.toDto(service.createStage(s));
     }
     @Operation(summary = "Cập nhật Production Stage")
@@ -222,6 +223,7 @@ public class ProductionController {
         s.setBatchNumber(body.getBatchNumber()); s.setPlannedOutput(body.getPlannedOutput()); s.setActualOutput(body.getActualOutput());
         s.setStartAt(body.getStartAt()); s.setCompleteAt(body.getCompleteAt()); s.setStatus(body.getStatus());
         s.setOutsourced(body.getIsOutsourced()); s.setOutsourceVendor(body.getOutsourceVendor()); s.setNotes(body.getNotes());
+        s.setPlannedStartAt(body.getPlannedStartAt()); s.setPlannedEndAt(body.getPlannedEndAt()); s.setPlannedDurationHours(body.getPlannedDurationHours());
         return mapper.toDto(service.updateStage(id, s));
     }
     @DeleteMapping("/stages/{id}")
@@ -350,5 +352,4 @@ public class ProductionController {
         return service.getProductionPlansPendingApproval();
     }
 }
-
 

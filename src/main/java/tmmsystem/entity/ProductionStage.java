@@ -77,6 +77,13 @@ public class ProductionStage {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    @Column(name = "planned_start_at")
+    private Instant plannedStartAt;
+
+    @Column(name = "planned_end_at")
+    private Instant plannedEndAt;
+
+    @Column(name = "planned_duration_hours", precision = 10, scale = 2)
+    private BigDecimal plannedDurationHours;
 }
-
-

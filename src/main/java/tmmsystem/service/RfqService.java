@@ -107,6 +107,8 @@ public class RfqService {
             User u = new User(); u.setId(dto.getAssignedSalesId()); rfq.setAssignedSales(u);
         }
 
+        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+
         return createWithDetails(rfq, dto.getDetails());
     }
 
@@ -173,6 +175,8 @@ public class RfqService {
             }
             rfq.setAssignedSales(user);
         }
+
+        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
 
         return createWithDetails(rfq, dto.getDetails());
     }
@@ -349,23 +353,48 @@ public class RfqService {
     }
 
     @Transactional
+    public Rfq assignSales(Long rfqId, Long salesId, String employeeCode) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        if (!"DRAFT".equals(rfq.getStatus())) throw new IllegalStateException("Chỉ gán Sales khi RFQ ở DRAFT");
+        if (salesId == null && (employeeCode == null || employeeCode.isBlank())) {
+            throw new IllegalArgumentException("Thiếu assignedSalesId hoặc employeeCode");
+        }
+        User salesUser;
+        if (salesId != null) {
+            salesUser = new User(); salesUser.setId(salesId);
+        } else {
+            User user = userRepository.findByEmployeeCode(employeeCode.trim()).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + employeeCode));
+            String roleName = user.getRole() != null ? user.getRole().getName() : null;
+            if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + employeeCode);
+            }
+            salesUser = user;
+        }
+        rfq.setAssignedSales(salesUser);
+        return rfqRepository.save(rfq);
+    }
+
+    @Transactional
+    public Rfq assignPlanning(Long rfqId, Long planningId) {
+        if (planningId == null) throw new IllegalArgumentException("assignedPlanningId is required");
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        if (!"DRAFT".equals(rfq.getStatus())) throw new IllegalStateException("Chỉ gán Planning khi RFQ ở DRAFT");
+        User planning = new User(); planning.setId(planningId);
+        rfq.setAssignedPlanning(planning);
+        return rfqRepository.save(rfq);
+    }
+
+    @Transactional
     public Rfq assignStaff(Long rfqId, Long salesId, Long planningId, Long approvedById) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
         if (!"DRAFT".equals(rfq.getStatus())) {
             throw new IllegalStateException("Chỉ có thể gán nhân sự khi RFQ đang ở trạng thái DRAFT");
         }
-        if (salesId == null || planningId == null) {
-            throw new IllegalArgumentException("Thiếu Sales hoặc Planning để gán");
-        }
-        User sales = new User(); sales.setId(salesId);
-        User planning = new User(); planning.setId(planningId);
-        rfq.setAssignedSales(sales);
-        rfq.setAssignedPlanning(planning);
-        if (approvedById != null) {
-            User director = new User(); director.setId(approvedById);
-            rfq.setApprovedBy(director);
-            rfq.setApprovalDate(java.time.Instant.now());
-        }
+        // Allow partial: only set provided ids
+        if (salesId != null) { User sales = new User(); sales.setId(salesId); rfq.setAssignedSales(sales); }
+        if (planningId != null) { User planning = new User(); planning.setId(planningId); rfq.setAssignedPlanning(planning); }
+        if (approvedById != null) { User director = new User(); director.setId(approvedById); rfq.setApprovedBy(director); rfq.setApprovalDate(java.time.Instant.now()); }
         return rfqRepository.save(rfq);
     }
 
@@ -456,6 +485,7 @@ public class RfqService {
         rfq.setStatus("DRAFT");
         rfq.setNotes(req.getNotes());
         User sales = new User(); sales.setId(salesUserId); rfq.setAssignedSales(sales);
+        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
         return createWithDetails(rfq, req.getDetails());
     }
 
@@ -472,7 +502,7 @@ public class RfqService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not assigned sales");
         }
         // Update RFQ fields
-        if (req.getExpectedDeliveryDate() != null) rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
         if (req.getNotes() != null) rfq.setNotes(req.getNotes());
         // Update customer snapshot data
         Customer cust = rfq.getCustomer();
@@ -505,6 +535,7 @@ public class RfqService {
             throw new IllegalStateException("RFQ is locked and cannot change expected delivery date");
         }
         java.time.LocalDate date = parseFlexibleDate(expectedDateStr);
+        validateExpectedDeliveryDate(date);
         rfq.setExpectedDeliveryDate(date);
         return rfqRepository.save(rfq);
     }
@@ -528,5 +559,15 @@ public class RfqService {
                 }
             }
         }
+    }
+
+    private void validateExpectedDeliveryDate(java.time.LocalDate date) {
+        if (date == null) throw new IllegalArgumentException("expectedDeliveryDate is required");
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate min = today.plusDays(30); // must be >= today+30
+        if (date.isBefore(min)) {
+            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from today (>= " + min + ")");
+        }
+        // Optional upper bound: reject if within today+29 already covered; if need max you can add.
     }
 }

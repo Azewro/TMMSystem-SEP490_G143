@@ -26,6 +26,9 @@ public class ContractService {
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
 
+    @org.springframework.beans.factory.annotation.Value("${lot.merge.windowDays:1}")
+    private int lotMergeWindowDays;
+
     @Autowired
     public ContractService(ContractRepository repository, 
                          UserRepository userRepository,
@@ -282,37 +285,52 @@ public class ContractService {
 
     private void mergeLotsForApprovedContracts() {
         List<Contract> approved = repository.findApprovedWithoutPlan();
-        record Key(String productName, java.time.LocalDate delivery, java.time.LocalDate contractDate) {}
+        if (approved == null || approved.isEmpty()) return;
+        record Key(String productName, String size, java.time.LocalDate deliveryPivot, java.time.LocalDate contractPivot) {}
         java.util.Map<Key, java.util.List<Contract>> groups = new java.util.HashMap<>();
         for (Contract c : approved) {
             if (c.getQuotation()==null || c.getQuotation().getDetails()==null || c.getQuotation().getDetails().isEmpty()) continue;
             var d = c.getQuotation().getDetails().get(0);
             String name = d.getProduct().getName();
+            String size = null;
+            try { size = d.getProduct().getStandardDimensions(); } catch (Exception ignore) {}
             java.time.LocalDate del = c.getDeliveryDate();
             java.time.LocalDate con = c.getContractDate();
-            Key k = new Key(name, del, con);
+            Key k = new Key(name, size, del, con);
             groups.computeIfAbsent(k, x -> new java.util.ArrayList<>()).add(c);
         }
         for (var e : groups.entrySet()) {
+            var baseKey = e.getKey();
             var list = e.getValue();
-            if (list.isEmpty()) continue;
-            Contract base = list.get(0);
+            // Filter within window ±lotMergeWindowDays around pivots
+            java.time.LocalDate del0 = baseKey.deliveryPivot();
+            java.time.LocalDate con0 = baseKey.contractPivot();
+            java.time.LocalDate delMin = del0.minusDays(lotMergeWindowDays);
+            java.time.LocalDate delMax = del0.plusDays(lotMergeWindowDays);
+            java.time.LocalDate conMin = con0.minusDays(lotMergeWindowDays);
+            java.time.LocalDate conMax = con0.plusDays(lotMergeWindowDays);
+            java.util.List<Contract> windowed = list.stream()
+                    .filter(c -> !c.getDeliveryDate().isBefore(delMin) && !c.getDeliveryDate().isAfter(delMax))
+                    .filter(c -> !c.getContractDate().isBefore(conMin) && !c.getContractDate().isAfter(conMax))
+                    .toList();
+            if (windowed.isEmpty()) continue;
+            Contract base = windowed.get(0);
             var qd0 = base.getQuotation().getDetails().get(0);
             Product product = qd0.getProduct();
             java.math.BigDecimal totalQty = java.math.BigDecimal.ZERO;
-            for (Contract c : list) {
+            for (Contract c : windowed) {
                 for (var qd : c.getQuotation().getDetails()) totalQty = totalQty.add(qd.getQuantity());
             }
             ProductionLot lot = lotRepo.findAll().stream()
                     .filter(l -> l.getProduct()!=null && l.getProduct().getId().equals(product.getId()))
+                    .filter(l -> baseKey.size()==null || (l.getSizeSnapshot()!=null && l.getSizeSnapshot().equals(baseKey.size())))
                     .filter(l -> "READY_FOR_PLANNING".equals(l.getStatus()) || "FORMING".equals(l.getStatus()))
                     .findFirst().orElse(null);
             if (lot==null) {
                 lot = new ProductionLot();
                 lot.setLotCode("LOT-"+java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format("%03d", lotRepo.count()+1));
                 lot.setProduct(product);
-                // size snapshot: ưu tiên kích thước tiêu chuẩn nếu có
-                try { lot.setSizeSnapshot(product.getStandardDimensions()); } catch (Exception ignore) { lot.setSizeSnapshot(product.getName()); }
+                lot.setSizeSnapshot(baseKey.size()!=null ? baseKey.size() : product.getStandardDimensions());
                 lot.setDeliveryDateTarget(base.getDeliveryDate());
                 lot.setContractDateMin(base.getContractDate());
                 lot.setContractDateMax(base.getContractDate());
@@ -320,13 +338,16 @@ public class ContractService {
                 lot.setTotalQuantity(java.math.BigDecimal.ZERO);
                 lot = lotRepo.save(lot);
             }
-            for (Contract c : list) {
+            for (Contract c : windowed) {
                 for (var qd : c.getQuotation().getDetails()) {
                     ProductionLotOrder lo = new ProductionLotOrder();
                     lo.setLot(lot); lo.setContract(c); lo.setQuotationDetail(qd); lo.setAllocatedQuantity(qd.getQuantity());
                     lotOrderRepo.save(lo);
                     lot.setTotalQuantity(lot.getTotalQuantity().add(qd.getQuantity()));
                 }
+                // widen contractDate range
+                if (c.getContractDate().isBefore(lot.getContractDateMin())) lot.setContractDateMin(c.getContractDate());
+                if (c.getContractDate().isAfter(lot.getContractDateMax())) lot.setContractDateMax(c.getContractDate());
             }
             lot.setStatus("READY_FOR_PLANNING");
             lotRepo.save(lot);

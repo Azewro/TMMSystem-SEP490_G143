@@ -28,10 +28,10 @@ import java.util.stream.Collectors;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.http.MediaType;
-import org.springframework.web.multipart.MultipartFile;
 import tmmsystem.dto.sales.SalesRfqCreateRequest;
 import tmmsystem.dto.sales.SalesRfqEditRequest;
+import tmmsystem.dto.sales.AssignSalesRequest;
+import tmmsystem.dto.sales.AssignPlanningRequest;
 
 @RestController
 @RequestMapping("/v1/rfqs")
@@ -352,5 +352,29 @@ public class RfqController {
                                    @RequestParam(required = false) java.time.LocalDate proposedNewDate) {
         service.persistCapacityEvaluation(id, status, reason, proposedNewDate);
         return mapper.toDto(service.findById(id));
+    }
+
+    // Assign Sales separately (DRAFT only)
+    @Operation(summary = "Assign Sales for RFQ (DRAFT)", description = "Assign Sales by userId or employeeCode while RFQ is in DRAFT. Planning assignment not required here.")
+    @PostMapping("/{id}/assign-sales")
+    public RfqDto assignSales(
+            @Parameter(description = "RFQ ID") @PathVariable Long id,
+            @RequestBody(description = "Assign Sales payload", required = true,
+                    content = @Content(schema = @Schema(implementation = AssignSalesRequest.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody AssignSalesRequest body) {
+        Rfq updated = service.assignSales(id, body.getAssignedSalesId(), body.getEmployeeCode());
+        return mapper.toDto(updated);
+    }
+
+    // Assign Planning separately (DRAFT only)
+    @Operation(summary = "Assign Planning for RFQ (DRAFT)", description = "Assign Planning by userId while RFQ is in DRAFT. Sales assignment not required here.")
+    @PostMapping("/{id}/assign-planning")
+    public RfqDto assignPlanning(
+            @Parameter(description = "RFQ ID") @PathVariable Long id,
+            @RequestBody(description = "Assign Planning payload", required = true,
+                    content = @Content(schema = @Schema(implementation = AssignPlanningRequest.class)))
+            @Valid @org.springframework.web.bind.annotation.RequestBody AssignPlanningRequest body) {
+        Rfq updated = service.assignPlanning(id, body.getAssignedPlanningId());
+        return mapper.toDto(updated);
     }
 }
