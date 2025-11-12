@@ -446,249 +446,249 @@ class MachineSelectionServiceTest {
             System.out.println("[SUCCESS] getSuitableMachines_Boundary_NoMatchingMachineType: Returned empty list as no machines matched the required type.");
         }
     }
-    
-        @Nested
-        @DisplayName("Create Outsourced Stage Suggestion (Private Method) Tests")
-        class CreateOutsourcedStageSuggestionTests {
 
-            private Method method;
+    @Nested
+    @DisplayName("Create Outsourced Stage Suggestion (Private Method) Tests")
+    class CreateOutsourcedStageSuggestionTests {
 
-            @BeforeEach
-            void setUp() throws NoSuchMethodException {
-                method = MachineSelectionService.class.getDeclaredMethod("createOutsourcedStageSuggestion", String.class, Long.class, BigDecimal.class, LocalDateTime.class, LocalDateTime.class);
-                method.setAccessible(true);
-            }
+        private Method method;
 
-            @Test
-            @DisplayName("Normal Case: Valid inputs")
-            void createOutsourcedStageSuggestion_Normal_ValidInputs() throws Exception {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 1L;
-                BigDecimal requiredQuantity = new BigDecimal("500");
-                LocalDateTime startTime = LocalDateTime.now().plusDays(1);
-                LocalDateTime endTime = LocalDateTime.now().plusDays(2);
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, endTime);
-
-                // Then
-                assertNotNull(result);
-                assertEquals(1, result.size());
-                MachineSelectionService.MachineSuggestionDto suggestion = result.get(0);
-                assertEquals("OUTSOURCE-DYEING", suggestion.getMachineCode());
-                assertEquals(stageType, suggestion.getMachineType());
-                assertTrue(suggestion.isAvailable());
-                assertEquals(startTime, suggestion.getSuggestedStartTime());
-                assertEquals(endTime.plusDays(1), suggestion.getSuggestedEndTime());
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Normal_ValidInputs: Correctly created outsourced suggestion.");
-            }
-
-            @Test
-            @DisplayName("Normal Case: Different stage type")
-            void createOutsourcedStageSuggestion_Normal_DifferentStageType() throws Exception {
-                // Given
-                String stageType = "SPECIAL_TREATMENT";
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusHours(8);
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, startTime, endTime);
-
-                // Then
-                assertNotNull(result);
-                assertEquals(1, result.size());
-                assertEquals(stageType, result.get(0).getMachineType(), "Machine type should match the input stageType.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Normal_DifferentStageType: Correctly set machine type for a different stage.");
-            }
-
-            @Test
-            @DisplayName("Abnormal Case: Null requiredQuantity")
-            void createOutsourcedStageSuggestion_Abnormal_NullRequiredQuantity() {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 1L;
-                LocalDateTime startTime = LocalDateTime.now().plusDays(1);
-                LocalDateTime endTime = LocalDateTime.now().plusDays(2);
-
-                // When & Then
-                // This method does not use requiredQuantity, so it should not throw an exception.
-                assertDoesNotThrow(() -> {
-                    method.invoke(machineSelectionService, stageType, productId, null, startTime, endTime);
-                }, "Method should handle null requiredQuantity gracefully as it is not used.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullRequiredQuantity: Handled null requiredQuantity without error.");
-            }
-
-            @Test
-            @DisplayName("Abnormal Case: Null preferredStartTime")
-            void createOutsourcedStageSuggestion_Abnormal_NullStartTime() {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 1L;
-                BigDecimal requiredQuantity = new BigDecimal("500");
-                LocalDateTime endTime = LocalDateTime.now().plusDays(2);
-
-                // When & Then
-                assertDoesNotThrow(() -> {
-                    List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, null, endTime);
-                    assertNull(result.get(0).getSuggestedStartTime(), "Suggested start time should be null when input is null.");
-                }, "Method should handle null startTime gracefully.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullStartTime: Handled null startTime without error.");
-            }
-
-            @Test
-            @DisplayName("Abnormal Case: Null preferredEndTime")
-            void createOutsourcedStageSuggestion_Abnormal_NullEndTime() {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 1L;
-                BigDecimal requiredQuantity = new BigDecimal("500");
-                LocalDateTime startTime = LocalDateTime.now().plusDays(1);
-
-                // When & Then
-                Exception exception = assertThrows(Exception.class, () -> {
-                    method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, null);
-                });
-                assertInstanceOf(NullPointerException.class, exception.getCause());
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullEndTime: Threw exception for null endTime.");
-            }
-
-            @Test
-            @DisplayName("Abnormal Case: Null stageType")
-            void createOutsourcedStageSuggestion_Abnormal_NullStageType() throws Exception {
-                // Given
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, null, 1L, BigDecimal.TEN, startTime, endTime);
-
-                // Then
-                assertNotNull(result);
-                assertFalse(result.isEmpty());
-                assertNull(result.get(0).getMachineType(), "Machine type should be null for null stageType input.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullStageType: Handled null stageType correctly.");
-            }
-
-            @Test
-            @DisplayName("Abnormal Case: Null productId")
-            void createOutsourcedStageSuggestion_Abnormal_NullProductId() {
-                // Given
-                String stageType = "DYEING";
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When & Then
-                assertDoesNotThrow(() -> {
-                    method.invoke(machineSelectionService, stageType, null, BigDecimal.TEN, startTime, endTime);
-                }, "Method should handle null productId gracefully as it is not used.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullProductId: Handled null productId without error.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: Zero requiredQuantity")
-            void createOutsourcedStageSuggestion_Boundary_ZeroQuantity() throws Exception {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 1L;
-                BigDecimal requiredQuantity = BigDecimal.ZERO;
-                LocalDateTime startTime = LocalDateTime.now().plusDays(1);
-                LocalDateTime endTime = LocalDateTime.now().plusDays(2);
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, endTime);
-
-                // Then
-                assertNotNull(result);
-                assertFalse(result.isEmpty());
-                // The estimated duration is hardcoded, so it should not be affected by quantity.
-                assertEquals(new BigDecimal("24"), result.get(0).getEstimatedDurationHours());
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_ZeroQuantity: Correctly created suggestion for zero quantity.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: Negative requiredQuantity")
-            void createOutsourcedStageSuggestion_Boundary_NegativeQuantity() {
-                // Given
-                String stageType = "DYEING";
-                BigDecimal negativeQuantity = new BigDecimal("-100");
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When & Then
-                assertDoesNotThrow(() -> {
-                    method.invoke(machineSelectionService, stageType, 1L, negativeQuantity, startTime, endTime);
-                }, "Method should handle negative requiredQuantity gracefully as it is not used.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_NegativeQuantity: Handled negative quantity without error.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: Empty stageType")
-            void createOutsourcedStageSuggestion_Boundary_EmptyStageType() throws Exception {
-                // Given
-                String stageType = "";
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, startTime, endTime);
-
-                // Then
-                assertNotNull(result);
-                assertFalse(result.isEmpty());
-                assertEquals("", result.get(0).getMachineType(), "Machine type should be an empty string.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_EmptyStageType: Handled empty stageType correctly.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: Zero productId")
-            void createOutsourcedStageSuggestion_Boundary_ZeroProductId() {
-                // Given
-                String stageType = "DYEING";
-                Long productId = 0L;
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When & Then
-                assertDoesNotThrow(() -> {
-                    method.invoke(machineSelectionService, stageType, productId, BigDecimal.TEN, startTime, endTime);
-                }, "Method should handle zero productId gracefully as it is not used.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_ZeroProductId: Handled zero productId without error.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: Negative productId")
-            void createOutsourcedStageSuggestion_Boundary_NegativeProductId() {
-                // Given
-                String stageType = "DYEING";
-                Long productId = -1L;
-                LocalDateTime startTime = LocalDateTime.now();
-                LocalDateTime endTime = LocalDateTime.now().plusDays(1);
-
-                // When & Then
-                assertDoesNotThrow(() -> {
-                    method.invoke(machineSelectionService, stageType, productId, BigDecimal.TEN, startTime, endTime);
-                }, "Method should handle negative productId gracefully as it is not used.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_NegativeProductId: Handled negative productId without error.");
-            }
-
-            @Test
-            @DisplayName("Boundary Case: End time is same as start time")
-            void createOutsourcedStageSuggestion_Boundary_EndTimeSameAsStartTime() throws Exception {
-                // Given
-                String stageType = "DYEING";
-                LocalDateTime time = LocalDateTime.now();
-
-                // When
-                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, time, time);
-
-                // Then
-                assertNotNull(result);
-                assertFalse(result.isEmpty());
-                assertEquals(time.plusDays(1), result.get(0).getSuggestedEndTime(), "Suggested end time should be 1 day after the start time.");
-                System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_EndTimeSameAsStartTime: Correctly calculated end time when start and end are the same.");
-            }
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("createOutsourcedStageSuggestion", String.class, Long.class, BigDecimal.class, LocalDateTime.class, LocalDateTime.class);
+            method.setAccessible(true);
         }
+
+        @Test
+        @DisplayName("Normal Case: Valid inputs")
+        void createOutsourcedStageSuggestion_Normal_ValidInputs() throws Exception {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 1L;
+            BigDecimal requiredQuantity = new BigDecimal("500");
+            LocalDateTime startTime = LocalDateTime.now().plusDays(1);
+            LocalDateTime endTime = LocalDateTime.now().plusDays(2);
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, endTime);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(1, result.size());
+            MachineSelectionService.MachineSuggestionDto suggestion = result.get(0);
+            assertEquals("OUTSOURCE-DYEING", suggestion.getMachineCode());
+            assertEquals(stageType, suggestion.getMachineType());
+            assertTrue(suggestion.isAvailable());
+            assertEquals(startTime, suggestion.getSuggestedStartTime());
+            assertEquals(endTime.plusDays(1), suggestion.getSuggestedEndTime());
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Normal_ValidInputs: Correctly created outsourced suggestion.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Different stage type")
+        void createOutsourcedStageSuggestion_Normal_DifferentStageType() throws Exception {
+            // Given
+            String stageType = "SPECIAL_TREATMENT";
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusHours(8);
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, startTime, endTime);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(1, result.size());
+            assertEquals(stageType, result.get(0).getMachineType(), "Machine type should match the input stageType.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Normal_DifferentStageType: Correctly set machine type for a different stage.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null requiredQuantity")
+        void createOutsourcedStageSuggestion_Abnormal_NullRequiredQuantity() {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 1L;
+            LocalDateTime startTime = LocalDateTime.now().plusDays(1);
+            LocalDateTime endTime = LocalDateTime.now().plusDays(2);
+
+            // When & Then
+            // This method does not use requiredQuantity, so it should not throw an exception.
+            assertDoesNotThrow(() -> {
+                method.invoke(machineSelectionService, stageType, productId, null, startTime, endTime);
+            }, "Method should handle null requiredQuantity gracefully as it is not used.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullRequiredQuantity: Handled null requiredQuantity without error.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null preferredStartTime")
+        void createOutsourcedStageSuggestion_Abnormal_NullStartTime() {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 1L;
+            BigDecimal requiredQuantity = new BigDecimal("500");
+            LocalDateTime endTime = LocalDateTime.now().plusDays(2);
+
+            // When & Then
+            assertDoesNotThrow(() -> {
+                List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, null, endTime);
+                assertNull(result.get(0).getSuggestedStartTime(), "Suggested start time should be null when input is null.");
+            }, "Method should handle null startTime gracefully.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullStartTime: Handled null startTime without error.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null preferredEndTime")
+        void createOutsourcedStageSuggestion_Abnormal_NullEndTime() {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 1L;
+            BigDecimal requiredQuantity = new BigDecimal("500");
+            LocalDateTime startTime = LocalDateTime.now().plusDays(1);
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, null);
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullEndTime: Threw exception for null endTime.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null stageType")
+        void createOutsourcedStageSuggestion_Abnormal_NullStageType() throws Exception {
+            // Given
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, null, 1L, BigDecimal.TEN, startTime, endTime);
+
+            // Then
+            assertNotNull(result);
+            assertFalse(result.isEmpty());
+            assertNull(result.get(0).getMachineType(), "Machine type should be null for null stageType input.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullStageType: Handled null stageType correctly.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null productId")
+        void createOutsourcedStageSuggestion_Abnormal_NullProductId() {
+            // Given
+            String stageType = "DYEING";
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When & Then
+            assertDoesNotThrow(() -> {
+                method.invoke(machineSelectionService, stageType, null, BigDecimal.TEN, startTime, endTime);
+            }, "Method should handle null productId gracefully as it is not used.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Abnormal_NullProductId: Handled null productId without error.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero requiredQuantity")
+        void createOutsourcedStageSuggestion_Boundary_ZeroQuantity() throws Exception {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 1L;
+            BigDecimal requiredQuantity = BigDecimal.ZERO;
+            LocalDateTime startTime = LocalDateTime.now().plusDays(1);
+            LocalDateTime endTime = LocalDateTime.now().plusDays(2);
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, productId, requiredQuantity, startTime, endTime);
+
+            // Then
+            assertNotNull(result);
+            assertFalse(result.isEmpty());
+            // The estimated duration is hardcoded, so it should not be affected by quantity.
+            assertEquals(new BigDecimal("24"), result.get(0).getEstimatedDurationHours());
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_ZeroQuantity: Correctly created suggestion for zero quantity.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Negative requiredQuantity")
+        void createOutsourcedStageSuggestion_Boundary_NegativeQuantity() {
+            // Given
+            String stageType = "DYEING";
+            BigDecimal negativeQuantity = new BigDecimal("-100");
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When & Then
+            assertDoesNotThrow(() -> {
+                method.invoke(machineSelectionService, stageType, 1L, negativeQuantity, startTime, endTime);
+            }, "Method should handle negative requiredQuantity gracefully as it is not used.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_NegativeQuantity: Handled negative quantity without error.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Empty stageType")
+        void createOutsourcedStageSuggestion_Boundary_EmptyStageType() throws Exception {
+            // Given
+            String stageType = "";
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, startTime, endTime);
+
+            // Then
+            assertNotNull(result);
+            assertFalse(result.isEmpty());
+            assertEquals("", result.get(0).getMachineType(), "Machine type should be an empty string.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_EmptyStageType: Handled empty stageType correctly.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero productId")
+        void createOutsourcedStageSuggestion_Boundary_ZeroProductId() {
+            // Given
+            String stageType = "DYEING";
+            Long productId = 0L;
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When & Then
+            assertDoesNotThrow(() -> {
+                method.invoke(machineSelectionService, stageType, productId, BigDecimal.TEN, startTime, endTime);
+            }, "Method should handle zero productId gracefully as it is not used.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_ZeroProductId: Handled zero productId without error.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Negative productId")
+        void createOutsourcedStageSuggestion_Boundary_NegativeProductId() {
+            // Given
+            String stageType = "DYEING";
+            Long productId = -1L;
+            LocalDateTime startTime = LocalDateTime.now();
+            LocalDateTime endTime = LocalDateTime.now().plusDays(1);
+
+            // When & Then
+            assertDoesNotThrow(() -> {
+                method.invoke(machineSelectionService, stageType, productId, BigDecimal.TEN, startTime, endTime);
+            }, "Method should handle negative productId gracefully as it is not used.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_NegativeProductId: Handled negative productId without error.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: End time is same as start time")
+        void createOutsourcedStageSuggestion_Boundary_EndTimeSameAsStartTime() throws Exception {
+            // Given
+            String stageType = "DYEING";
+            LocalDateTime time = LocalDateTime.now();
+
+            // When
+            List<MachineSelectionService.MachineSuggestionDto> result = (List<MachineSelectionService.MachineSuggestionDto>) method.invoke(machineSelectionService, stageType, 1L, BigDecimal.TEN, time, time);
+
+            // Then
+            assertNotNull(result);
+            assertFalse(result.isEmpty());
+            assertEquals(time.plusDays(1), result.get(0).getSuggestedEndTime(), "Suggested end time should be 1 day after the start time.");
+            System.out.println("[SUCCESS] createOutsourcedStageSuggestion_Boundary_EndTimeSameAsStartTime: Correctly calculated end time when start and end are the same.");
+        }
+    }
 
     @Nested
     @DisplayName("Create Manual Stage Suggestion (Private Method) Tests")
@@ -1105,4 +1105,161 @@ class MachineSelectionServiceTest {
             System.out.println("[SUCCESS] calculateMachineCapacity_Boundary_SpecKeyNotFound: Correctly fell back to default when spec key was not found.");
         }
     }
+
+    @Nested
+    @DisplayName("Calculate Priority Score (Private Method) Tests")
+    class CalculatePriorityScoreTests {
+
+        private Method method;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("calculatePriorityScore", MachineSelectionService.MachineSuggestionDto.class, String.class, BigDecimal.class);
+            method.setAccessible(true);
+        }
+
+        @Test
+        @DisplayName("Normal Case: Special score for DYEING stage")
+        void calculatePriorityScore_Normal_DyeingStage() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setMachineCode("OUTSOURCE-DYEING");
+            String stageType = "DYEING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            assertEquals(90.0, score);
+            System.out.println("[SUCCESS] calculatePriorityScore_Normal_DyeingStage: Returned fixed score for outsourced dyeing.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Special score for PACKAGING stage")
+        void calculatePriorityScore_Normal_PackagingStage() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setMachineCode("MANUAL-PACKAGING");
+            String stageType = "PACKAGING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            assertEquals(85.0, score);
+            System.out.println("[SUCCESS] calculatePriorityScore_Normal_PackagingStage: Returned fixed score for manual packaging.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Standard machine with good scores")
+        void calculatePriorityScore_Normal_StandardMachine() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setAvailabilityScore(100.0); // 40 points
+            suggestion.setCapacityPerHour(new BigDecimal("50")); // For WEAVING: 50 * 0.1 = 5 -> 5 * 0.3 = 1.5 points
+            suggestion.setLocation("Khu A"); // 20 points
+            suggestion.setCanHandleQuantity(true); // 10 points
+            String stageType = "WEAVING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            // Expected: 40 (availability) + (50 * 0.1 * 0.3) + 20 (location) + 10 (quantity) = 40 + 1.5 + 20 + 10 = 71.5
+            assertEquals(71.5, score, 0.01);
+            System.out.println("[SUCCESS] calculatePriorityScore_Normal_StandardMachine: Correctly calculated score for a standard machine.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero availability score")
+        void calculatePriorityScore_Boundary_ZeroAvailability() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setAvailabilityScore(0.0); // 0 points
+            suggestion.setCapacityPerHour(new BigDecimal("100"));
+            suggestion.setLocation("Khu B");
+            suggestion.setCanHandleQuantity(true);
+            String stageType = "SEWING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            // Expected: 0 (availability) + (100*2*0.3) + 20 (location) + 10 (quantity) = 0 + 60 + 20 + 10 = 90.0
+            // But capacityScore is capped at 100, so (100 * 0.3) = 30.
+            // Expected: 0 + 30 + 20 + 10 = 60.0
+            assertEquals(60.0, score, 0.01);
+            System.out.println("[SUCCESS] calculatePriorityScore_Boundary_ZeroAvailability: Correctly calculated score with zero availability.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero capacity")
+        void calculatePriorityScore_Boundary_ZeroCapacity() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setAvailabilityScore(100.0);
+            suggestion.setCapacityPerHour(BigDecimal.ZERO); // 0 points
+            suggestion.setLocation("Khu C");
+            suggestion.setCanHandleQuantity(true);
+            String stageType = "CUTTING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            // Expected: 40 (availability) + 0 (capacity) + 20 (location) + 10 (quantity) = 70.0
+            assertEquals(70.0, score, 0.01);
+            System.out.println("[SUCCESS] calculatePriorityScore_Boundary_ZeroCapacity: Correctly calculated score with zero capacity.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Cannot handle quantity")
+        void calculatePriorityScore_Boundary_CannotHandleQuantity() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setAvailabilityScore(100.0);
+            suggestion.setCapacityPerHour(new BigDecimal("100"));
+            suggestion.setLocation("Khu D");
+            suggestion.setCanHandleQuantity(false); // 0 points
+            String stageType = "SEWING";
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, stageType, null);
+
+            // Then
+            // Expected: 40 (availability) + 30 (capacity) + 20 (location) + 0 (quantity) = 90.0
+            assertEquals(90.0, score, 0.01);
+            System.out.println("[SUCCESS] calculatePriorityScore_Boundary_CannotHandleQuantity: Correctly calculated score when quantity cannot be handled.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null suggestion DTO")
+        void calculatePriorityScore_Abnormal_NullSuggestion() {
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(machineSelectionService, null, "WEAVING", null);
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculatePriorityScore_Abnormal_NullSuggestion: Threw exception for null suggestion DTO.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null stageType")
+        void calculatePriorityScore_Abnormal_NullStageType() throws Exception {
+            // Given
+            MachineSelectionService.MachineSuggestionDto suggestion = new MachineSelectionService.MachineSuggestionDto();
+            suggestion.setAvailabilityScore(100.0);
+            suggestion.setCapacityPerHour(new BigDecimal("10")); // default case: 10*10=100 -> 30 points
+            suggestion.setLocation("Khu E");
+            suggestion.setCanHandleQuantity(true);
+
+            // When
+            double score = (double) method.invoke(machineSelectionService, suggestion, null, null);
+
+            // Then
+            // Expected: 40 + 30 + 20 + 10 = 100.0
+            assertEquals(100.0, score, 0.01);
+            System.out.println("[SUCCESS] calculatePriorityScore_Abnormal_NullStageType: Handled null stageType by using default capacity calculation.");
+        }
     }
+}
