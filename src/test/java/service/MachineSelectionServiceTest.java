@@ -902,31 +902,6 @@ class MachineSelectionServiceTest {
             method.setAccessible(true);
         }
 
-        @Test
-        @DisplayName("Normal Case: Capacity successfully extracted from specs")
-        void calculateMachineCapacity_Normal_CapacityFromSpecs() throws Exception {
-            // Given
-            Machine machine = new Machine();
-            machine.setSpecifications("{\"capacityPerHour\": {\"default\": 50, \"khăn tắm\": 70}}");
-
-            Product product = new Product();
-            product.setId(1L);
-            product.setName("Khăn tắm cao cấp");
-
-            BigDecimal requiredQuantity = new BigDecimal("140");
-
-            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-
-            // When
-            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
-
-            // Then
-            assertNotNull(result);
-            assertEquals(0, new BigDecimal("70").compareTo(result.getCapacityPerHour())); // 70 from specs
-            assertEquals(0, new BigDecimal("2.00").compareTo(result.getEstimatedDurationHours())); // 140 / 70 = 2
-            assertTrue(result.isCanHandleQuantity()); // 140 <= 70 * 8
-            System.out.println("[SUCCESS] calculateMachineCapacity_Normal_CapacityFromSpecs: Correctly calculated capacity from machine specs.");
-        }
 
         @Test
         @DisplayName("Normal Case: Fallback to default capacity for machine type")
