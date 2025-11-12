@@ -1262,4 +1262,221 @@ class MachineSelectionServiceTest {
             System.out.println("[SUCCESS] calculatePriorityScore_Abnormal_NullStageType: Handled null stageType by using default capacity calculation.");
         }
     }
+
+    @Nested
+    @DisplayName("Is Time Overlap (Private Method) Tests")
+    class IsTimeOverlapTests {
+
+        private Method method;
+        private LocalDateTime baseTime;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("isTimeOverlap", LocalDateTime.class, LocalDateTime.class, LocalDateTime.class, LocalDateTime.class);
+            method.setAccessible(true);
+            baseTime = LocalDateTime.of(2023, 1, 1, 12, 0);
+        }
+
+        @Test
+        @DisplayName("Normal Case: Partial overlap at the end")
+        void isTimeOverlap_Normal_PartialOverlapEnd() throws Exception {
+            // Interval 1: [10:00, 14:00], Interval 2: [12:00, 16:00] -> Overlap
+            LocalDateTime start1 = baseTime.minusHours(2);
+            LocalDateTime end1 = baseTime.plusHours(2);
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(4);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, end2);
+
+            assertTrue(result);
+            System.out.println("[SUCCESS] isTimeOverlap_Normal_PartialOverlapEnd: Correctly detected partial overlap.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Interval 1 contains Interval 2")
+        void isTimeOverlap_Normal_Contains() throws Exception {
+            // Interval 1: [10:00, 18:00], Interval 2: [12:00, 16:00] -> Overlap
+            LocalDateTime start1 = baseTime.minusHours(2);
+            LocalDateTime end1 = baseTime.plusHours(6);
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(4);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, end2);
+
+            assertTrue(result);
+            System.out.println("[SUCCESS] isTimeOverlap_Normal_Contains: Correctly detected containment overlap.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: No overlap, interval 1 is before interval 2")
+        void isTimeOverlap_Normal_NoOverlap_Before() throws Exception {
+            // Interval 1: [08:00, 10:00], Interval 2: [12:00, 14:00] -> No Overlap
+            LocalDateTime start1 = baseTime.minusHours(4);
+            LocalDateTime end1 = baseTime.minusHours(2);
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(2);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, end2);
+
+            assertFalse(result);
+            System.out.println("[SUCCESS] isTimeOverlap_Normal_NoOverlap_Before: Correctly identified no overlap.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Intervals touch at the end")
+        void isTimeOverlap_Boundary_TouchAtEnd() throws Exception {
+            // Interval 1: [10:00, 12:00], Interval 2: [12:00, 14:00] -> No Overlap
+            LocalDateTime start1 = baseTime.minusHours(2);
+            LocalDateTime end1 = baseTime;
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(2);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, end2);
+
+            assertFalse(result, "Intervals that only touch should not be considered overlapping.");
+            System.out.println("[SUCCESS] isTimeOverlap_Boundary_TouchAtEnd: Correctly handled touching intervals.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Identical intervals")
+        void isTimeOverlap_Boundary_Identical() throws Exception {
+            // Interval 1: [12:00, 14:00], Interval 2: [12:00, 14:00] -> Overlap
+            LocalDateTime start1 = baseTime;
+            LocalDateTime end1 = baseTime.plusHours(2);
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(2);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, end2);
+
+            assertTrue(result);
+            System.out.println("[SUCCESS] isTimeOverlap_Boundary_Identical: Correctly detected identical interval overlap.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null start1")
+        void isTimeOverlap_Abnormal_NullStart1() throws Exception {
+            LocalDateTime end1 = baseTime;
+            LocalDateTime start2 = baseTime;
+            LocalDateTime end2 = baseTime.plusHours(1);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, null, end1, start2, end2);
+
+            assertFalse(result, "Should return false if any of the first three time parameters is null.");
+            System.out.println("[SUCCESS] isTimeOverlap_Abnormal_NullStart1: Correctly handled null start1.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null end2 (special handling)")
+        void isTimeOverlap_Abnormal_NullEnd2() throws Exception {
+            // Interval 1: [now-1h, now+1h], Interval 2: [now-2h, now] -> Overlap because end2 defaults to now()
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime start1 = now.minusHours(1);
+            LocalDateTime end1 = now.plusHours(1);
+            LocalDateTime start2 = now.minusHours(2);
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, null);
+
+            assertTrue(result, "Should overlap because null end2 defaults to LocalDateTime.now().");
+            System.out.println("[SUCCESS] isTimeOverlap_Abnormal_NullEnd2: Correctly handled special case for null end2.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null end2 with non-overlapping start2")
+        void isTimeOverlap_Abnormal_NullEnd2_NoOverlap() throws Exception {
+            // Interval 1: [now-2h, now-1h], Interval 2: [now+1h, now] -> No Overlap
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime start1 = now.minusHours(2);
+            LocalDateTime end1 = now.minusHours(1);
+            LocalDateTime start2 = now.plusHours(1); // start2 is in the future
+
+            boolean result = (boolean) method.invoke(machineSelectionService, start1, end1, start2, null);
+
+            assertFalse(result, "Should not overlap as start2 is after end1, even with null end2.");
+            System.out.println("[SUCCESS] isTimeOverlap_Abnormal_NullEnd2_NoOverlap: Correctly handled non-overlapping case with null end2.");
+        }
+    }
+
+    @Nested
+    @DisplayName("Get Default Capacity For Machine Type (Private Method) Tests")
+    class GetDefaultCapacityForMachineTypeTests {
+
+        private Method method;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("getDefaultCapacityForMachineType", String.class);
+            method.setAccessible(true);
+        }
+
+        @Test
+        @DisplayName("Normal Case: WEAVING type")
+        void getDefaultCapacity_Normal_Weaving() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "WEAVING");
+            // Then
+            assertEquals(0, new BigDecimal("50").compareTo(result));
+            System.out.println("[SUCCESS] getDefaultCapacity_Normal_Weaving: Correctly returned capacity for WEAVING.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: SEWING type")
+        void getDefaultCapacity_Normal_Sewing() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "SEWING");
+            // Then
+            assertEquals(0, new BigDecimal("100").compareTo(result));
+            System.out.println("[SUCCESS] getDefaultCapacity_Normal_Sewing: Correctly returned capacity for SEWING.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: DYEING type")
+        void getDefaultCapacity_Normal_Dyeing() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "DYEING");
+            // Then
+            assertEquals(0, new BigDecimal("999999").compareTo(result));
+            System.out.println("[SUCCESS] getDefaultCapacity_Normal_Dyeing: Correctly returned capacity for DYEING.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null machineType")
+        void getDefaultCapacity_Abnormal_NullType() {
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(machineSelectionService, (Object) null); // Cast to avoid ambiguity
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause(), "Switching on a null string should throw NullPointerException.");
+            System.out.println("[SUCCESS] getDefaultCapacity_Abnormal_NullType: Threw exception for null machine type as expected.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Unknown machineType")
+        void getDefaultCapacity_Abnormal_UnknownType() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "UNKNOWN_TYPE");
+            // Then
+            assertEquals(0, new BigDecimal("100").compareTo(result), "Should return the default capacity for an unknown type.");
+            System.out.println("[SUCCESS] getDefaultCapacity_Abnormal_UnknownType: Correctly returned default capacity for unknown type.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Empty string machineType")
+        void getDefaultCapacity_Boundary_EmptyString() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "");
+            // Then
+            assertEquals(0, new BigDecimal("100").compareTo(result), "Should return the default capacity for an empty string type.");
+            System.out.println("[SUCCESS] getDefaultCapacity_Boundary_EmptyString: Correctly returned default capacity for empty string.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Case-insensitive check (should fail to match)")
+        void getDefaultCapacity_Boundary_CaseInsensitive() throws Exception {
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "weaving"); // Lowercase
+            // Then
+            assertEquals(0, new BigDecimal("100").compareTo(result), "Should return default capacity as switch is case-sensitive.");
+            System.out.println("[SUCCESS] getDefaultCapacity_Boundary_CaseInsensitive: Correctly returned default for case-mismatched type.");
+        }
+    }
 }
