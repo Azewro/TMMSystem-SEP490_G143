@@ -889,4 +889,245 @@ class MachineSelectionServiceTest {
             System.out.println("[SUCCESS] createManualStageSuggestion_Boundary_EmptyStageType: Handled empty stageType correctly.");
         }
     }
+
+    @Nested
+    @DisplayName("Calculate Machine Capacity (Private Method) Tests")
+    class CalculateMachineCapacityTests {
+
+        private Method method;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("calculateMachineCapacity", Machine.class, Long.class, BigDecimal.class);
+            method.setAccessible(true);
+        }
+
+        @Test
+        @DisplayName("Normal Case: Capacity successfully extracted from specs")
+        void calculateMachineCapacity_Normal_CapacityFromSpecs() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setSpecifications("{\"capacityPerHour\": {\"default\": 50, \"khăn tắm\": 70}}");
+
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("Khăn tắm cao cấp");
+
+            BigDecimal requiredQuantity = new BigDecimal("140");
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, new BigDecimal("70").compareTo(result.getCapacityPerHour())); // 70 from specs
+            assertEquals(0, new BigDecimal("2.00").compareTo(result.getEstimatedDurationHours())); // 140 / 70 = 2
+            assertTrue(result.isCanHandleQuantity()); // 140 <= 70 * 8
+            System.out.println("[SUCCESS] calculateMachineCapacity_Normal_CapacityFromSpecs: Correctly calculated capacity from machine specs.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Fallback to default capacity for machine type")
+        void calculateMachineCapacity_Normal_FallbackToDefault() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setType("WEAVING");
+            machine.setSpecifications("{}"); // Empty specs, will trigger fallback
+
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("Sản phẩm mới");
+
+            BigDecimal requiredQuantity = new BigDecimal("100");
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, new BigDecimal("50").compareTo(result.getCapacityPerHour())); // Default for WEAVING
+            assertEquals(0, new BigDecimal("2.00").compareTo(result.getEstimatedDurationHours())); // 100 / 50 = 2
+            assertTrue(result.isCanHandleQuantity());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Normal_FallbackToDefault: Correctly fell back to default machine type capacity.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Product not found")
+        void calculateMachineCapacity_Abnormal_ProductNotFound() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            Long nonExistentProductId = 99L;
+            BigDecimal requiredQuantity = new BigDecimal("100");
+
+            when(productRepository.findById(nonExistentProductId)).thenReturn(Optional.empty());
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, nonExistentProductId, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, BigDecimal.ZERO.compareTo(result.getCapacityPerHour()));
+            assertEquals(0, BigDecimal.ZERO.compareTo(result.getEstimatedDurationHours()));
+            assertFalse(result.isCanHandleQuantity());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Abnormal_ProductNotFound: Returned zero capacity for non-existent product.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null requiredQuantity")
+        void calculateMachineCapacity_Abnormal_NullRequiredQuantity() {
+            // Given
+            Machine machine = new Machine();
+            Product product = new Product();
+            product.setId(1L);
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(machineSelectionService, machine, 1L, null);
+            });
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Abnormal_NullRequiredQuantity: Threw exception for null requiredQuantity.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Zero requiredQuantity")
+        void calculateMachineCapacity_Boundary_ZeroQuantity() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setSpecifications("{\"capacityPerHour\": {\"default\": 50}}");
+            Product product = new Product();
+            product.setId(1L);
+            BigDecimal requiredQuantity = BigDecimal.ZERO;
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, new BigDecimal("50").compareTo(result.getCapacityPerHour()));
+            assertEquals(0, BigDecimal.ZERO.compareTo(result.getEstimatedDurationHours()));
+            assertTrue(result.isCanHandleQuantity());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Boundary_ZeroQuantity: Correctly calculated zero duration for zero quantity.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Malformed JSON in specifications")
+        void calculateMachineCapacity_Abnormal_MalformedSpecJson() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setType("WEAVING");
+            machine.setSpecifications("{\"capacityPerHour\": {\"default\": 50, "); // Malformed JSON
+
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("Khăn tắm");
+
+            BigDecimal requiredQuantity = new BigDecimal("100");
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            // Should fallback to default capacity for WEAVING type
+            assertEquals(0, new BigDecimal("50").compareTo(result.getCapacityPerHour()));
+            System.out.println("[SUCCESS] calculateMachineCapacity_Abnormal_MalformedSpecJson: Handled malformed JSON by falling back to default capacity.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null productId")
+        void calculateMachineCapacity_Abnormal_NullProductId() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            BigDecimal requiredQuantity = new BigDecimal("100");
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, null, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(0, BigDecimal.ZERO.compareTo(result.getCapacityPerHour()));
+            assertFalse(result.isCanHandleQuantity());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Abnormal_NullProductId: Returned zero capacity for null productId.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null machine type for fallback")
+        void calculateMachineCapacity_Abnormal_NullMachineType() {
+            // Given
+            Machine machine = new Machine();
+            machine.setType(null); // Null type
+            machine.setSpecifications("{}"); // Will trigger fallback
+
+            Product product = new Product();
+            product.setId(1L);
+            BigDecimal requiredQuantity = new BigDecimal("100");
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When & Then
+            Exception exception = assertThrows(Exception.class, () -> {
+                method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+            });
+            // The switch statement on a null object throws NPE
+            assertInstanceOf(NullPointerException.class, exception.getCause());
+            System.out.println("[SUCCESS] calculateMachineCapacity_Abnormal_NullMachineType: Threw exception when falling back with a null machine type.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Quantity exceeds daily capacity")
+        void calculateMachineCapacity_Boundary_QuantityExceedsDailyCapacity() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setSpecifications("{\"capacityPerHour\": {\"default\": 50}}"); // 50/hr -> 400/day
+            Product product = new Product();
+            product.setId(1L);
+            BigDecimal requiredQuantity = new BigDecimal("500"); // Exceeds 400
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            assertFalse(result.isCanHandleQuantity(), "canHandleQuantity should be false when quantity exceeds daily capacity.");
+            System.out.println("[SUCCESS] calculateMachineCapacity_Boundary_QuantityExceedsDailyCapacity: Correctly flagged that quantity cannot be handled in a day.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Spec key not found")
+        void calculateMachineCapacity_Boundary_SpecKeyNotFound() throws Exception {
+            // Given
+            Machine machine = new Machine();
+            machine.setType("SEWING");
+            // Valid JSON, but no key for "khăn mặt" or "default"
+            machine.setSpecifications("{\"capacityPerHour\": {\"khăn tắm\": 120}}");
+
+            Product product = new Product();
+            product.setId(1L);
+            product.setName("Khăn mặt");
+
+            BigDecimal requiredQuantity = new BigDecimal("200");
+
+            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+
+            // When
+            MachineSelectionService.MachineCapacityInfo result = (MachineSelectionService.MachineCapacityInfo) method.invoke(machineSelectionService, machine, 1L, requiredQuantity);
+
+            // Then
+            assertNotNull(result);
+            // Should fallback to default capacity for SEWING type
+            assertEquals(0, new BigDecimal("100").compareTo(result.getCapacityPerHour()));
+            System.out.println("[SUCCESS] calculateMachineCapacity_Boundary_SpecKeyNotFound: Correctly fell back to default when spec key was not found.");
+        }
+    }
     }
