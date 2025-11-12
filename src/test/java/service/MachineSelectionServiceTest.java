@@ -1479,4 +1479,125 @@ class MachineSelectionServiceTest {
             System.out.println("[SUCCESS] getDefaultCapacity_Boundary_CaseInsensitive: Correctly returned default for case-mismatched type.");
         }
     }
+
+    @Nested
+    @DisplayName("Extract Capacity From Specs (Private Method) Tests")
+    class ExtractCapacityFromSpecsTests {
+
+        private Method method;
+
+        @BeforeEach
+        void setUp() throws NoSuchMethodException {
+            method = MachineSelectionService.class.getDeclaredMethod("extractCapacityFromSpecs", String.class, Product.class);
+            method.setAccessible(true);
+        }
+
+        @Test
+        @DisplayName("Normal Case: Match 'khăn tắm' key")
+        void extractCapacity_Normal_MatchBathTowel() throws Exception {
+            // Given
+            String specs = "{\"capacityPerHour\": {\"faceTowels\": 150, \"bathTowels\": 70, \"default\": 50}}";
+            Product product = new Product();
+            product.setName("Khăn tắm cao cấp");
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, specs, product);
+
+            // Then
+            assertEquals(0, new BigDecimal("70").compareTo(result));
+            System.out.println("[SUCCESS] extractCapacity_Normal_MatchBathTowel: Correctly extracted capacity for 'khăn tắm'.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Fallback to 'default' key")
+        void extractCapacity_Normal_FallbackToDefault() throws Exception {
+            // Given
+            String specs = "{\"capacityPerHour\": {\"faceTowels\": 150, \"default\": 50}}";
+            Product product = new Product();
+            product.setName("Sản phẩm không xác định"); // No keyword match
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, specs, product);
+
+            // Then
+            assertEquals(0, new BigDecimal("50").compareTo(result));
+            System.out.println("[SUCCESS] extractCapacity_Normal_FallbackToDefault: Correctly fell back to default capacity.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null specs string")
+        void extractCapacity_Abnormal_NullSpecs() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setName("Test Product");
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, null, product);
+
+            // Then
+            assertEquals(0, BigDecimal.ZERO.compareTo(result));
+            System.out.println("[SUCCESS] extractCapacity_Abnormal_NullSpecs: Correctly returned zero for null specs.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Null product object")
+        void extractCapacity_Abnormal_NullProduct() throws Exception {
+            // Given
+            String specs = "{\"capacityPerHour\": {\"default\": 50}}";
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, specs, null);
+
+            // Then
+            assertEquals(0, BigDecimal.ZERO.compareTo(result), "Should return zero as product is null, causing an internal NPE handled by the method.");
+            System.out.println("[SUCCESS] extractCapacity_Abnormal_NullProduct: Correctly returned zero for null product.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Malformed JSON string")
+        void extractCapacity_Abnormal_MalformedJson() throws Exception {
+            // Given
+            String specs = "{\"capacityPerHour\": {\"default\": 50,"; // Malformed
+            Product product = new Product();
+            product.setName("Test Product");
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, specs, product);
+
+            // Then
+            assertEquals(0, BigDecimal.ZERO.compareTo(result), "Should return zero for malformed JSON.");
+            System.out.println("[SUCCESS] extractCapacity_Abnormal_MalformedJson: Correctly returned zero for malformed JSON.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Empty specs string")
+        void extractCapacity_Boundary_EmptySpecs() throws Exception {
+            // Given
+            Product product = new Product();
+            product.setName("Test Product");
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, "", product);
+
+            // Then
+            assertEquals(0, BigDecimal.ZERO.compareTo(result));
+            System.out.println("[SUCCESS] extractCapacity_Boundary_EmptySpecs: Correctly returned zero for empty specs string.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: No matching key and no default key")
+        void extractCapacity_Boundary_NoMatchingKeyAndNoDefault() throws Exception {
+            // Given
+            String specs = "{\"capacityPerHour\": {\"faceTowels\": 150}}";
+            Product product = new Product();
+            product.setName("Khăn tắm"); // Matches "bathTowels", but key doesn't exist
+
+            // When
+            BigDecimal result = (BigDecimal) method.invoke(machineSelectionService, specs, product);
+
+            // Then
+            assertEquals(0, BigDecimal.ZERO.compareTo(result), "Should return zero when no specific or default key is found.");
+            System.out.println("[SUCCESS] extractCapacity_Boundary_NoMatchingKeyAndNoDefault: Correctly returned zero when no keys match.");
+        }
+    }
 }
