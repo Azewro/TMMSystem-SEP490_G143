@@ -96,6 +96,18 @@ public class Rfq {
     @Column(name = "proposed_new_delivery_date")
     private LocalDate proposedNewDeliveryDate;
 
+    // Contact snapshots at time of RFQ creation (or latest sales edit before lock)
+    @Column(name = "contact_person_snapshot", length = 150)
+    private String contactPersonSnapshot;
+    @Column(name = "contact_email_snapshot", length = 150)
+    private String contactEmailSnapshot;
+    @Column(name = "contact_phone_snapshot", length = 30)
+    private String contactPhoneSnapshot;
+    @Column(name = "contact_address_snapshot", columnDefinition = "text")
+    private String contactAddressSnapshot;
+    @Column(name = "contact_method", length = 10)
+    private String contactMethod; // EMAIL | PHONE
+
     @OneToMany(mappedBy = "rfq", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RfqDetail> details = new ArrayList<>();
 }

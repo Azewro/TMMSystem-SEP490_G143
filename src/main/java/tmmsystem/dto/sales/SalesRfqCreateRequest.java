@@ -18,6 +18,8 @@ public class SalesRfqCreateRequest {
     private String contactPhone;
     private String contactAddress;
 
+    private String contactMethod; // EMAIL | PHONE (optional -> infer)
+
     private LocalDate expectedDeliveryDate;
     private String notes;
     private List<RfqDetailDto> details;

@@ -16,6 +16,8 @@ public class SalesRfqEditRequest {
     private String contactPhone;
     private String contactAddress;
 
+    private String contactMethod; // EMAIL | PHONE (optional -> infer)
+
     private LocalDate expectedDeliveryDate; // optional new target date
     private String notes; // rfq notes
 

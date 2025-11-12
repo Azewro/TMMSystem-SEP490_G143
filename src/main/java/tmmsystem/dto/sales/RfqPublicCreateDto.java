@@ -23,6 +23,8 @@ public class RfqPublicCreateDto {
 
     private String contactAddress;
 
+    private String contactMethod; // EMAIL | PHONE (optional -> infer)
+
     private String sourceType;
     private LocalDate expectedDeliveryDate;
     private String status;

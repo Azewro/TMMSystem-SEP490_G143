@@ -25,9 +25,10 @@ public class RfqDto {
     private Instant updatedAt;
     private List<RfqDetailDto> details;
 
-    // Thông tin dành cho Public Form khi khách không đăng nhập
+    // Thông tin dành cho Public Form khi khách không đăng nhập (from snapshot or fallback customer)
     private String contactPerson;
     private String contactEmail;
     private String contactPhone;
     private String contactAddress;
+    private String contactMethod; // EMAIL | PHONE
 }
