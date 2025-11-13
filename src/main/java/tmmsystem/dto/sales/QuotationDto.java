@@ -21,11 +21,19 @@ public class QuotationDto {
     private Long capacityCheckedById;
     private Instant capacityCheckedAt;
     private String capacityCheckNotes;
+    private Long assignedSalesId;
+    private Long assignedPlanningId;
     private Long createdById;
     private Long approvedById;
+    private Instant sentAt;
+    private String filePath;
+    // NEW contact snapshots
+    private String contactPersonSnapshot;
+    private String contactEmailSnapshot;
+    private String contactPhoneSnapshot;
+    private String contactAddressSnapshot;
+    private String contactMethod;
     private Instant createdAt;
     private Instant updatedAt;
     private List<QuotationDetailDto> details;
 }
-
-

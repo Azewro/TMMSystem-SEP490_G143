@@ -5,8 +5,6 @@ import tmmsystem.dto.sales.QuotationDetailDto;
 import tmmsystem.dto.sales.QuotationDto;
 import tmmsystem.entity.*;
 
-import java.util.stream.Collectors;
-
 @Component
 public class QuotationMapper {
     public QuotationDto toDto(Quotation entity) {
@@ -24,8 +22,18 @@ public class QuotationMapper {
         dto.setCapacityCheckedById(entity.getCapacityCheckedBy() != null ? entity.getCapacityCheckedBy().getId() : null);
         dto.setCapacityCheckedAt(entity.getCapacityCheckedAt());
         dto.setCapacityCheckNotes(entity.getCapacityCheckNotes());
+        dto.setAssignedSalesId(entity.getAssignedSales() != null ? entity.getAssignedSales().getId() : null);
+        dto.setAssignedPlanningId(entity.getAssignedPlanning() != null ? entity.getAssignedPlanning().getId() : null);
         dto.setCreatedById(entity.getCreatedBy() != null ? entity.getCreatedBy().getId() : null);
         dto.setApprovedById(entity.getApprovedBy() != null ? entity.getApprovedBy().getId() : null);
+        dto.setSentAt(entity.getSentAt());
+        dto.setFilePath(entity.getFilePath());
+        // map contact snapshots
+        dto.setContactPersonSnapshot(entity.getContactPersonSnapshot());
+        dto.setContactEmailSnapshot(entity.getContactEmailSnapshot());
+        dto.setContactPhoneSnapshot(entity.getContactPhoneSnapshot());
+        dto.setContactAddressSnapshot(entity.getContactAddressSnapshot());
+        dto.setContactMethod(entity.getContactMethod());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         if (entity.getDetails() != null) {
@@ -48,5 +56,3 @@ public class QuotationMapper {
         return dto;
     }
 }
-
-

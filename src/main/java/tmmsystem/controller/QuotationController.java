@@ -18,6 +18,7 @@ import tmmsystem.dto.sales.RecalculatePriceRequest;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.Quotation;
 import tmmsystem.entity.Rfq;
+import tmmsystem.entity.User;
 import tmmsystem.mapper.QuotationMapper;
 import tmmsystem.service.QuotationService;
 
@@ -77,8 +78,21 @@ public class QuotationController {
         q.setStatus(body.getStatus());
         q.setAccepted(body.getIsAccepted());
         q.setCanceled(body.getIsCanceled());
+        if (body.getCapacityCheckedById() != null) { User u = new User(); u.setId(body.getCapacityCheckedById()); q.setCapacityCheckedBy(u); }
         q.setCapacityCheckedAt(body.getCapacityCheckedAt());
         q.setCapacityCheckNotes(body.getCapacityCheckNotes());
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); q.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); q.setAssignedPlanning(u); }
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); q.setCreatedBy(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); q.setApprovedBy(u); }
+        q.setSentAt(body.getSentAt());
+        q.setFilePath(body.getFilePath());
+        // contact snapshots
+        q.setContactPersonSnapshot(body.getContactPersonSnapshot());
+        q.setContactEmailSnapshot(body.getContactEmailSnapshot());
+        q.setContactPhoneSnapshot(body.getContactPhoneSnapshot());
+        q.setContactAddressSnapshot(body.getContactAddressSnapshot());
+        q.setContactMethod(body.getContactMethod());
         return mapper.toDto(service.create(q));
     }
 
@@ -98,8 +112,21 @@ public class QuotationController {
         q.setStatus(body.getStatus());
         q.setAccepted(body.getIsAccepted());
         q.setCanceled(body.getIsCanceled());
+        if (body.getCapacityCheckedById() != null) { User u = new User(); u.setId(body.getCapacityCheckedById()); q.setCapacityCheckedBy(u); }
         q.setCapacityCheckedAt(body.getCapacityCheckedAt());
         q.setCapacityCheckNotes(body.getCapacityCheckNotes());
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); q.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); q.setAssignedPlanning(u); }
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); q.setCreatedBy(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); q.setApprovedBy(u); }
+        q.setSentAt(body.getSentAt());
+        q.setFilePath(body.getFilePath());
+        // contact snapshots
+        q.setContactPersonSnapshot(body.getContactPersonSnapshot());
+        q.setContactEmailSnapshot(body.getContactEmailSnapshot());
+        q.setContactPhoneSnapshot(body.getContactPhoneSnapshot());
+        q.setContactAddressSnapshot(body.getContactAddressSnapshot());
+        q.setContactMethod(body.getContactMethod());
         return mapper.toDto(service.update(id, q));
     }
 
@@ -147,7 +174,7 @@ public class QuotationController {
 
     // Sale Staff APIs
     @Operation(summary = "Lấy báo giá chờ gửi",
-            description = "Sale Staff lấy danh sách báo giá đã tạo, chờ gửi cho khách hàng. Nếu header X-User-Id được cung cấp thì chỉ trả về báo giá có RFQ được gán cho Sales đó.")
+            description = "Sale Staff lấy danh sách báo giá đã tạo, chờ gửi cho khách hàng. Nếu header X-User-Id được cung cấp thì chỉ trả về báo giá được gán cho Sales đó.")
     @GetMapping("/pending")
     public List<QuotationDto> getPendingQuotations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (userId != null) {
@@ -161,6 +188,28 @@ public class QuotationController {
     @PostMapping("/{id}/send-to-customer")
     public QuotationDto sendToCustomer(@Parameter(description = "ID Quotation") @PathVariable Long id) {
         return mapper.toDto(service.sendQuotationToCustomer(id));
+    }
+
+    // NEW: List quotations assigned to a specific Sales
+    @Operation(summary = "Danh sách báo giá theo Sales được phân công",
+            description = "Trả về danh sách báo giá mà Sales (header X-User-Id) được gán vào")
+    @GetMapping("/for-sales")
+    public List<QuotationDto> listForSales(@RequestHeader("X-User-Id") Long userId) {
+        return service.findAll().stream()
+                .filter(q -> q.getAssignedSales() != null && userId.equals(q.getAssignedSales().getId()))
+                .map(mapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    // NEW: List quotations assigned to a specific Planning
+    @Operation(summary = "Danh sách báo giá theo Planning được phân công",
+            description = "Trả về danh sách báo giá mà Planning (header X-User-Id) được gán vào")
+    @GetMapping("/for-planning")
+    public List<QuotationDto> listForPlanning(@RequestHeader("X-User-Id") Long userId) {
+        return service.findAll().stream()
+                .filter(q -> q.getAssignedPlanning() != null && userId.equals(q.getAssignedPlanning().getId()))
+                .map(mapper::toDto)
+                .collect(Collectors.toList());
     }
 
     // Customer APIs

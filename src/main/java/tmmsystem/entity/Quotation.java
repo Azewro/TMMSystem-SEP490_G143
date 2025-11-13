@@ -17,7 +17,10 @@ import java.util.List;
         },
         indexes = {
                 @Index(name = "idx_quotation_customer_created", columnList = "customer_id, created_at"),
-                @Index(name = "idx_quotation_status_canceled", columnList = "status, is_canceled")
+                @Index(name = "idx_quotation_status_canceled", columnList = "status, is_canceled"),
+                // new indexes for assignments
+                @Index(name = "idx_quotation_assigned_sales", columnList = "assigned_sales_id"),
+                @Index(name = "idx_quotation_assigned_planning", columnList = "assigned_planning_id")
         }
 )
 @Getter @Setter
@@ -86,6 +89,15 @@ public class Quotation {
     @Column(name = "capacity_check_notes", columnDefinition = "text")
     private String capacityCheckNotes;
 
+    // Assignees (mirror RFQ)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_sales_id")
+    private User assignedSales; // Sales in charge of sending quotation
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_planning_id")
+    private User assignedPlanning; // Planning who created/maintains quotation
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy; // Sales or Planning
@@ -93,6 +105,22 @@ public class Quotation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
     private User approvedBy;
+
+    // Contact snapshots copied from RFQ at time of quotation creation
+    @Column(name = "contact_person_snapshot", length = 150)
+    private String contactPersonSnapshot;
+
+    @Column(name = "contact_email_snapshot", length = 150)
+    private String contactEmailSnapshot;
+
+    @Column(name = "contact_phone_snapshot", length = 30)
+    private String contactPhoneSnapshot;
+
+    @Column(name = "contact_address_snapshot", columnDefinition = "text")
+    private String contactAddressSnapshot;
+
+    @Column(name = "contact_method", length = 10)
+    private String contactMethod; // EMAIL | PHONE
 
     @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuotationDetail> details = new ArrayList<>();

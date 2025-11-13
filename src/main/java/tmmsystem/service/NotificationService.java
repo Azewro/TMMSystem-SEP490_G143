@@ -118,10 +118,14 @@ public class NotificationService {
 
     @Transactional
     public void notifyQuotationCreated(Quotation quotation) {
-        // Thông báo cho Sale Staff
-        List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
-        for (User user : saleStaff) {
+        // Nếu có assignedSales thì chỉ gửi cho Sales đó; nếu không, gửi cho tất cả Sale Staff như cũ
+        List<User> targets;
+        if (quotation.getAssignedSales() != null) {
+            targets = java.util.Collections.singletonList(quotation.getAssignedSales());
+        } else {
+            targets = userRepository.findByRoleName("SALE_STAFF");
+        }
+        for (User user : targets) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
@@ -133,17 +137,19 @@ public class NotificationService {
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
             notificationRepository.save(notification);
         }
     }
 
     @Transactional
     public void notifyQuotationSentToCustomer(Quotation quotation) {
-        // Thông báo cho Sale Staff rằng báo giá đã được gửi cho khách hàng
-        List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
-        for (User user : saleStaff) {
+        List<User> targets;
+        if (quotation.getAssignedSales() != null) {
+            targets = java.util.Collections.singletonList(quotation.getAssignedSales());
+        } else {
+            targets = userRepository.findByRoleName("SALE_STAFF");
+        }
+        for (User user : targets) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
@@ -156,17 +162,19 @@ public class NotificationService {
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
             notificationRepository.save(notification);
         }
     }
 
     @Transactional
     public void notifyQuotationApproved(Quotation quotation) {
-        // Thông báo cho Sale Staff
-        List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
-        for (User user : saleStaff) {
+        List<User> targets;
+        if (quotation.getAssignedSales() != null) {
+            targets = java.util.Collections.singletonList(quotation.getAssignedSales());
+        } else {
+            targets = userRepository.findByRoleName("SALE_STAFF");
+        }
+        for (User user : targets) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("SUCCESS");
@@ -177,17 +185,19 @@ public class NotificationService {
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
             notificationRepository.save(notification);
         }
     }
 
     @Transactional
     public void notifyQuotationRejected(Quotation quotation) {
-        // Thông báo cho Sale Staff
-        List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
-        for (User user : saleStaff) {
+        List<User> targets;
+        if (quotation.getAssignedSales() != null) {
+            targets = java.util.Collections.singletonList(quotation.getAssignedSales());
+        } else {
+            targets = userRepository.findByRoleName("SALE_STAFF");
+        }
+        for (User user : targets) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("WARNING");
@@ -198,7 +208,6 @@ public class NotificationService {
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
             notificationRepository.save(notification);
         }
     }

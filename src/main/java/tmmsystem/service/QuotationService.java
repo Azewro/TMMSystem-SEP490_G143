@@ -82,8 +82,12 @@ public class QuotationService {
         existing.setCapacityCheckedBy(updated.getCapacityCheckedBy());
         existing.setCapacityCheckedAt(updated.getCapacityCheckedAt());
         existing.setCapacityCheckNotes(updated.getCapacityCheckNotes());
+        existing.setAssignedSales(updated.getAssignedSales()); // NEW
+        existing.setAssignedPlanning(updated.getAssignedPlanning()); // NEW
         existing.setCreatedBy(updated.getCreatedBy());
         existing.setApprovedBy(updated.getApprovedBy());
+        existing.setFilePath(updated.getFilePath());
+        existing.setSentAt(updated.getSentAt());
         return existing;
     }
 
@@ -206,6 +210,16 @@ public class QuotationService {
         quotation.setCapacityCheckedAt(java.time.Instant.now());
         quotation.setCapacityCheckNotes(capacityCheckNotes != null ? capacityCheckNotes : "Khả năng sản xuất đã được kiểm tra - Kho đủ nguyên liệu, máy móc sẵn sàng");
         quotation.setCreatedBy(planningUser);
+        // NEW: carry over assignees from RFQ
+        if (rfq.getAssignedSales() != null) quotation.setAssignedSales(rfq.getAssignedSales());
+        if (rfq.getAssignedPlanning() != null) quotation.setAssignedPlanning(rfq.getAssignedPlanning());
+        // NEW: copy contact snapshot fields from RFQ
+        quotation.setContactPersonSnapshot(rfq.getContactPersonSnapshot());
+        quotation.setContactEmailSnapshot(rfq.getContactEmailSnapshot());
+        quotation.setContactPhoneSnapshot(rfq.getContactPhoneSnapshot());
+        quotation.setContactAddressSnapshot(rfq.getContactAddressSnapshot());
+        quotation.setContactMethod(rfq.getContactMethod());
+
         List<RfqDetail> rfqDetails = rfqDetailRepository.findByRfqId(rfqId);
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<QuotationDetail> qDetails = new java.util.ArrayList<>();
@@ -317,12 +331,11 @@ public class QuotationService {
                 .collect(Collectors.toList());
     }
 
-    // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation có RFQ được gán cho Sales này
+    // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation được gán cho Sales này
     public List<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId) {
         return quotationRepository.findAll().stream()
                 .filter(q -> "DRAFT".equals(q.getStatus()))
-                .filter(q -> q.getRfq() != null && q.getRfq().getAssignedSales() != null)
-                .filter(q -> salesUserId.equals(q.getRfq().getAssignedSales().getId()))
+                .filter(q -> q.getAssignedSales() != null && salesUserId.equals(q.getAssignedSales().getId()))
                 .collect(Collectors.toList());
     }
 
@@ -387,7 +400,6 @@ public class QuotationService {
         
         quotation.setStatus("REJECTED");
         quotation.setRejectedAt(java.time.Instant.now());
-        // reject reason can be set via a separate API that updates reject_reason
         Quotation savedQuotation = quotationRepository.save(quotation);
 
         // Gửi thông báo cho Sale Staff
