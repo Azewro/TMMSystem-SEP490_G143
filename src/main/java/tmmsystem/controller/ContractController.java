@@ -211,16 +211,16 @@ public class ContractController {
         }
     }
 
-    // NEW: query by approved sales/planning id
-    @Operation(summary = "Danh sách hợp đồng theo Sales đã duyệt")
-    @GetMapping("/approved-by/sales/{userId}")
-    public List<ContractDto> getBySalesApproved(@PathVariable Long userId) {
-        return service.findBySalesApprovedUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    // REPLACED: query by assigned sales/planning id instead of approved-by
+    @Operation(summary = "Danh sách hợp đồng theo Sales được phân công")
+    @GetMapping("/assigned/sales/{userId}")
+    public List<ContractDto> getByAssignedSales(@PathVariable Long userId) {
+        return service.findByAssignedSalesUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
     }
 
-    @Operation(summary = "Danh sách hợp đồng theo Planning đã duyệt")
-    @GetMapping("/approved-by/planning/{userId}")
-    public List<ContractDto> getByPlanningApproved(@PathVariable Long userId) {
-        return service.findByPlanningApprovedUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    @Operation(summary = "Danh sách hợp đồng theo Planning được phân công")
+    @GetMapping("/assigned/planning/{userId}")
+    public List<ContractDto> getByAssignedPlanning(@PathVariable Long userId) {
+        return service.findByAssignedPlanningUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
     }
 }

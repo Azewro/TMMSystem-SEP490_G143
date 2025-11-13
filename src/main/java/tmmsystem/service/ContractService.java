@@ -53,6 +53,10 @@ public class ContractService {
     public List<Contract> findBySalesApprovedUserId(Long userId) { return repository.findBySalesApprovedBy_Id(userId); }
     public List<Contract> findByPlanningApprovedUserId(Long userId) { return repository.findByPlanningApprovedBy_Id(userId); }
 
+    // NEW: queries by assigned sales/planning id
+    public List<Contract> findByAssignedSalesUserId(Long userId) { return repository.findByAssignedSales_Id(userId); }
+    public List<Contract> findByAssignedPlanningUserId(Long userId) { return repository.findByAssignedPlanning_Id(userId); }
+
     @Transactional
     public Contract create(Contract c) { return repository.save(c); }
 

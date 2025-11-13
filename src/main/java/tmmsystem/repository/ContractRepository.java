@@ -16,7 +16,11 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
     // NEW: find contract by quotation id
     Contract findFirstByQuotation_Id(Long quotationId);
 
-    // NEW: get contracts by approved Sales/Planning user id
+    // existing approvals queries (kept for future use)
     List<Contract> findBySalesApprovedBy_Id(Long salesUserId);
     List<Contract> findByPlanningApprovedBy_Id(Long planningUserId);
+
+    // NEW: assignment queries as requested
+    List<Contract> findByAssignedSales_Id(Long salesUserId);
+    List<Contract> findByAssignedPlanning_Id(Long planningUserId);
 }
