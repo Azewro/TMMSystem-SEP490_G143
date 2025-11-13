@@ -1,5 +1,6 @@
 package tmmsystem.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.dto.production_plan.*;
@@ -35,6 +36,9 @@ public class ProductionPlanService {
     private final MachineSelectionService machineSelectionService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
+
+    @Value("${planning.autoInitStages:true}")
+    private boolean autoInitStages;
 
     public ProductionPlanService(ProductionPlanRepository planRepo,
                                 ProductionPlanStageRepository stageRepo,
@@ -178,6 +182,7 @@ public class ProductionPlanService {
         ProductionPlan plan = createPlanVersion(lot.getId());
         plan.setApprovalNotes(request.getNotes());
         ProductionPlan saved = planRepo.save(plan);
+        if (autoInitStages) { initDefaultStages(saved); }
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
@@ -187,8 +192,26 @@ public class ProductionPlanService {
     public ProductionPlanDto createPlanFromLot(Long lotId){
         ProductionPlan plan = createPlanVersion(lotId);
         ProductionPlan saved = planRepo.save(plan);
+        if (autoInitStages) { initDefaultStages(saved); }
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
+    }
+
+    private void initDefaultStages(ProductionPlan plan){
+        // Nếu đã có stage thì bỏ qua
+        if (!stageRepo.findByPlanIdOrderBySequenceNo(plan.getId()).isEmpty()) return;
+        String[] types = new String[]{"WARPING","WEAVING","DYEING","CUTTING","HEMMING","PACKAGING"};
+        java.time.LocalDateTime start = java.time.LocalDateTime.now().withHour(8).withMinute(0).withSecond(0).withNano(0);
+        for (int i=0;i<types.length;i++){
+            ProductionPlanStage s = new ProductionPlanStage();
+            s.setPlan(plan);
+            s.setStageType(types[i]);
+            s.setSequenceNo(i+1);
+            s.setPlannedStartTime(start.plusHours(i*4L));
+            s.setPlannedEndTime(start.plusHours((i+1)*4L));
+            s.setStageStatus("PENDING");
+            stageRepo.save(s);
+        }
     }
 
     // ===== Approval Workflow (adapted) =====

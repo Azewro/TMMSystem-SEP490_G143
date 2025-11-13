@@ -326,49 +326,11 @@ public class ProductionPlanController {
         return service.findApprovedPlansNotConverted();
     }
     
-    // ===== Machine Selection Endpoints =====
-    
+    // ===== Machine Selection Endpoints (stage-based only) =====
     @Operation(summary = "Lấy gợi ý máy móc cho công đoạn sản xuất",
-               description = "Lấy danh sách gợi ý máy móc thông minh cho một công đoạn sản xuất cụ thể, bao gồm phân tích khả dụng và công suất. Hệ thống sẽ tự động tính toán và xếp hạng các máy phù hợp nhất")
+               description = "Gợi ý máy móc theo stageId với phân tích khả dụng và công suất")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Thành công - Trả về danh sách gợi ý máy móc",
-                    content = @Content(mediaType = "application/json",
-                    examples = @ExampleObject(value = """
-                        [
-                          {
-                            "machineId": 1,
-                            "machineCode": "CM-01",
-                            "machineName": "Máy cuộn mắc 01",
-                            "machineType": "WARPING",
-                            "location": "Khu A",
-                            "capacityPerHour": 200.0,
-                            "estimatedDurationHours": 4.0,
-                            "canHandleQuantity": true,
-                            "available": true,
-                            "availabilityScore": 100.0,
-                            "conflicts": [],
-                            "suggestedStartTime": "2025-10-28T08:00:00",
-                            "suggestedEndTime": "2025-10-28T12:00:00",
-                            "priorityScore": 95.5
-                          },
-                          {
-                            "machineId": null,
-                            "machineCode": "OUTSOURCE-DYEING",
-                            "machineName": "Nhà cung cấp nhuộm bên ngoài",
-                            "machineType": "DYEING",
-                            "location": "Outsourced",
-                            "capacityPerHour": 999999.0,
-                            "estimatedDurationHours": 24.0,
-                            "canHandleQuantity": true,
-                            "available": true,
-                            "availabilityScore": 100.0,
-                            "conflicts": ["Cần liên hệ nhà cung cấp nhuộm trước"],
-                            "priorityScore": 90.0
-                          }
-                        ]
-                        """))),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy công đoạn sản xuất"),
-        @ApiResponse(responseCode = "500", description = "Lỗi server nội bộ")
+        @ApiResponse(responseCode = "200", description = "Thành công - Trả về danh sách gợi ý máy móc")
     })
     @GetMapping("/stages/{stageId}/machine-suggestions")
     public List<tmmsystem.service.MachineSelectionService.MachineSuggestionDto> getMachineSuggestionsForStage(
@@ -388,25 +350,7 @@ public class ProductionPlanController {
     }
     
     @Operation(summary = "Tự động gán máy móc cho công đoạn sản xuất",
-               description = "Tự động gán máy móc phù hợp nhất cho một công đoạn sản xuất dựa trên thuật toán thông minh. Hệ thống sẽ chọn máy có điểm số cao nhất và cập nhật thông tin công đoạn")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Thành công - Máy móc đã được gán tự động",
-                    content = @Content(mediaType = "application/json",
-                    examples = @ExampleObject(value = """
-                        {
-                          "id": 1,
-                          "stageType": "WARPING",
-                          "assignedMachineId": 1,
-                          "assignedMachineName": "Máy cuộn mắc 01",
-                          "plannedStartTime": "2025-10-28T08:00:00",
-                          "plannedEndTime": "2025-10-28T12:00:00",
-                          "message": "Máy móc đã được gán tự động thành công"
-                        }
-                        """))),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy công đoạn sản xuất"),
-        @ApiResponse(responseCode = "400", description = "Không có máy móc phù hợp"),
-        @ApiResponse(responseCode = "500", description = "Lỗi server nội bộ")
-    })
+               description = "Chọn máy có điểm số cao nhất cho stage")
     @PostMapping("/stages/{stageId}/auto-assign-machine")
     public tmmsystem.dto.production_plan.ProductionPlanStageDto autoAssignMachineToStage(
             @Parameter(description = "ID của công đoạn sản xuất cần gán máy", required = true, example = "1")
@@ -415,19 +359,7 @@ public class ProductionPlanController {
     }
     
     @Operation(summary = "Kiểm tra xung đột lịch trình cho công đoạn sản xuất",
-               description = "Kiểm tra xem có xung đột lịch trình nào cho một công đoạn sản xuất cụ thể không. Bao gồm kiểm tra bảo trì máy, công đoạn khác và phân công máy")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Thành công - Trả về danh sách xung đột (nếu có)",
-                    content = @Content(mediaType = "application/json",
-                    examples = @ExampleObject(value = """
-                        [
-                          "Máy CM-01 đang trong thời gian bảo trì từ 2025-10-28 08:00 đến 2025-10-28 10:00",
-                          "Máy CM-01 đã được phân công cho công đoạn khác từ 2025-10-28 14:00 đến 2025-10-28 18:00"
-                        ]
-                        """))),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy công đoạn sản xuất"),
-        @ApiResponse(responseCode = "500", description = "Lỗi server nội bộ")
-    })
+               description = "Trả về danh sách xung đột (nếu có) cho stage")
     @GetMapping("/stages/{stageId}/check-conflicts")
     public List<String> checkStageScheduleConflicts(
             @Parameter(description = "ID của công đoạn sản xuất cần kiểm tra", required = true, example = "1")
@@ -435,71 +367,13 @@ public class ProductionPlanController {
         return service.checkStageScheduleConflicts(stageId);
     }
 
-    @Operation(summary = "Gán người phụ trách cho công đoạn",
-               description = "Gán user phụ trách (in-charge) cho một công đoạn trong kế hoạch sản xuất")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Thành công - Trả về công đoạn sau khi cập nhật"),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy công đoạn hoặc người dùng"),
-        @ApiResponse(responseCode = "500", description = "Lỗi server nội bộ")
-    })
-    @PutMapping("/stages/{stageId}/assign-incharge")
-    public tmmsystem.dto.production_plan.ProductionPlanStageDto assignInCharge(
-            @Parameter(description = "ID của công đoạn", required = true, example = "1")
-            @PathVariable Long stageId,
-            @Parameter(description = "ID của người phụ trách", required = true, example = "5")
-            @RequestParam Long userId) {
-        return service.assignInChargeUser(stageId, userId);
-    }
-    
-    @Operation(summary = "Get machine suggestions for new stage",
-               description = "Get machine suggestions when creating a new production stage")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Successfully retrieved machine suggestions"),
-        @ApiResponse(responseCode = "400", description = "Invalid parameters"),
-        @ApiResponse(responseCode = "500", description = "Internal server error")
-    })
-    @GetMapping("/machine-suggestions")
-    public List<tmmsystem.service.MachineSelectionService.MachineSuggestionDto> getMachineSuggestions(
-            @Parameter(description = "Type of production stage", required = true, 
-                       example = "WARPING", 
-                       schema = @Schema(allowableValues = {"WARPING", "WEAVING", "DYEING", "CUTTING", "SEWING", "PACKAGING"}))
-            @RequestParam String stageType,
-            @Parameter(description = "ID of the product", required = true, example = "1")
-            @RequestParam Long productId,
-            @Parameter(description = "Required quantity to produce", required = true, example = "1000")
-            @RequestParam java.math.BigDecimal requiredQuantity,
-            @Parameter(description = "Preferred start time (optional)", example = "2025-10-28T08:00:00")
-            @RequestParam(required = false) java.time.LocalDateTime preferredStartTime,
-            @Parameter(description = "Preferred end time (optional)", example = "2025-10-28T17:00:00")
-            @RequestParam(required = false) java.time.LocalDateTime preferredEndTime) {
-        
-        if (preferredStartTime == null) {
-            preferredStartTime = java.time.LocalDateTime.now().plusDays(1).withHour(8).withMinute(0);
-        }
-        if (preferredEndTime == null) {
-            preferredEndTime = preferredStartTime.plusHours(8);
-        }
-        
-        return service.getMachineSuggestionsForStage(
-            stageType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
-    }
-
     @Operation(summary = "Cập nhật công đoạn sản xuất",
-               description = "Cập nhật máy, người phụ trách, thời gian và ghi chú cho một stage")
+               description = "Cập nhật máy, người phụ trách, QC, thời gian và ghi chú cho một stage bằng một endpoint duy nhất")
     @PutMapping("/stages/{stageId}")
     public tmmsystem.dto.production_plan.ProductionPlanStageDto updateStage(
             @PathVariable Long stageId,
             @RequestBody @Valid tmmsystem.dto.production_plan.ProductionPlanStageRequest request){
         return service.updateStage(stageId, request);
-    }
-
-    @Operation(summary = "Gán QC cho công đoạn",
-               description = "Gán người kiểm tra chất lượng (QC) cho stage")
-    @PutMapping("/stages/{stageId}/assign-qc")
-    public tmmsystem.dto.production_plan.ProductionPlanStageDto assignQc(
-            @PathVariable Long stageId,
-            @RequestParam Long userId){
-        return service.assignQcUser(stageId, userId);
     }
 
     @Operation(summary = "Danh sách công đoạn của kế hoạch", description = "Lấy tất cả stage theo planId phục vụ hiển thị form lập kế hoạch")

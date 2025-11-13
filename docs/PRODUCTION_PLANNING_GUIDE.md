@@ -188,31 +188,24 @@ GET `/v1/production-plans/stages/{stageId}/check-conflicts` → List<String>.
 | /v1/machine-selection/suggest-machines | POST | Gợi ý máy với body. |
 | /v1/machine-selection/check-availability | GET | Kiểm tra availability máy. |
 
-### 13.2 Production Lots, Plans & Stages
+### 13.2 Production Lots, Plans & Stages (rút gọn API cho công đoạn)
 | Endpoint | Method | Mô tả |
 |----------|--------|------|
 | /v1/production-lots | GET | Danh sách lot (filter theo status). |
-| /v1/production-lots/{id} | GET | Chi tiết lot (product, orders, current plan). |
-| /v1/production-plans | GET | Danh sách kế hoạch. |
+| /v1/production-lots/{id} | GET | Chi tiết lot. |
+| /v1/production-plans | GET/POST | Danh sách / tạo kế hoạch từ Contract. |
+| /v1/production-plans/create-from-lot?lotId=... | POST | Tạo kế hoạch từ Lot. |
 | /v1/production-plans/{id} | GET | Chi tiết kế hoạch. |
-| /v1/production-plans/create-from-lot?lotId=... | POST | Tạo plan DRAFT trực tiếp từ Lot và lock Lot sang PLANNING. |
-| /v1/production-plans/status/{status} | GET | Lọc theo trạng thái. |
-| /v1/production-plans/pending-approval | GET | Danh sách chờ duyệt. |
-| /v1/production-plans/creator/{userId} | GET | Theo người tạo. |
-| /v1/production-plans/contract/{contractId} | GET | Theo hợp đồng. |
-| /v1/production-plans/approved-not-converted | GET | Đã duyệt chưa convert. |
-| /v1/production-plans | POST | Tạo kế hoạch từ hợp đồng (có tách theo product, auto-merge). |
-| /v1/production-plans/{id}/submit | PUT | Submit duyệt. |
+| /v1/production-plans/{id}/submit | PUT | Gửi duyệt. |
 | /v1/production-plans/{id}/approve | PUT | Phê duyệt. |
 | /v1/production-plans/{id}/reject | PUT | Từ chối. |
 | /v1/production-plans/{planId}/stages | GET | Danh sách stage theo plan. |
-| /v1/production-plans/stages/{stageId} | PUT | Cập nhật tổng hợp stage. |
-| /v1/production-plans/stages/{stageId}/assign-incharge | PUT | Gán in-charge. |
-| /v1/production-plans/stages/{stageId}/assign-qc | PUT | Gán QC. |
-| /v1/production-plans/stages/{stageId}/machine-suggestions | GET | Gợi ý máy cho stage. |
+| /v1/production-plans/stages/{stageId} | PUT | Cập nhật tổng hợp stage (máy, inCharge, QC, thời gian, ghi chú). |
+| /v1/production-plans/stages/{stageId}/machine-suggestions | GET | Gợi ý máy theo stageId. |
 | /v1/production-plans/stages/{stageId}/auto-assign-machine | POST | Tự động gán máy. |
-| /v1/production-plans/stages/{stageId}/check-conflicts | GET | Xung đột lịch. |
-| /v1/production-plans/machine-suggestions | GET | Gợi ý máy khi tạo stage mới. |
+| /v1/production-plans/stages/{stageId}/check-conflicts | GET | Kiểm tra xung đột lịch. |
+
+Ghi chú: các API riêng lẻ để gán in-charge hoặc QC đã được gom về một API `PUT /v1/production-plans/stages/{stageId}` (truyền inChargeUserId, qcUserId trong body). API gợi ý máy tổng quát theo tham số tự do cũng được lược bỏ; FE lấy gợi ý theo stageId để đảm bảo dữ liệu đồng nhất (product/quantity/time lấy từ plan.lot và stage).
 
 ## 14. Mapping UI → API theo MÀN MẪU (Ảnh 3,4,5)
 A. Ảnh 3: Danh sách “Đơn Hàng Đã Merge (Auto)”
@@ -233,6 +226,44 @@ B. Ảnh 4 + 5: Form “Lập Kế Hoạch Sản Xuất – BATCH-xxx”
   - Cập nhật tổng hợp `PUT /v1/production-plans/stages/{stageId}`.
   - Kiểm tra xung đột `GET .../check-conflicts`.
 - Gửi duyệt: `PUT /v1/production-plans/{planId}/submit`.
+
+## 14bis. Luồng thao tác chi tiết theo ảnh 3 → 4 → 5
+1) Auto-merge Lô (nền):
+   - Sau khi hợp đồng APPROVED: hệ thống tách QuotationDetail theo productId và merge theo Option A (1 lot = 1 product).
+   - Scheduler AutoMergeService chạy định kỳ (mặc định 5 phút) để bắt các hợp đồng còn sót.
+2) Ảnh 3 – Danh sách Lô đã merge:
+   - FE: GET `/v1/production-lots?status=READY_FOR_PLANNING` → render bảng.
+   - Tooltip badge ORD-xxx: gọi GET `/v1/production-lots/{id}/contracts` khi cần.
+   - Bấm “Lập kế hoạch” → POST `/v1/production-plans/create-from-lot?lotId=...`.
+     - BE: tạo Plan version mới (DRAFT), `lot.status=PLANNING` (khóa lô), nếu `planning.autoInitStages=true` hệ thống sinh sẵn 6 công đoạn mặc định.
+     - FE: điều hướng `/production-plans/{planId}`.
+3) Ảnh 4 – Header kế hoạch (BATCH-xxx):
+   - FE: GET `/v1/production-plans/{planId}` để lấy `plan.lot.*` (lotCode, productName, totalQuantity...).
+   - FE: GET NVL `/v1/material-consumption/production-plan/{planId}` (+ `/availability`).
+4) Ảnh 5 – Chi tiết công đoạn:
+   - FE: GET `/v1/production-plans/{planId}/stages`.
+   - Mỗi stage:
+     - Gợi ý máy: GET `/v1/production-plans/stages/{stageId}/machine-suggestions`.
+     - Auto gán: POST `/v1/production-plans/stages/{stageId}/auto-assign-machine`.
+     - Gán in-charge: PUT `/v1/production-plans/stages/{stageId}/assign-incharge?userId=...`.
+     - Gán QC: PUT `/v1/production-plans/stages/{stageId}/assign-qc?userId=...`.
+     - Cập nhật tổng hợp: PUT `/v1/production-plans/stages/{stageId}`.
+     - Check xung đột: GET `/v1/production-plans/stages/{stageId}/check-conflicts`.
+5) Gửi duyệt / Duyệt:
+   - FE: PUT `/v1/production-plans/{planId}/submit` → Director dùng PUT `/v1/production-plans/{planId}/approve`.
+   - BE: sinh Production Order; `lot.status=PLAN_APPROVED`.
+
+## 21. Khởi tạo 6 công đoạn mặc định (tận dụng sẵn trong service)
+- Mặc định bật: `planning.autoInitStages=true` (cấu hình trong application.properties).
+- Khi tạo kế hoạch từ Lot hoặc Contract, nếu plan chưa có stage nào, hệ thống tự khởi tạo 6 stage chuẩn theo thứ tự:
+  1. WARPING (cuồng mắc)
+  2. WEAVING (dệt)
+  3. DYEING (nhuộm – mặc định vendor/outsource, có thể để machine=null)
+  4. CUTTING (cắt)
+  5. HEMMING (viền/may)
+  6. PACKAGING (đóng gói)
+- Mỗi stage mặc định có plannedStart/End kế tiếp nhau (4h/khối lượng giả định). FE có thể chỉnh lại thời gian, máy, người phụ trách, QC.
+- Nếu muốn tắt tự khởi tạo (để planner tự thêm tay), đặt: `planning.autoInitStages=false`.
 
 ## 20. Bổ sung cấu hình
 - Bật scheduler: đã mặc định `@EnableScheduling` trong ứng dụng.
