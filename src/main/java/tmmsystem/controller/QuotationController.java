@@ -25,6 +25,7 @@ import tmmsystem.service.QuotationService;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
@@ -254,5 +255,30 @@ public class QuotationController {
                     schema = @Schema(type = "string", format = "binary")))
             @RequestParam("file") MultipartFile file) {
         return mapper.toDto(service.attachQuotationFile(id, file));
+    }
+
+    // NEW: Get URL of signed quotation file
+    @Operation(summary = "Lấy URL file báo giá",
+            description = "Lấy URL để download file báo giá đã ký")
+    @GetMapping("/{id}/file-url")
+    public String getQuotationFileUrl(@Parameter(description = "ID báo giá") @PathVariable Long id) {
+        return service.getQuotationFileUrl(id);
+    }
+
+    // NEW: Download signed quotation file directly
+    @Operation(summary = "Download báo giá đã ký",
+            description = "Tải trực tiếp file báo giá đã ký")
+    @GetMapping(value = "/{id}/download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<byte[]> downloadSignedQuotation(
+            @Parameter(description = "ID báo giá") @PathVariable Long id) {
+        try {
+            byte[] fileContent = service.downloadQuotationFile(id);
+            String fileName = service.getQuotationFileName(id);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
+                    .body(fileContent);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

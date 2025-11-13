@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.Set;
 
 @Service
@@ -19,7 +20,7 @@ public class FileStorageService {
     @Value("${file.storage.path:/data}")
     private String storagePath;
     
-    @Value("${app.base-url}")
+    @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
     
     /**
@@ -48,7 +49,7 @@ public class FileStorageService {
     }
     
     /**
-     * Get contract file URL
+     * Get contract file URL (latest uploaded)
      */
     public String getContractFileUrl(Long contractId) {
         try {
@@ -56,13 +57,13 @@ public class FileStorageService {
             if (!Files.exists(contractDir)) {
                 return null;
             }
-            
-            // Find the first file in the contract directory
-            return Files.list(contractDir)
-                    .filter(Files::isRegularFile)
-                    .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
-                    .findFirst()
-                    .orElse(null);
+            try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                        .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
+                        .orElse(null);
+            }
         } catch (IOException e) {
             log.error("Error getting contract file URL for contract ID: {}", contractId, e);
             return null;
@@ -70,38 +71,37 @@ public class FileStorageService {
     }
     
     /**
-     * Download contract file
+     * Download contract file (latest uploaded)
      */
     public byte[] downloadContractFile(Long contractId) throws IOException {
         Path contractDir = Paths.get(storagePath, "contracts", contractId.toString());
         if (!Files.exists(contractDir)) {
             throw new IOException("Contract directory not found");
         }
-        
-        // Find the first file in the contract directory
-        Path filePath = Files.list(contractDir)
-                .filter(Files::isRegularFile)
-                .findFirst()
-                .orElseThrow(() -> new IOException("Contract file not found"));
-        
-        return Files.readAllBytes(filePath);
+        try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
+            Path filePath = stream
+                    .filter(Files::isRegularFile)
+                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .orElseThrow(() -> new IOException("Contract file not found"));
+            return Files.readAllBytes(filePath);
+        }
     }
     
     /**
-     * Get contract file name for download
+     * Get contract file name for download (latest uploaded)
      */
     public String getContractFileName(Long contractId) throws IOException {
         Path contractDir = Paths.get(storagePath, "contracts", contractId.toString());
         if (!Files.exists(contractDir)) {
             throw new IOException("Contract directory not found");
         }
-        
-        // Find the first file in the contract directory
-        return Files.list(contractDir)
-                .filter(Files::isRegularFile)
-                .findFirst()
-                .map(path -> path.getFileName().toString())
-                .orElseThrow(() -> new IOException("Contract file not found"));
+        try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .map(path -> path.getFileName().toString())
+                    .orElseThrow(() -> new IOException("Contract file not found"));
+        }
     }
     
     /**
@@ -138,13 +138,13 @@ public class FileStorageService {
             if (!Files.exists(poDir)) {
                 return null;
             }
-            
-            // Find the first file in the production order directory
-            return Files.list(poDir)
-                    .filter(Files::isRegularFile)
-                    .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
-                    .findFirst()
-                    .orElse(null);
+            try (java.util.stream.Stream<Path> stream = Files.list(poDir)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
+                        .findFirst()
+                        .orElse(null);
+            }
         } catch (IOException e) {
             log.error("Error getting production order file URL for PO ID: {}", productionOrderId, e);
             return null;
@@ -173,12 +173,13 @@ public class FileStorageService {
         try {
             Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
             if (!Files.exists(dir)) return null;
-            return Files.list(dir)
-                    .filter(Files::isRegularFile)
-                    .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
-                    .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
-                    .findFirst()
-                    .orElse(null);
+            try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                        .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
+                        .orElse(null);
+            }
         } catch (IOException e) {
             log.error("Error getting quotation file URL for ID {}", quotationId, e);
             return null;
@@ -191,12 +192,13 @@ public class FileStorageService {
     public byte[] downloadQuotationFile(Long quotationId) throws IOException {
         Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
         if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
-        Path filePath = Files.list(dir)
-                .filter(Files::isRegularFile)
-                .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
-                .findFirst()
-                .orElseThrow(() -> new IOException("Quotation file not found"));
-        return Files.readAllBytes(filePath);
+        try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
+            Path filePath = stream
+                    .filter(Files::isRegularFile)
+                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .orElseThrow(() -> new IOException("Quotation file not found"));
+            return Files.readAllBytes(filePath);
+        }
     }
 
     /**
@@ -205,37 +207,38 @@ public class FileStorageService {
     public String getQuotationFileName(Long quotationId) throws IOException {
         Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
         if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
-        return Files.list(dir)
-                .filter(Files::isRegularFile)
-                .sorted((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
-                .findFirst()
-                .map(p -> p.getFileName().toString())
-                .orElseThrow(() -> new IOException("Quotation file not found"));
+        try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .map(p -> p.getFileName().toString())
+                    .orElseThrow(() -> new IOException("Quotation file not found"));
+        }
     }
 
     /**
      * Get file by filename (for API endpoint)
      */
     public byte[] getFileByFilename(String filename) throws IOException {
-        // Search in all subdirectories
         Path storageDir = Paths.get(storagePath);
         if (!Files.exists(storageDir)) {
             throw new IOException("Storage directory not found");
         }
-        
-        return Files.walk(storageDir)
-                .filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().equals(filename))
-                .findFirst()
-                .map(path -> {
-                    try {
-                        return Files.readAllBytes(path);
-                    } catch (IOException e) {
-                        log.error("Error reading file: {}", path, e);
-                        return null;
-                    }
-                })
-                .orElseThrow(() -> new IOException("File not found: " + filename));
+        try (java.util.stream.Stream<Path> walk = Files.walk(storageDir)) {
+            return walk
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().equals(filename))
+                    .findFirst()
+                    .map(path -> {
+                        try {
+                            return Files.readAllBytes(path);
+                        } catch (IOException e) {
+                            log.error("Error reading file: {}", path, e);
+                            return null;
+                        }
+                    })
+                    .orElseThrow(() -> new IOException("File not found: " + filename));
+        }
     }
     
     /**

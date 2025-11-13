@@ -2,74 +2,31 @@ package tmmsystem.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import tmmsystem.service.FileStorageService;
-
-import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/files")
 public class FileController {
-    
-    private final FileStorageService fileStorageService;
-    
-    public FileController(FileStorageService fileStorageService) {
-        this.fileStorageService = fileStorageService;
-    }
-    
-    @Operation(summary = "Get file by filename - Display inline for images, download for others")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "File retrieved successfully"),
-            @ApiResponse(responseCode = "404", description = "File not found")
-    })
-    @GetMapping("/{filename}")
-    public ResponseEntity<byte[]> getFile(
-            @Parameter(description = "Filename to retrieve") @PathVariable String filename) {
+    private final FileStorageService storage;
+    public FileController(FileStorageService storage) { this.storage = storage; }
+
+    @Operation(summary = "Serve stored file by filename")
+    @GetMapping(value = "/{filename}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<byte[]> getFile(@Parameter(description = "Tên file") @PathVariable String filename) {
         try {
-            byte[] fileContent = fileStorageService.getFileByFilename(filename);
-            
-            // Determine content type based on file extension
-            String contentType = getContentType(filename);
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType(contentType));
-            
-            // For images, display inline; for other files, download
-            if (contentType.startsWith("image/")) {
-                headers.setContentDispositionFormData("inline", filename);
-            } else {
-                headers.setContentDispositionFormData("attachment", filename);
-            }
-            
+            byte[] bytes = storage.getFileByFilename(filename);
             return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(fileContent);
-                    
-        } catch (IOException e) {
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .body(bytes);
+        } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
     }
-    
-    /**
-     * Determine content type based on file extension
-     */
-    private String getContentType(String filename) {
-        String extension = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
-        
-        return switch (extension) {
-            case "pdf" -> "application/pdf";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "png" -> "image/png";
-            case "gif" -> "image/gif";
-            case "bmp" -> "image/bmp";
-            case "webp" -> "image/webp";
-            default -> "application/octet-stream";
-        };
-    }
 }
+
