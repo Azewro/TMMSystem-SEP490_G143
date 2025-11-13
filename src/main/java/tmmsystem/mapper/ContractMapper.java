@@ -23,10 +23,15 @@ public class ContractMapper {
         dto.setDirectorApprovalNotes(c.getDirectorApprovalNotes());
         dto.setCreatedById(c.getCreatedBy() != null ? c.getCreatedBy().getId() : null);
         dto.setApprovedById(c.getApprovedBy() != null ? c.getApprovedBy().getId() : null);
+        dto.setAssignedSalesId(c.getAssignedSales() != null ? c.getAssignedSales().getId() : null);
+        dto.setAssignedPlanningId(c.getAssignedPlanning() != null ? c.getAssignedPlanning().getId() : null);
         dto.setCreatedAt(c.getCreatedAt());
         dto.setUpdatedAt(c.getUpdatedAt());
+        // NEW: map approvals
+        dto.setSalesApprovedById(c.getSalesApprovedBy() != null ? c.getSalesApprovedBy().getId() : null);
+        dto.setSalesApprovedAt(c.getSalesApprovedAt());
+        dto.setPlanningApprovedById(c.getPlanningApprovedBy() != null ? c.getPlanningApprovedBy().getId() : null);
+        dto.setPlanningApprovedAt(c.getPlanningApprovedAt());
         return dto;
     }
 }
-
-

@@ -16,6 +16,7 @@ import tmmsystem.dto.sales.ContractDto;
 import tmmsystem.entity.Customer;
 import tmmsystem.entity.Quotation;
 import tmmsystem.entity.Contract;
+import tmmsystem.entity.User;
 import tmmsystem.mapper.ContractMapper;
 import tmmsystem.service.ContractService;
 
@@ -61,6 +62,14 @@ public class ContractController {
         c.setStatus(body.getStatus());
         c.setDirectorApprovedAt(body.getDirectorApprovedAt());
         c.setDirectorApprovalNotes(body.getDirectorApprovalNotes());
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); c.setCreatedBy(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); c.setApprovedBy(u); }
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); c.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); c.setAssignedPlanning(u); }
+        if (body.getSalesApprovedById() != null) { User u = new User(); u.setId(body.getSalesApprovedById()); c.setSalesApprovedBy(u); }
+        if (body.getPlanningApprovedById() != null) { User u = new User(); u.setId(body.getPlanningApprovedById()); c.setPlanningApprovedBy(u); }
+        c.setSalesApprovedAt(body.getSalesApprovedAt());
+        c.setPlanningApprovedAt(body.getPlanningApprovedAt());
         return mapper.toDto(service.create(c));
     }
 
@@ -82,6 +91,14 @@ public class ContractController {
         c.setStatus(body.getStatus());
         c.setDirectorApprovedAt(body.getDirectorApprovedAt());
         c.setDirectorApprovalNotes(body.getDirectorApprovalNotes());
+        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); c.setCreatedBy(u); }
+        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); c.setApprovedBy(u); }
+        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); c.setAssignedSales(u); }
+        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); c.setAssignedPlanning(u); }
+        if (body.getSalesApprovedById() != null) { User u = new User(); u.setId(body.getSalesApprovedById()); c.setSalesApprovedBy(u); }
+        if (body.getPlanningApprovedById() != null) { User u = new User(); u.setId(body.getPlanningApprovedById()); c.setPlanningApprovedBy(u); }
+        c.setSalesApprovedAt(body.getSalesApprovedAt());
+        c.setPlanningApprovedAt(body.getPlanningApprovedAt());
         return mapper.toDto(service.update(id, c));
     }
 
@@ -193,6 +210,17 @@ public class ContractController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    // NEW: query by approved sales/planning id
+    @Operation(summary = "Danh sách hợp đồng theo Sales đã duyệt")
+    @GetMapping("/approved-by/sales/{userId}")
+    public List<ContractDto> getBySalesApproved(@PathVariable Long userId) {
+        return service.findBySalesApprovedUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    @Operation(summary = "Danh sách hợp đồng theo Planning đã duyệt")
+    @GetMapping("/approved-by/planning/{userId}")
+    public List<ContractDto> getByPlanningApproved(@PathVariable Long userId) {
+        return service.findByPlanningApprovedUserId(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    }
 }
-
-

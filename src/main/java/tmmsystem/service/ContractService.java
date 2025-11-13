@@ -49,6 +49,10 @@ public class ContractService {
     public List<Contract> findAll() { return repository.findAll(); }
     public Contract findById(Long id) { return repository.findById(id).orElseThrow(); }
 
+    // NEW: queries by approved sales/planning id
+    public List<Contract> findBySalesApprovedUserId(Long userId) { return repository.findBySalesApprovedBy_Id(userId); }
+    public List<Contract> findByPlanningApprovedUserId(Long userId) { return repository.findByPlanningApprovedBy_Id(userId); }
+
     @Transactional
     public Contract create(Contract c) { return repository.save(c); }
 
@@ -68,6 +72,13 @@ public class ContractService {
         existing.setDirectorApprovalNotes(updated.getDirectorApprovalNotes());
         existing.setCreatedBy(updated.getCreatedBy());
         existing.setApprovedBy(updated.getApprovedBy());
+        existing.setAssignedSales(updated.getAssignedSales());
+        existing.setAssignedPlanning(updated.getAssignedPlanning());
+        // NEW: map approvals
+        existing.setSalesApprovedBy(updated.getSalesApprovedBy());
+        existing.setSalesApprovedAt(updated.getSalesApprovedAt());
+        existing.setPlanningApprovedBy(updated.getPlanningApprovedBy());
+        existing.setPlanningApprovedAt(updated.getPlanningApprovedAt());
         return existing;
     }
 

@@ -22,8 +22,14 @@ public class ContractDto {
     private String directorApprovalNotes;
     private Long createdById;
     private Long approvedById;
+    // NEW: assignments
+    private Long assignedSalesId;
+    private Long assignedPlanningId;
     private Instant createdAt;
     private Instant updatedAt;
+    // NEW: approvals like RFQ/Quotation
+    private Long salesApprovedById;
+    private Instant salesApprovedAt;
+    private Long planningApprovedById;
+    private Instant planningApprovedAt;
 }
-
-

@@ -15,7 +15,9 @@ import java.time.LocalDate;
         },
         indexes = {
                 @Index(name = "idx_contract_customer_date", columnList = "customer_id, contract_date"),
-                @Index(name = "idx_contract_status", columnList = "status")
+                @Index(name = "idx_contract_status", columnList = "status"),
+                @Index(name = "idx_contract_sales_approved_by", columnList = "sales_approved_by"),
+                @Index(name = "idx_contract_planning_approved_by", columnList = "planning_approved_by")
         }
 )
 @Getter @Setter
@@ -57,6 +59,15 @@ public class Contract {
     @Column(length = 20)
     private String status = "DRAFT"; // DRAFT, PENDING_APPROVAL, APPROVED, SIGNED, CANCELED
 
+    // NEW: Assignees (mirror RFQ/Quotation)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_sales_id")
+    private User assignedSales; // Sales in charge
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_planning_id")
+    private User assignedPlanning; // Planning in charge
+
     // Director approval workflow
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "director_approved_by")
@@ -68,6 +79,22 @@ public class Contract {
     @Column(name = "director_approval_notes", columnDefinition = "text")
     private String directorApprovalNotes;
 
+    // Sales approval (separate from director)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sales_approved_by")
+    private User salesApprovedBy;
+
+    @Column(name = "sales_approved_at")
+    private Instant salesApprovedAt;
+
+    // Planning approval (capacity/feasibility sign-off)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "planning_approved_by")
+    private User planningApprovedBy;
+
+    @Column(name = "planning_approved_at")
+    private Instant planningApprovedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy; // Sales person
@@ -76,5 +103,3 @@ public class Contract {
     @JoinColumn(name = "approved_by")
     private User approvedBy; // Final approver
 }
-
-

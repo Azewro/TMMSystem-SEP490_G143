@@ -449,22 +449,30 @@ public class QuotationService {
         contract.setQuotation(quotation);
         contract.setCustomer(quotation.getCustomer());
         contract.setContractDate(java.time.LocalDate.now());
-        contract.setDeliveryDate(quotation.getValidUntil()); // Sử dụng ngày hết hạn của báo giá
+        contract.setDeliveryDate(quotation.getValidUntil());
         contract.setTotalAmount(quotation.getTotalAmount());
-        contract.setStatus("PENDING_UPLOAD"); // changed: pending upload signed contract by Sales
+        contract.setStatus("PENDING_UPLOAD"); // pending upload signed contract by Sales
         contract.setCreatedBy(quotation.getCreatedBy());
+        // propagate assignments from quotation
+        contract.setAssignedSales(quotation.getAssignedSales());
+        contract.setAssignedPlanning(quotation.getAssignedPlanning());
+        // NEW: propagate approvals if any existed on quotation (mirror RFQ/Quotation)
+        if (quotation.getApprovedBy() != null) {
+            // treat as salesApprovedBy by default (can adjust per business rules)
+            contract.setSalesApprovedBy(quotation.getApprovedBy());
+            contract.setSalesApprovedAt(java.time.Instant.now());
+        }
+        if (quotation.getCapacityCheckedBy() != null) {
+            contract.setPlanningApprovedBy(quotation.getCapacityCheckedBy());
+            contract.setPlanningApprovedAt(quotation.getCapacityCheckedAt());
+        }
 
-        // Lưu Contract
         Contract savedContract = contractRepository.save(contract);
 
-        // Cập nhật trạng thái Quotation
         quotation.setStatus("ORDER_CREATED");
         quotationRepository.save(quotation);
 
-        // Gửi thông báo cho Sale Staff (để biết cần upload hợp đồng đã ký)
         notificationService.notifyOrderCreated(savedContract);
-        
-        // Gửi email xác nhận đơn hàng cho Customer
         emailService.sendOrderConfirmationEmail(savedContract);
 
         return savedContract;
