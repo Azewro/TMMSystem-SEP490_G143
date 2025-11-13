@@ -65,7 +65,19 @@ public class QuotationService {
 
     @Transactional
     public Quotation create(Quotation quotation) { 
-        return quotationRepository.save(quotation); 
+        // Auto populate from RFQ if provided
+        if (quotation.getRfq() != null && quotation.getRfq().getId() != null) {
+            Rfq rfq = rfqRepository.findById(quotation.getRfq().getId()).orElseThrow();
+            if (quotation.getCustomer() == null) quotation.setCustomer(rfq.getCustomer());
+            if (quotation.getAssignedSales() == null && rfq.getAssignedSales() != null) quotation.setAssignedSales(rfq.getAssignedSales());
+            if (quotation.getAssignedPlanning() == null && rfq.getAssignedPlanning() != null) quotation.setAssignedPlanning(rfq.getAssignedPlanning());
+            if (quotation.getContactPersonSnapshot() == null) quotation.setContactPersonSnapshot(rfq.getContactPersonSnapshot());
+            if (quotation.getContactEmailSnapshot() == null) quotation.setContactEmailSnapshot(rfq.getContactEmailSnapshot());
+            if (quotation.getContactPhoneSnapshot() == null) quotation.setContactPhoneSnapshot(rfq.getContactPhoneSnapshot());
+            if (quotation.getContactAddressSnapshot() == null) quotation.setContactAddressSnapshot(rfq.getContactAddressSnapshot());
+            if (quotation.getContactMethod() == null) quotation.setContactMethod(rfq.getContactMethod());
+        }
+        return quotationRepository.save(quotation);
     }
 
     @Transactional
@@ -439,7 +451,7 @@ public class QuotationService {
         contract.setContractDate(java.time.LocalDate.now());
         contract.setDeliveryDate(quotation.getValidUntil()); // Sử dụng ngày hết hạn của báo giá
         contract.setTotalAmount(quotation.getTotalAmount());
-        contract.setStatus("PENDING_APPROVAL"); // set to pending as requested
+        contract.setStatus("PENDING_UPLOAD"); // changed: pending upload signed contract by Sales
         contract.setCreatedBy(quotation.getCreatedBy());
 
         // Lưu Contract
@@ -449,7 +461,7 @@ public class QuotationService {
         quotation.setStatus("ORDER_CREATED");
         quotationRepository.save(quotation);
 
-        // Gửi thông báo cho Sale Staff
+        // Gửi thông báo cho Sale Staff (để biết cần upload hợp đồng đã ký)
         notificationService.notifyOrderCreated(savedContract);
         
         // Gửi email xác nhận đơn hàng cho Customer
@@ -465,7 +477,17 @@ public class QuotationService {
         try {
             String path = fileStorageService.uploadQuotationFile(file, quotationId);
             quotation.setFilePath(path);
-            return quotationRepository.save(quotation);
+            Quotation saved = quotationRepository.save(quotation);
+
+            // NEW: If a contract exists for this quotation and currently waiting for upload, move to pending approval
+            Contract contract = contractRepository.findFirstByQuotation_Id(quotationId);
+            if (contract != null && "PENDING_UPLOAD".equals(contract.getStatus())) {
+                contract.setStatus("PENDING_APPROVAL");
+                contractRepository.save(contract);
+                // Notify Director that contract is ready for approval
+                notificationService.notifyContractUploaded(contract);
+            }
+            return saved;
         } catch (Exception e) {
             throw new RuntimeException("Failed to upload quotation file: " + e.getMessage(), e);
         }
