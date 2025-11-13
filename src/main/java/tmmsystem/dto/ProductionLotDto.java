@@ -24,4 +24,8 @@ public class ProductionLotDto {
     private List<String> orderNumbers; // e.g., ORD-001, ORD-002
     private Long currentPlanId; // current plan version id if any
     private String currentPlanStatus;
+    // NEW: danh sách chi tiết các hợp đồng đã merge vào lot (để FE hiển thị badges ORD-xxx)
+    private List<ProductionLotContractDto> mergedContracts;
+    // NEW: tổng số lượng hợp đồng (số phần tử mergedContracts) để FE hiển thị nhanh, tránh size() null check
+    private Integer totalContractsCount;
 }

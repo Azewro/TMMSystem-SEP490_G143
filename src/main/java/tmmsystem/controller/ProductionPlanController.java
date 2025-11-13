@@ -160,6 +160,12 @@ public class ProductionPlanController {
         return service.createPlanFromContract(request);
     }
     
+    @Operation(summary = "Tạo kế hoạch từ Lot", description = "Tạo bản kế hoạch DRAFT và lock Lot sang PLANNING")
+    @PostMapping(value = "/create-from-lot")
+    public ProductionPlanDto createFromLot(@RequestParam Long lotId){
+        return service.createPlanFromLot(lotId);
+    }
+
     // ===== Approval Workflow =====
     
     @Operation(summary = "Gửi kế hoạch để phê duyệt", 

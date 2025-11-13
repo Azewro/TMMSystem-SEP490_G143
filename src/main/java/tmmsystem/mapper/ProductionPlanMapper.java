@@ -3,6 +3,7 @@ package tmmsystem.mapper;
 import org.springframework.stereotype.Component;
 import tmmsystem.dto.production_plan.*;
 import tmmsystem.entity.*;
+import tmmsystem.dto.ProductionLotContractDto;
 
 @Component
 public class ProductionPlanMapper {
@@ -96,13 +97,35 @@ public class ProductionPlanMapper {
         dto.setStatus(lot.getStatus());
         // order numbers
         java.util.List<String> orderNos = new java.util.ArrayList<>();
+        java.util.List<ProductionLotContractDto> merged = new java.util.ArrayList<>();
+        java.util.Map<Long, ProductionLotContractDto> contractMap = new java.util.HashMap<>();
         if (lot.getLotOrders()!=null){
             for (var lo : lot.getLotOrders()){
-                if (lo.getContract()!=null) orderNos.add(lo.getContract().getContractNumber());
+                if (lo.getContract()!=null){
+                    orderNos.add(lo.getContract().getContractNumber());
+                    var existing = contractMap.get(lo.getContract().getId());
+                    if (existing==null){
+                        existing = new ProductionLotContractDto();
+                        existing.setContractId(lo.getContract().getId());
+                        existing.setContractNumber(lo.getContract().getContractNumber());
+                        existing.setAllocatedQuantity(java.math.BigDecimal.ZERO);
+                        existing.setContractDate(lo.getContract().getContractDate());
+                        existing.setDeliveryDate(lo.getContract().getDeliveryDate());
+                        contractMap.put(lo.getContract().getId(), existing);
+                    }
+                    // cộng dồn allocatedQuantity
+                    if (lo.getAllocatedQuantity()!=null){
+                        existing.setAllocatedQuantity(existing.getAllocatedQuantity().add(lo.getAllocatedQuantity()));
+                    }
+                }
             }
         }
+        merged.addAll(contractMap.values());
+        // sort theo contractNumber để ổn định hiển thị
+        merged.sort(java.util.Comparator.comparing(ProductionLotContractDto::getContractNumber));
         dto.setOrderNumbers(orderNos);
-        // currentPlanId/currentPlanStatus sẽ được set ở controller nếu cần
+        dto.setMergedContracts(merged);
+        dto.setTotalContractsCount(merged.size());
         return dto;
     }
     

@@ -25,6 +25,8 @@ public class ContractService {
     private final ProductionPlanService productionPlanService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
+    @Autowired(required = false)
+    private AutoMergeService autoMergeService;
 
     @org.springframework.beans.factory.annotation.Value("${lot.merge.windowDays:1}")
     private int lotMergeWindowDays;
@@ -120,31 +122,33 @@ public class ContractService {
     public Contract approveContract(Long contractId, Long directorId, String notes) {
         Contract contract = repository.findById(contractId)
             .orElseThrow(() -> new RuntimeException("Contract not found"));
-        
         User director = userRepository.findById(directorId)
             .orElseThrow(() -> new RuntimeException("Director not found"));
-        
         contract.setStatus("APPROVED");
         contract.setDirectorApprovedBy(director);
         contract.setDirectorApprovedAt(Instant.now());
         contract.setDirectorApprovalNotes(notes);
         contract.setUpdatedAt(Instant.now());
-        
         Contract savedContract = repository.save(contract);
 
-        // Merge Lot ngay sau khi hợp đồng được duyệt (theo 3 tiêu chí: cùng sản phẩm, ngày giao ±1, ngày ký ±1)
+        // Option A: tách theo product và merge ngay
         try {
-            productionPlanService.createOrMergeLotFromContract(savedContract.getId());
-        } catch (Exception e) {
-            log.warn("Merge lot after contract approval failed: {}", e.getMessage());
+            if (savedContract.getQuotation()!=null && savedContract.getQuotation().getDetails()!=null){
+                var byProduct = savedContract.getQuotation().getDetails().stream()
+                        .collect(java.util.stream.Collectors.groupingBy(d -> d.getProduct().getId()));
+                for (var e : byProduct.entrySet()){
+                    productionPlanService.createOrMergeLotFromContractAndProduct(savedContract, e.getKey(), e.getValue());
+                }
+            }
+        } catch (Exception e){
+            log.warn("Immediate lot merge failed: {}", e.getMessage());
         }
 
-        // Merge Lots cho tất cả hợp đồng APPROVED chưa có kế hoạch (batch) vẫn giữ để đảm bảo đồng bộ
-        mergeLotsForApprovedContracts();
+        // Fallback: chạy scan nền để đảm bảo đồng bộ
+        try { if (autoMergeService!=null) autoMergeService.scanNewlyApprovedContracts(); } catch (Exception ignore) {}
 
-        // Gửi thông báo cho Planning Department
+        // Thông báo
         notificationService.notifyContractApproved(savedContract);
-        
         return savedContract;
     }
     

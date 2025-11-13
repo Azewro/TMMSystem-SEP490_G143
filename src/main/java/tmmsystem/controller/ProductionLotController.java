@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import tmmsystem.dto.ProductionLotDto;
+import tmmsystem.dto.ProductionLotContractDto;
 import tmmsystem.mapper.ProductionPlanMapper;
 import tmmsystem.repository.ProductionLotRepository;
 import tmmsystem.repository.ProductionPlanRepository;
@@ -44,5 +45,13 @@ public class ProductionLotController {
         var current = plans.stream().filter(p->Boolean.TRUE.equals(p.getCurrentVersion())).findFirst().orElse(null);
         if (current!=null){ dto.setCurrentPlanId(current.getId()); dto.setCurrentPlanStatus(current.getStatus()!=null? current.getStatus().name(): null); }
         return dto;
+    }
+
+    @Operation(summary = "Lấy danh sách hợp đồng đã merge", description = "Trả về chi tiết các contract nằm trong lot với số lượng đã phân bổ")
+    @GetMapping("/{id}/contracts")
+    public List<ProductionLotContractDto> mergedContracts(@PathVariable Long id){
+        var lot = lotRepo.findById(id).orElseThrow(() -> new RuntimeException("Lot not found"));
+        var dto = mapper.toDto(lot);
+        return dto.getMergedContracts();
     }
 }

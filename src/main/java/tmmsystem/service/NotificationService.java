@@ -586,4 +586,22 @@ public class NotificationService {
             notificationRepository.save(n);
         }
     }
+
+    @Transactional
+    public void notifyPlanningNewLotsCreated(int count){
+        List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
+        for (User user : planningStaff) {
+            Notification n = new Notification();
+            n.setUser(user);
+            n.setType("INFO");
+            n.setCategory("PRODUCTION");
+            n.setTitle("Lô sản xuất mới sẵn sàng lập kế hoạch");
+            n.setMessage("Có " + count + " lô mới ở trạng thái READY_FOR_PLANNING.");
+            n.setReferenceType("PRODUCTION_LOT");
+            n.setReferenceId(null);
+            n.setRead(false);
+            n.setCreatedAt(Instant.now());
+            notificationRepository.save(n);
+        }
+    }
 }

@@ -195,12 +195,13 @@ GET `/v1/production-plans/stages/{stageId}/check-conflicts` → List<String>.
 | /v1/production-lots/{id} | GET | Chi tiết lot (product, orders, current plan). |
 | /v1/production-plans | GET | Danh sách kế hoạch. |
 | /v1/production-plans/{id} | GET | Chi tiết kế hoạch. |
+| /v1/production-plans/create-from-lot?lotId=... | POST | Tạo plan DRAFT trực tiếp từ Lot và lock Lot sang PLANNING. |
 | /v1/production-plans/status/{status} | GET | Lọc theo trạng thái. |
 | /v1/production-plans/pending-approval | GET | Danh sách chờ duyệt. |
 | /v1/production-plans/creator/{userId} | GET | Theo người tạo. |
 | /v1/production-plans/contract/{contractId} | GET | Theo hợp đồng. |
 | /v1/production-plans/approved-not-converted | GET | Đã duyệt chưa convert. |
-| /v1/production-plans | POST | Tạo kế hoạch (merge contract → lot). |
+| /v1/production-plans | POST | Tạo kế hoạch từ hợp đồng (có tách theo product, auto-merge). |
 | /v1/production-plans/{id}/submit | PUT | Submit duyệt. |
 | /v1/production-plans/{id}/approve | PUT | Phê duyệt. |
 | /v1/production-plans/{id}/reject | PUT | Từ chối. |
@@ -213,194 +214,26 @@ GET `/v1/production-plans/stages/{stageId}/check-conflicts` → List<String>.
 | /v1/production-plans/stages/{stageId}/check-conflicts | GET | Xung đột lịch. |
 | /v1/production-plans/machine-suggestions | GET | Gợi ý máy khi tạo stage mới. |
 
-### 13.3 Material Consumption & Availability
-| Endpoint | Method | Mô tả |
-|----------|--------|-------|
-| /v1/material-consumption/production-plan/{planId} | GET | Tính tiêu hao default. |
-| /v1/material-consumption/production-plan/{planId}/with-waste | GET | Tính tiêu hao custom waste. |
-| /v1/material-consumption/production-plan/{planId}/availability | GET | Khả dụng NVL. |
-| /v1/material-consumption/production-plan/{planId}/create-requisition | POST | Tạo requisition. |
-
-## 14. Mapping UI → API theo MÀN MẪU
-A. Màn “Danh sách đơn hàng đã gộp” (của Kế hoạch)
+## 14. Mapping UI → API theo MÀN MẪU (Ảnh 3,4,5)
+A. Ảnh 3: Danh sách “Đơn Hàng Đã Merge (Auto)”
 - API: `GET /v1/production-lots?status=READY_FOR_PLANNING`.
-- Cột hiển thị: `lotCode`, `productName`, `sizeSnapshot`, `totalQuantity`, `deliveryDateTarget`, `orderNumbers`, `status`, `currentPlanStatus`.
-- Action “Lập kế hoạch”: gọi `POST /v1/production-plans` với `{ "contractId": <bất kỳ contract trong lot> }` hoặc (nếu dùng trực tiếp theo lot) endpoint mở rộng `POST /v1/production-plans/create-from-lot?lotId=...` (đã có service `createPlanFromLot`, có thể map ra controller khi cần).
+- Cột: lotCode, productName, sizeSnapshot, totalQuantity, deliveryDateTarget, orderNumbers (badge ORD-xxx), status, currentPlanStatus.
+- Hành động:
+  - “Lập kế hoạch”: `POST /v1/production-plans/create-from-lot?lotId={id}` → trả về plan DRAFT; điều hướng sang màn 4/5.
+  - “Xem”: nếu đã có `currentPlanId` → điều hướng `/production-plans/{planId}`.
 
-B. Màn “Lập kế hoạch sản xuất” (Form chi tiết theo LÔ)
-1) Header
-- Lấy từ `GET /v1/production-plans/{planId}` → `plan.lot.*` và `plan.status`.
-- NVL tiêu hao: `GET /v1/material-consumption/production-plan/{planId}` (+ availability nếu cần).
-- Ngày tổng: FE tính `min(plannedStartTime)` và `max(plannedEndTime)` trên danh sách stage.
+B. Ảnh 4 + 5: Form “Lập Kế Hoạch Sản Xuất – BATCH-xxx”
+- Header & tổng quan:
+  - `GET /v1/production-plans/{planId}` → lấy lotCode, productName, totalQuantity.
+  - NVL tiêu hao: `GET /v1/material-consumption/production-plan/{planId}` và (nếu cần) `/availability`.
+- Chi tiết công đoạn:
+  - `GET /v1/production-plans/{planId}/stages`.
+  - Cho từng stage: gợi ý máy `GET .../stages/{stageId}/machine-suggestions`; auto gán `POST .../auto-assign-machine`.
+  - Gán người `PUT .../assign-incharge?userId=...` + `PUT .../assign-qc?userId=...`.
+  - Cập nhật tổng hợp `PUT /v1/production-plans/stages/{stageId}`.
+  - Kiểm tra xung đột `GET .../check-conflicts`.
+- Gửi duyệt: `PUT /v1/production-plans/{planId}/submit`.
 
-2) Khối Công đoạn (cuộn mắc, dệt, nhuộm, cắt, may/viền, đóng gói)
-- `GET /v1/production-plans/{planId}/stages`.
-- Cho từng stage:
-  - Gợi ý máy: `GET /v1/production-plans/stages/{stageId}/machine-suggestions`.
-  - Auto gán: `POST /v1/production-plans/stages/{stageId}/auto-assign-machine`.
-  - Gán người: `PUT /v1/production-plans/stages/{stageId}/assign-incharge?userId=...` và `PUT /v1/production-plans/stages/{stageId}/assign-qc?userId=...`.
-  - Cập nhật tổng hợp: `PUT /v1/production-plans/stages/{stageId}` (máy, người, thời gian, ghi chú).
-  - Kiểm tra xung đột: `GET /v1/production-plans/stages/{stageId}/check-conflicts` → hiển thị badge cảnh báo nếu có.
-
-3) Submit phê duyệt
-- `PUT /v1/production-plans/{planId}/submit`.
-
-C. Màn “Danh sách lập kế hoạch của Kế hoạch”
-- API: `GET /v1/production-plans` hoặc lọc theo creator `GET /v1/production-plans/creator/{userId}`.
-- Cột: `planCode`, `productName` (từ `plan.lot.product`), `totalQuantity` (`plan.lot.totalQuantity`), `plannedStart~End` (tính từ stages), `createdBy`, `status`.
-
-D. Màn “Chi tiết kế hoạch của Kế hoạch”
-- API: `GET /v1/production-plans/{id}` + `GET /v1/production-plans/{id}/stages` + NVL như mục B.
-- Nút: Chỉnh sửa (dùng PUT stage), Quay lại.
-
-E. Màn “Danh sách/Chi tiết duyệt của Giám đốc”
-- List: `GET /v1/production-plans/pending-approval`.
-- Detail: `GET /v1/production-plans/{id}` + stages.
-- Nút: `PUT /v1/production-plans/{id}/approve` hoặc `/reject` (kèm lý do).
-
-F. Khi APPROVED
-- Hệ thống tự tạo Production Order từ LÔ đã duyệt (số lượng = `lot.totalQuantity`).
-- Các vai trò PO/WO triển khai như tài liệu Production/Execution.
-
-Ví dụ FE flow (chuẩn hoá theo màn mẫu)
-- Step 1: `GET /v1/production-lots?status=READY_FOR_PLANNING` → render bảng.
-- Step 2: user chọn 1 lô → `POST /v1/production-plans` với `contractId` thuộc lô (hoặc dùng create-from-lot).
-- Step 3: load `GET /v1/production-plans/{planId}`, `/stages`, và `material-consumption`.
-- Step 4: cho từng stage: gợi ý máy → auto-assign hoặc chọn thủ công → `PUT /stages/{id}`; gán inCharge/QC.
-- Step 5: `GET .../check-conflicts` + `GET material-consumption/.../availability`.
-- Step 6: `PUT /v1/production-plans/{planId}/submit` → Director approve/reject.
-
-### 14.5 Ví dụ Lot List & Lot Detail
-#### Lot List
-```http
-GET /v1/production-lots?status=READY_FOR_PLANNING
-```
-Response (rút gọn):
-```json
-[
-  {
-    "id": 10,
-    "lotCode": "LOT-20251110-003",
-    "productName": "Túi vải canvas",
-    "sizeSnapshot": "30x40cm",
-    "totalQuantity": 1500,
-    "deliveryDateTarget": "2025-12-15",
-    "orderNumbers": ["ORD-001","ORD-003","ORD-005"],
-    "status": "READY_FOR_PLANNING",
-    "currentPlanId": null,
-    "currentPlanStatus": null
-  }
-]
-```
-#### Lot Detail
-```http
-GET /v1/production-lots/10
-```
-Response (rút gọn):
-```json
-{
-  "id": 10,
-  "lotCode": "LOT-20251110-003",
-  "productId": 4,
-  "productName": "Túi vải canvas",
-  "sizeSnapshot": "30x40cm",
-  "totalQuantity": 1500,
-  "deliveryDateTarget": "2025-12-15",
-  "orderNumbers": ["ORD-001","ORD-003","ORD-005"],
-  "status": "READY_FOR_PLANNING",
-  "currentPlanId": 31,
-  "currentPlanStatus": "DRAFT"
-}
-```
-
-## 15. FAQ nhanh (trả lời các câu hỏi quan trọng)
-- Trước khi lập kế hoạch có thể merge bao nhiêu contract vào lô cũng được? → Đúng, miễn là Lot ở trạng thái FORMING hoặc READY_FOR_PLANNING và cùng tiêu chí gộp.
-- Sau khi bắt đầu lập kế hoạch có còn merge thêm vào lô được không? → Không. Khi tạo phiên bản kế hoạch (`createPlanVersion`) Lot sẽ bị khoá về trạng thái PLANNING và không nhận thêm hợp đồng.
-- Khi lập kế hoạch gắn máy cho "plan riêng" hay cho "lô"? → Gắn ở cấp công đoạn (stage) của kế hoạch gắn với LÔ. Về bản chất là gắn cho lô (khối lượng đã gom), không phải cho từng contract nữa.
-- Kiểm tra NVL/khả dụng máy áp dụng theo từng contract hay theo lô? → Theo lô. Tất cả phép tính tiêu hao, availability NVL và xếp máy đều dựa trên `lot.totalQuantity`.
-- FE muốn lấy "GET lot" để hiện danh sách lô thì gọi gì? → `GET /v1/production-lots?status=READY_FOR_PLANNING`; chi tiết 1 lô: `GET /v1/production-lots/{id}`.
-
-## 16. Error Handling & Edge Cases
-| Case | Mô tả | Phản hồi / Giải pháp UI |
-|------|------|-------------------------|
-| Invalid status khi lọc /v1/production-plans/status/{status} | Sai ENUM | Hiển thị toast lỗi “Trạng thái không hợp lệ” |
-| Không có BOM active | Tính NVL lỗi | Chặn submit kế hoạch, hiển thị cảnh báo để tạo BOM |
-| Không tìm thấy máy phù hợp auto-assign | Danh sách gợi ý rỗng | Yêu cầu chọn thủ công hoặc điều chỉnh thời gian |
-| Stage có machine conflicts | check-conflicts trả list | Hiện badge cảnh báo cạnh tên stage |
-| WastePercentage > 0.50 | 400 | UI validate trước khi gửi |
-| Plan không ở DRAFT nhưng gọi submit | 400 | Disable nút ở UI |
-| Plan không ở PENDING_APPROVAL nhưng approve/reject | 400 | Kiểm tra status trước thao tác |
-| Insufficient material khi tạo requisition | 400 | Hiện danh sách thiếu cùng số lượng shortage |
-
-## 17. Đề xuất Mở Rộng (Roadmap)
-- Thêm controller riêng cho Lot: list/filter, chi tiết, thống kê.
-- Batch update nhiều stage một lần (PUT /v1/production-plans/{id}/stages/bulk).
-- Tích hợp ca làm việc & lịch nghỉ (calendar service) → chính xác end time.
-- Tự động tính gap giữa các stage để tránh overlap máy hoặc phụ trách.
-- Tính cost/time hiệu suất thực tế (actualStart/End, downtime) → KPI.
-- Cho phép split stage sang nhiều máy song song.
-
-## 18. Checklist Frontend Implementation
-1. `GET /v1/production-lots?status=READY_FOR_PLANNING` → pick lô.
-2. `POST /v1/production-plans` (hoặc create-from-lot) → tạo plan DRAFT, lock Lot=PLANNING.
-3. Load plan + stages + NVL tiêu hao.
-4. Cho phép người dùng chỉnh từng stage (PUT /stages/{id}).
-5. Gán inCharge & QC (assign-incharge / assign-qc hoặc dùng PUT tổng hợp).
-6. Auto gán máy hoặc chọn thủ công rồi cập nhật.
-7. Check conflicts + validate NVL availability.
-8. Submit kế hoạch; Director duyệt.
-
-## 19. Tóm tắt
-- Lot merging + versioning cung cấp nền tảng linh hoạt.
-- Stage entity đủ thông tin cho UI lập kế hoạch chi tiết; gán QC đã có endpoint.
-- Machine selection có thuật toán xếp hạng + xử lý outsourced/manual.
-- Material consumption & availability đảm bảo tính khả thi trước phê duyệt.
-- Guide này là điểm tham chiếu đồng bộ giữa backend & frontend.
-
----
-Kết thúc tài liệu.
-
-## 20. Bổ sung cập nhật (2025-11-11)
-### 20.1 Chuẩn hóa gộp Lot theo 3 tiêu chí
-- Cùng sản phẩm (productId)
-- Ngày giao hàng nằm trong [deliveryDate ±1 ngày]
-- Ngày ký hợp đồng nằm trong [contractDate ±1 ngày]
-- Chỉ Lot ở trạng thái FORMING hoặc READY_FOR_PLANNING mới nhận thêm merge.
-- Khi merge: cập nhật `contractDateMin/Max` nếu hợp đồng mới nằm ngoài khoảng hiện tại.
-
-### 20.2 Tự động gộp ngay sau duyệt hợp đồng
-- Sau `POST /v1/contracts/{id}/approve` service gọi `createOrMergeLotFromContract(contractId)` để đưa hợp đồng vào Lot phù hợp hoặc tạo Lot mới.
-- Batch merge các hợp đồng APPROVED chưa được lập kế hoạch vẫn chạy để đảm bảo đồng bộ.
-
-### 20.3 Tạo kế hoạch từ Lot hiện có
-- Endpoint nội bộ service đã có `createPlanFromLot(lotId)`; có thể mở rộng controller (nếu cần) để: `POST /v1/production-plans/create-from-lot?lotId=...`.
-
-### 20.4 Wizard tạo Work Order chuẩn
-- Endpoint mới: `POST /v1/production/orders/{poId}/work-orders/create-standard` → Sinh 1 Work Order với các stage mặc định: WARPING → WEAVING → DYEING (outsourced) → CUTTING → HEMMING → PACKAGING cho mỗi ProductionOrderDetail.
-- Mặc định status stage = PENDING, chưa gán máy/leader.
-
-### 20.5 Leader actions (công đoạn sản xuất)
-| Hành động | Endpoint | Params bắt buộc | Ghi chú |
-|----------|----------|-----------------|---------|
-| Bắt đầu | POST `/v1/production/stages/{id}/start` | leaderUserId | Optional: evidencePhotoUrl, qtyCompleted |
-| Tạm dừng | POST `/v1/production/stages/{id}/pause` | leaderUserId, pauseReason | Lưu StagePauseLog |
-| Tiếp tục | POST `/v1/production/stages/{id}/resume` | leaderUserId | Tính duration pause |
-| Hoàn thành | POST `/v1/production/stages/{id}/complete` | leaderUserId | Optional: evidencePhotoUrl, qtyCompleted |
-
-- Các action ghi StageTracking (START/PAUSE/RESUME/COMPLETE) + ảnh chứng cứ.
-- Kiểm tra quyền: leaderUserId phải trùng với `assignedLeaderId` của stage.
-
-### 20.6 Điều kiện hoàn tất Production Order
-- Trước đây: hoàn tất ngay khi Packaging PASS của một WorkOrderDetail.
-- Nay: Khi một Packaging stage PASS → kiểm tra toàn bộ WorkOrderDetail thuộc cùng PO:
-  - Mỗi WorkOrderDetail phải có đầy đủ các stage.
-  - Tất cả stage QC phải PASS.
-  - Packaging stage của từng WorkOrderDetail đã COMPLETE.
-- Nếu thỏa: PO.status = ORDER_COMPLETED và gửi notify đến Sales, Planning, Director, Technical, PM.
-
-### 20.7 QC PASS hook
-- PASS Inspection gọi `markStageQcPass(stageId)` → nếu là PACKAGING chạy logic kiểm tra hoàn tất PO như trên.
-
-### 20.8 Lưu ý tương thích
-- Các Lot đang ở trạng thái PLANNING / PLAN_APPROVED / IN_PRODUCTION không nhận merge mới.
-- Nếu cần thêm hợp đồng mới sau khi Lot đã PLANNING → tạo Lot mới thay vì ép merge.
+## 20. Bổ sung cấu hình
+- Bật scheduler: đã mặc định `@EnableScheduling` trong ứng dụng.
+- Cron auto-merge: `autoMerge.cron=0 0/5 * * * *` (mặc định). Có thể đổi trong `application.properties`.

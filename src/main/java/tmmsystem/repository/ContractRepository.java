@@ -13,6 +13,10 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
     @Query("SELECT c FROM Contract c WHERE c.status='APPROVED' AND NOT EXISTS (SELECT p FROM ProductionPlan p WHERE p.contract.id = c.id)")
     List<Contract> findApprovedWithoutPlan();
 
+    // NEW: approved contracts not yet linked to any production lot order
+    @Query("SELECT c FROM Contract c WHERE c.status='APPROVED' AND NOT EXISTS (SELECT lo FROM ProductionLotOrder lo WHERE lo.contract.id = c.id)")
+    List<Contract> findApprovedWithoutLot();
+
     // NEW: find contract by quotation id
     Contract findFirstByQuotation_Id(Long quotationId);
 
