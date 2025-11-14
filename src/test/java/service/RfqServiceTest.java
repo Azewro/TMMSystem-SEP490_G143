@@ -1208,4 +1208,215 @@ class RfqServiceTest {
             System.out.println("[SUCCESS] deleteDetail_Boundary_NonExistentId: Correctly called repository even for a non-existent ID.");
         }
     }
+
+    @Nested
+    @DisplayName("Update Expected Delivery Date Tests")
+    class UpdateExpectedDeliveryDateTests {
+
+        @Test
+        @DisplayName("Normal Case: Update with a valid yyyy-MM-dd date string")
+        void updateExpectedDeliveryDate_Normal_ValidYyyyMmDdFormat() {
+            // Given
+            Long rfqId = 1L;
+            String dateString = "2025-12-25";
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+            when(rfqRepository.save(any(Rfq.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            Rfq result = rfqService.updateExpectedDeliveryDate(rfqId, dateString);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(LocalDate.of(2025, 12, 25), result.getExpectedDeliveryDate());
+            verify(rfqRepository, times(1)).findById(rfqId);
+            verify(rfqRepository, times(1)).save(existingRfq);
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Normal_ValidYyyyMmDdFormat: Date updated successfully.");
+        }
+
+        @Test
+        @DisplayName("Normal Case: Update with a valid dd-MM-yyyy date string")
+        void updateExpectedDeliveryDate_Normal_ValidDdMmYyyyFormat() {
+            // Given
+            Long rfqId = 1L;
+            String dateString = "15-08-2024";
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+            when(rfqRepository.save(any(Rfq.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            Rfq result = rfqService.updateExpectedDeliveryDate(rfqId, dateString);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(LocalDate.of(2024, 8, 15), result.getExpectedDeliveryDate());
+            verify(rfqRepository, times(1)).findById(rfqId);
+            verify(rfqRepository, times(1)).save(existingRfq);
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Normal_ValidDdMmYyyyFormat: Date updated successfully.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: RFQ not found for the given ID")
+        void updateExpectedDeliveryDate_Abnormal_RfqNotFound() {
+            // Given
+            Long nonExistentId = 99L;
+            String dateString = "2025-01-01";
+            when(rfqRepository.findById(nonExistentId)).thenReturn(java.util.Optional.empty());
+
+            // When & Then
+            assertThrows(java.util.NoSuchElementException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(nonExistentId, dateString);
+            });
+
+            verify(rfqRepository, times(1)).findById(nonExistentId);
+            verify(rfqRepository, never()).save(any());
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_RfqNotFound: Threw exception for non-existent RFQ.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Date string has an invalid format")
+        void updateExpectedDeliveryDate_Abnormal_InvalidFormat() {
+            // Given
+            Long rfqId = 1L;
+            String invalidDateString = "2025/12/25"; // Invalid format
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+
+            // When & Then
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(rfqId, invalidDateString);
+            });
+
+            assertTrue(exception.getMessage().contains("Ngày không hợp lệ"));
+            verify(rfqRepository, times(1)).findById(rfqId);
+            verify(rfqRepository, never()).save(any());
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_InvalidFormat: Threw exception for invalid date format.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Date string is a valid format but an invalid date")
+        void updateExpectedDeliveryDate_Abnormal_InvalidDateValue() {
+            // Given
+            Long rfqId = 1L;
+            String invalidDateString = "30-02-2025"; // Invalid date
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(rfqId, invalidDateString);
+            });
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_InvalidDateValue: Threw exception for invalid date value.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Date string is null")
+        void updateExpectedDeliveryDate_Abnormal_NullDateString() {
+            // Given
+            Long rfqId = 1L;
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(rfqId, null);
+            });
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_NullDateString: Threw exception for null date string.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: RFQ ID is null")
+        void updateExpectedDeliveryDate_Abnormal_NullRfqId() {
+            // Given
+            String dateString = "2025-01-01";
+            when(rfqRepository.findById(null)).thenThrow(new IllegalArgumentException("ID must not be null!"));
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(null, dateString);
+            });
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_NullRfqId: Threw exception for null RFQ ID.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Date string is empty")
+        void updateExpectedDeliveryDate_Boundary_EmptyDateString() {
+            // Given
+            Long rfqId = 1L;
+            String emptyDateString = "";
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(rfqId, emptyDateString);
+            });
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Boundary_EmptyDateString: Threw exception for empty date string.");
+        }
+
+        @Test
+        @DisplayName("Boundary Case: Update with a past date")
+        void updateExpectedDeliveryDate_Boundary_PastDate() {
+            // Given
+            Long rfqId = 1L;
+            String dateString = "2020-01-01";
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+            when(rfqRepository.save(any(Rfq.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            Rfq result = rfqService.updateExpectedDeliveryDate(rfqId, dateString);
+
+            // Then
+            assertNotNull(result);
+            assertEquals(LocalDate.of(2020, 1, 1), result.getExpectedDeliveryDate());
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Boundary_PastDate: Successfully updated with a past date.");
+        }
+
+        @Test
+        @DisplayName("Abnormal Case: Repository fails to save")
+        void updateExpectedDeliveryDate_Abnormal_SaveFails() {
+            // Given
+            Long rfqId = 1L;
+            String dateString = "2025-05-10";
+            Rfq existingRfq = new Rfq();
+            existingRfq.setId(rfqId);
+
+            when(rfqRepository.findById(rfqId)).thenReturn(java.util.Optional.of(existingRfq));
+            when(rfqRepository.save(any(Rfq.class))).thenThrow(new RuntimeException("Database error"));
+
+            // When & Then
+            assertThrows(RuntimeException.class, () -> {
+                rfqService.updateExpectedDeliveryDate(rfqId, dateString);
+            });
+
+            verify(rfqRepository, times(1)).findById(rfqId);
+            verify(rfqRepository, times(1)).save(existingRfq);
+
+            System.out.println("[SUCCESS] updateExpectedDeliveryDate_Abnormal_SaveFails: Exception from repository was propagated correctly.");
+        }
+    }
 }
