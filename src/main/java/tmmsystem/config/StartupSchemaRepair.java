@@ -9,6 +9,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.util.List;
 
 @Component
@@ -16,12 +19,14 @@ public class StartupSchemaRepair implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(StartupSchemaRepair.class);
 
     private final JdbcTemplate jdbc;
+    private final DataSource dataSource;
 
     @Value("${repair.planStage.enabled:true}")
     private boolean enabled;
 
-    public StartupSchemaRepair(JdbcTemplate jdbc) {
+    public StartupSchemaRepair(JdbcTemplate jdbc, DataSource dataSource) {
         this.jdbc = jdbc;
+        this.dataSource = dataSource;
     }
 
     @Override
@@ -31,11 +36,91 @@ public class StartupSchemaRepair implements ApplicationRunner {
             log.info("[Repair] ProductionPlanStage repair disabled");
             return;
         }
+        if (!isMySql()) {
+            log.info("[Repair] Non-MySQL database detected. Skipping schema repair.");
+            return;
+        }
         try {
+            // 1) Ensure new plan_id exists and is populated
+            ensurePlanIdColumnAndBackfill();
+            // 2) Relax or drop legacy plan_detail_id to avoid NOT NULL constraint violations
+            relaxOrDropLegacyPlanDetailColumn();
+            // 3) Ensure FK and related housekeeping
             ensureProductionPlanStageFk();
         } catch (Exception ex) {
-            log.warn("[Repair] Failed to ensure FK: {}", ex.getMessage());
-            // do not fail startup; FK can be added later
+            log.warn("[Repair] Schema repair failed: {}", ex.getMessage());
+            // do not fail startup; migration-less repair is best-effort
+        }
+    }
+
+    private boolean isMySql() {
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData md = conn.getMetaData();
+            String product = md.getDatabaseProductName();
+            return product != null && product.toLowerCase().contains("mysql");
+        } catch (Exception e) {
+            log.warn("[Repair] Unable to determine DB product: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // ===== New: Ensure stage.plan_id exists and is backfilled from production_plan_detail if available =====
+    private void ensurePlanIdColumnAndBackfill() {
+        if (!columnExists("production_plan_stage", "plan_id")) {
+            String planIdType = columnType("production_plan", "id");
+            String type = planIdType != null ? planIdType : "BIGINT";
+            log.info("[Repair] Adding production_plan_stage.plan_id {} NULL", type);
+            jdbc.execute("ALTER TABLE production_plan_stage ADD COLUMN plan_id " + type + " NULL");
+            // create index for performance if not exists
+            try { jdbc.execute("CREATE INDEX idx_plan_stage_plan ON production_plan_stage(plan_id)"); } catch (Exception ignore) {}
+        }
+        // Backfill from legacy production_plan_detail if it exists
+        if (tableExists("production_plan_detail") && columnExists("production_plan_stage", "plan_detail_id")) {
+            log.info("[Repair] Backfilling stage.plan_id from legacy plan_detail_id -> production_plan_detail.plan_id");
+            String update = "UPDATE production_plan_stage s JOIN production_plan_detail d ON s.plan_detail_id = d.id SET s.plan_id = d.plan_id WHERE s.plan_id IS NULL";
+            try { jdbc.update(update); } catch (Exception e) { log.warn("[Repair] Backfill failed: {}", e.getMessage()); }
+        }
+    }
+
+    // ===== New: Drop or relax NOT NULL on plan_detail_id to avoid insert failures =====
+    private void relaxOrDropLegacyPlanDetailColumn() {
+        if (!columnExists("production_plan_stage", "plan_detail_id")) return;
+        // Drop FK referencing production_plan_detail on plan_detail_id if any
+        List<String> fks = jdbc.query(
+                "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='production_plan_stage' AND COLUMN_NAME='plan_detail_id' AND REFERENCED_TABLE_NAME IS NOT NULL",
+                (rs, i) -> rs.getString(1)
+        );
+        for (String fk : fks) {
+            try {
+                log.info("[Repair] Dropping FK {} on production_plan_stage.plan_detail_id", fk);
+                jdbc.execute("ALTER TABLE production_plan_stage DROP FOREIGN KEY " + fk);
+            } catch (Exception e) {
+                log.warn("[Repair] Could not drop FK {}: {}", fk, e.getMessage());
+            }
+        }
+        // Try drop column entirely (preferred)
+        try {
+            log.info("[Repair] Dropping legacy column production_plan_stage.plan_detail_id");
+            jdbc.execute("ALTER TABLE production_plan_stage DROP COLUMN plan_detail_id");
+            return; // done
+        } catch (Exception dropEx) {
+            log.warn("[Repair] DROP COLUMN plan_detail_id failed: {} -- will make it NULLABLE instead", dropEx.getMessage());
+        }
+        // Fallback: make it nullable to avoid NOT NULL errors
+        try {
+            String type = columnType("production_plan_stage", "plan_detail_id");
+            if (type == null) type = "BIGINT";
+            log.info("[Repair] Alter legacy plan_detail_id to be NULLABLE");
+            jdbc.execute("ALTER TABLE production_plan_stage MODIFY COLUMN plan_detail_id " + type + " NULL");
+        } catch (Exception e) {
+            log.warn("[Repair] Failed to relax plan_detail_id nullability: {}", e.getMessage());
+        }
+        // Optionally drop legacy table production_plan_detail if not referenced anymore
+        if (tableExists("production_plan_detail")) {
+            try {
+                log.info("[Repair] Dropping legacy table production_plan_detail (if unused)");
+                jdbc.execute("DROP TABLE IF EXISTS production_plan_detail");
+            } catch (Exception ignore) {}
         }
     }
 
@@ -119,5 +204,25 @@ public class StartupSchemaRepair implements ApplicationRunner {
         }
         jdbc.execute("ALTER TABLE production_plan_stage ADD CONSTRAINT fk_production_plan_stage_plan FOREIGN KEY (plan_id) REFERENCES production_plan(id)");
     }
-}
 
+    // ===== Helpers =====
+    private boolean columnExists(String table, String column) {
+        String sql = "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+        Integer cnt = jdbc.query(sql, ps -> { ps.setString(1, table); ps.setString(2, column); }, (rs, i) -> rs.getInt(1))
+                .stream().findFirst().orElse(0);
+        return cnt != null && cnt > 0;
+    }
+
+    private boolean tableExists(String table) {
+        String sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
+        Integer cnt = jdbc.query(sql, ps -> ps.setString(1, table), (rs, i) -> rs.getInt(1))
+                .stream().findFirst().orElse(0);
+        return cnt != null && cnt > 0;
+    }
+
+    private String columnType(String table, String column) {
+        String sql = "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+        List<String> res = jdbc.query(sql, ps -> { ps.setString(1, table); ps.setString(2, column); }, (rs, i) -> rs.getString(1));
+        return res.isEmpty() ? null : res.get(0);
+    }
+}

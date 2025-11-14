@@ -49,27 +49,25 @@ public class MachineSelectionService {
         if ("WRAPPING".equals(type)) { // người dùng hay nhập nhầm WRAPPING thay vì WARPING
             type = "WARPING";
         }
-        final String normalizedType = type;
-        
+        // NEW: map synonym HEMMING -> SEWING (máy trong DB thường lưu type=SEWING)
+        boolean isHemming = "HEMMING".equals(type);
+        String typeForMachine = isHemming ? "SEWING" : type;
+        final String normalizedType = type; // giữ nguyên để nhận diện các case đặc biệt như DYEING/PACKAGING
+
         // 1. Xử lý các trường hợp đặc biệt không cần máy
-        if ("DYEING".equals(type)) {
-            // Công đoạn nhuộm: outsourced, không cần máy nội bộ
-            return createOutsourcedStageSuggestion(type, productId, requiredQuantity, preferredStartTime, preferredEndTime);
+        if ("DYEING".equals(normalizedType)) {
+            return createOutsourcedStageSuggestion(normalizedType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
         }
-        
-        if ("PACKAGING".equals(type)) {
-            // Công đoạn đóng gói: làm thủ công, không cần máy
-            return createManualStageSuggestion(type, productId, requiredQuantity, preferredStartTime, preferredEndTime);
+        if ("PACKAGING".equals(normalizedType)) {
+            return createManualStageSuggestion(normalizedType, productId, requiredQuantity, preferredStartTime, preferredEndTime);
         }
-        
+
         // 2. Lọc máy theo loại công đoạn cho các công đoạn cần máy
         List<Machine> suitableMachines = machineRepository.findAll().stream()
-            .filter(machine -> machine.getType() != null && normalizedType.equalsIgnoreCase(machine.getType()))
-            // Không lọc theo status để vẫn tính điểm khả dụng và xung đột; trạng thái sẽ được phản ánh ở AvailabilityInfo
+            .filter(machine -> machine.getType() != null && typeForMachine.equalsIgnoreCase(machine.getType()))
             .collect(Collectors.toList());
-        
+
         List<MachineSuggestionDto> suggestions = new ArrayList<>();
-        
         for (Machine machine : suitableMachines) {
             MachineSuggestionDto suggestion = new MachineSuggestionDto();
             suggestion.setMachineId(machine.getId());
@@ -77,13 +75,13 @@ public class MachineSelectionService {
             suggestion.setMachineName(machine.getName());
             suggestion.setMachineType(machine.getType());
             suggestion.setLocation(machine.getLocation());
-            
-        // 2. Tính toán năng suất và thời gian cần thiết
-        MachineCapacityInfo capacityInfo = calculateMachineCapacity(machine, productId, requiredQuantity);
-        suggestion.setCapacityPerHour(capacityInfo.getCapacityPerHour());
-        suggestion.setEstimatedDurationHours(capacityInfo.getEstimatedDurationHours());
-        suggestion.setCanHandleQuantity(capacityInfo.isCanHandleQuantity());
-            
+
+            // 2. Tính toán năng suất và thời gian cần thiết
+            MachineCapacityInfo capacityInfo = calculateMachineCapacity(machine, productId, requiredQuantity);
+            suggestion.setCapacityPerHour(capacityInfo.getCapacityPerHour());
+            suggestion.setEstimatedDurationHours(capacityInfo.getEstimatedDurationHours());
+            suggestion.setCanHandleQuantity(capacityInfo.isCanHandleQuantity());
+
             // 3. Kiểm tra khả năng sẵn sàng trong khoảng thời gian
             AvailabilityInfo availabilityInfo = checkMachineAvailability(machine, preferredStartTime, preferredEndTime);
             suggestion.setAvailable(availabilityInfo.isAvailable());
@@ -91,16 +89,16 @@ public class MachineSelectionService {
             suggestion.setConflicts(availabilityInfo.getConflicts());
             suggestion.setSuggestedStartTime(availabilityInfo.getSuggestedStartTime());
             suggestion.setSuggestedEndTime(availabilityInfo.getSuggestedEndTime());
-            
-            // 4. Tính điểm ưu tiên tổng thể
-            suggestion.setPriorityScore(calculatePriorityScore(suggestion, normalizedType, requiredQuantity));
-            
+
+            // 4. Tính điểm ưu tiên tổng thể (dùng SEWING nếu gốc là HEMMING để áp dụng logic chấm điểm may)
+            String scoringType = isHemming ? "SEWING" : normalizedType;
+            suggestion.setPriorityScore(calculatePriorityScore(suggestion, scoringType, requiredQuantity));
+
             suggestions.add(suggestion);
         }
-        
+
         // 5. Sắp xếp theo điểm ưu tiên
         suggestions.sort((a, b) -> Double.compare(b.getPriorityScore(), a.getPriorityScore()));
-        
         return suggestions;
     }
     
