@@ -24,6 +24,6 @@ public class ProductionOrderDto {
     private Instant createdAt;
     private Instant updatedAt;
     private List<ProductionOrderDetailDto> details;
+    private Long assignedTechnicianId;
+    private Instant assignedAt;
 }
-
-

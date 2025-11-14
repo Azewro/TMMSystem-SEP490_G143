@@ -64,6 +64,11 @@ public class ProductionOrder {
 
     @Column(name = "approved_at")
     private Instant approvedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_technician_id")
+    private User assignedTechnician; // Kỹ thuật viên được PM phân công
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
 }
-
-

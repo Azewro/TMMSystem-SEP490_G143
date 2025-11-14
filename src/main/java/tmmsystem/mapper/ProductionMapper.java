@@ -4,8 +4,6 @@ import org.springframework.stereotype.Component;
 import tmmsystem.dto.production.*;
 import tmmsystem.entity.*;
 
-import java.util.stream.Collectors;
-
 @Component
 public class ProductionMapper {
     public ProductionOrderDto toDto(ProductionOrder e) {
@@ -25,6 +23,8 @@ public class ProductionMapper {
         dto.setApprovedAt(e.getApprovedAt());
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
+        dto.setAssignedTechnicianId(e.getAssignedTechnician()!=null? e.getAssignedTechnician().getId(): null);
+        dto.setAssignedAt(e.getAssignedAt());
         return dto;
     }
 
@@ -119,6 +119,7 @@ public class ProductionMapper {
         dto.setQrToken(s.getQrToken());
         dto.setQcLastResult(s.getQcLastResult());
         dto.setQcLastCheckedAt(s.getQcLastCheckedAt());
+        dto.setQcAssigneeId(s.getQcAssignee()!=null? s.getQcAssignee().getId(): null);
         return dto;
     }
 }

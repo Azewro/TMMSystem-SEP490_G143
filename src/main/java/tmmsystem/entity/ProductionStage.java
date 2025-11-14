@@ -95,4 +95,8 @@ public class ProductionStage {
 
     @Column(name = "qc_last_checked_at")
     private Instant qcLastCheckedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "qc_assignee_id")
+    private User qcAssignee; // Người QC phụ trách (tuỳ chọn)
 }

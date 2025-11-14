@@ -31,4 +31,5 @@ public class ProductionStageDto {
     private String qrToken;
     private String qcLastResult;
     private Instant qcLastCheckedAt;
+    private Long qcAssigneeId;
 }

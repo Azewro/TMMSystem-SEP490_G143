@@ -98,20 +98,7 @@ public class RfqController {
             @RequestBody(description = "Payload cập nhật RFQ", required = true,
                     content = @Content(schema = @Schema(implementation = RfqDto.class)))
             @Valid @org.springframework.web.bind.annotation.RequestBody RfqDto body) {
-        Rfq rfq = new Rfq();
-        rfq.setRfqNumber(body.getRfqNumber());
-        if (body.getCustomerId() != null) { Customer c = new Customer(); c.setId(body.getCustomerId()); rfq.setCustomer(c); }
-        rfq.setSourceType(body.getSourceType());
-        rfq.setExpectedDeliveryDate(body.getExpectedDeliveryDate());
-        rfq.setStatus(body.getStatus());
-        rfq.setSent(body.getIsSent());
-        rfq.setNotes(body.getNotes());
-        if (body.getCreatedById() != null) { User u = new User(); u.setId(body.getCreatedById()); rfq.setCreatedBy(u); }
-        if (body.getAssignedSalesId() != null) { User u = new User(); u.setId(body.getAssignedSalesId()); rfq.setAssignedSales(u); }
-        if (body.getAssignedPlanningId() != null) { User u = new User(); u.setId(body.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
-        if (body.getApprovedById() != null) { User u = new User(); u.setId(body.getApprovedById()); rfq.setApprovedBy(u); }
-        rfq.setApprovalDate(body.getApprovalDate());
-        return mapper.toDto(service.update(id, rfq));
+        return mapper.toDto(service.updateRfqWithDetails(id, body));
     }
 
     @Operation(summary = "Xóa RFQ",

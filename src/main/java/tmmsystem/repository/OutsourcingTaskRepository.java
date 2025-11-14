@@ -8,5 +8,3 @@ import java.util.List;
 public interface OutsourcingTaskRepository extends JpaRepository<OutsourcingTask, Long> {
     List<OutsourcingTask> findByProductionStageId(Long productionStageId);
 }
-
-

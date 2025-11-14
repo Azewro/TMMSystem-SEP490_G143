@@ -431,4 +431,28 @@ public class ProductionController {
                                              @RequestParam(required=false) java.math.BigDecimal qtyCompleted){
         return mapper.toDto(service.completeStage(id, leaderUserId, evidencePhotoUrl, qtyCompleted));
     }
+
+    @Operation(summary = "PM phân công kỹ thuật viên cho PO")
+    @PostMapping("/orders/{id}/assign-technician")
+    public ProductionOrderDto assignTechnician(@PathVariable Long id, @RequestParam Long technicianUserId){
+        return mapper.toDto(service.assignTechnician(id, technicianUserId));
+    }
+
+    @Operation(summary = "Phân công leader cho Stage")
+    @PostMapping("/stages/{id}/assign-leader")
+    public ProductionStageDto assignLeader(@PathVariable Long id, @RequestParam Long leaderUserId){
+        return mapper.toDto(service.assignStageLeader(id, leaderUserId));
+    }
+
+    @Operation(summary = "Phân công QC cho Stage")
+    @PostMapping("/stages/{id}/assign-kcs")
+    public ProductionStageDto assignKcs(@PathVariable Long id, @RequestParam Long kcsUserId){
+        return mapper.toDto(service.assignStageQc(id, kcsUserId));
+    }
+
+    @Operation(summary = "Bulk phân công leader cho các stage của Work Order")
+    @PostMapping("/work-orders/{woId}/assign-leaders")
+    public java.util.List<ProductionStageDto> bulkAssignLeaders(@PathVariable Long woId, @RequestBody java.util.Map<String, Long> stageLeaderMap){
+        return service.bulkAssignStageLeaders(woId, stageLeaderMap).stream().map(s -> mapper.toDto(s)).collect(java.util.stream.Collectors.toList());
+    }
 }

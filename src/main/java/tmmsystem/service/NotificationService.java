@@ -604,4 +604,17 @@ public class NotificationService {
             notificationRepository.save(n);
         }
     }
+
+    @Transactional
+    public void notifyUser(User user, String category, String type, String title, String message, String referenceType, Long referenceId){
+        if (user==null) return;
+        Notification n = new Notification();
+        n.setUser(user); n.setCategory(category); n.setType(type); n.setTitle(title); n.setMessage(message); n.setReferenceType(referenceType); n.setReferenceId(referenceId); n.setRead(false); n.setCreatedAt(Instant.now());
+        notificationRepository.save(n);
+    }
+    @Transactional
+    public void notifyRole(String roleName, String category, String type, String title, String message, String referenceType, Long referenceId){
+        List<User> users = userRepository.findByRoleName(roleName);
+        for (User u: users){ notifyUser(u, category, type, title, message, referenceType, referenceId); }
+    }
 }

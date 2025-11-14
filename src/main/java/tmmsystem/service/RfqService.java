@@ -281,6 +281,73 @@ public class RfqService {
         return existing;
     }
 
+    @Transactional
+    public Rfq updateRfqWithDetails(Long rfqId, tmmsystem.dto.sales.RfqDto dto) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+        // Check if RFQ can be edited (similar to salesEditRfqAndCustomer)
+        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ sửa khi RFQ ở DRAFT hoặc SENT trước preliminary-check");
+        }
+        if (Boolean.TRUE.equals(rfq.getLocked())) {
+            throw new IllegalStateException("RFQ locked");
+        }
+        
+        // Update basic fields
+        if (dto.getExpectedDeliveryDate() != null) {
+            validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+            rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+        }
+        if (dto.getNotes() != null) rfq.setNotes(dto.getNotes());
+        
+        // Update customer contact info and snapshots
+        Customer cust = rfq.getCustomer();
+        if (cust != null) {
+            if (dto.getContactPerson() != null) {
+                cust.setContactPerson(dto.getContactPerson());
+                rfq.setContactPersonSnapshot(dto.getContactPerson());
+            }
+            if (dto.getContactEmail() != null) {
+                String normEmail = normalizeEmail(dto.getContactEmail());
+                cust.setEmail(normEmail);
+                rfq.setContactEmailSnapshot(normEmail);
+            }
+            if (dto.getContactPhone() != null) {
+                String normPhone = normalizePhone(dto.getContactPhone());
+                cust.setPhoneNumber(normPhone);
+                rfq.setContactPhoneSnapshot(normPhone);
+            }
+            if (dto.getContactAddress() != null) {
+                cust.setAddress(dto.getContactAddress());
+                rfq.setContactAddressSnapshot(dto.getContactAddress());
+            }
+            customerRepository.save(cust);
+            // Re-infer contact method if snapshots changed
+            String inferred = inferContactMethod(rfq.getContactEmailSnapshot(), rfq.getContactPhoneSnapshot());
+            rfq.setContactMethod(inferred);
+        }
+        
+        // Update details if provided
+        if (dto.getDetails() != null) {
+            detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
+            for (tmmsystem.dto.sales.RfqDetailDto detailDto : dto.getDetails()) {
+                RfqDetail nd = new RfqDetail();
+                nd.setRfq(rfq);
+                if (detailDto.getProductId() != null) {
+                    Product p = new Product();
+                    p.setId(detailDto.getProductId());
+                    nd.setProduct(p);
+                }
+                nd.setQuantity(detailDto.getQuantity());
+                nd.setUnit(detailDto.getUnit());
+                nd.setNoteColor(detailDto.getNoteColor());
+                nd.setNotes(detailDto.getNotes());
+                detailRepository.save(nd);
+            }
+        }
+        
+        return rfqRepository.save(rfq);
+    }
+
     public void delete(Long id) { rfqRepository.deleteById(id); }
 
     public List<RfqDetail> findDetailsByRfqId(Long rfqId) { return detailRepository.findByRfqId(rfqId); }
@@ -518,7 +585,10 @@ public class RfqService {
         if (rfq.getAssignedSales() == null || !salesUserId.equals(rfq.getAssignedSales().getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not assigned sales");
         }
-        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        if (req.getExpectedDeliveryDate() != null) {
+            validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
+            rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        }
         if (req.getNotes() != null) rfq.setNotes(req.getNotes());
         Customer cust = rfq.getCustomer();
         if (cust != null) {
