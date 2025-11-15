@@ -19,9 +19,14 @@ import tmmsystem.entity.Contract;
 import tmmsystem.entity.User;
 import tmmsystem.mapper.ContractMapper;
 import tmmsystem.service.ContractService;
+import tmmsystem.dto.PageResponse;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @RestController
 @RequestMapping("/v1/contracts")
@@ -33,7 +38,26 @@ public class ContractController {
     public ContractController(ContractService service, ContractMapper mapper) { this.service = service; this.mapper = mapper; }
 
     @GetMapping
-    public List<ContractDto> list() { return service.findAll().stream().map(mapper::toDto).collect(Collectors.toList()); }
+    public PageResponse<ContractDto> list(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã hợp đồng hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
+            @Parameter(description = "Lọc theo ngày giao hàng (yyyy-MM-dd)") @RequestParam(required = false) String deliveryDate) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        java.time.LocalDate deliveryDateLocal = null;
+        if (deliveryDate != null && !deliveryDate.trim().isEmpty()) {
+            try {
+                deliveryDateLocal = java.time.LocalDate.parse(deliveryDate);
+            } catch (Exception e) {
+                // Ignore invalid date format
+            }
+        }
+        Page<Contract> contractPage = service.findAll(pageable, search, status, deliveryDateLocal);
+        List<ContractDto> content = contractPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, contractPage.getNumber(), contractPage.getSize(), 
+                contractPage.getTotalElements(), contractPage.getTotalPages(), contractPage.isFirst(), contractPage.isLast());
+    }
 
     @GetMapping("/{id}")
     public ContractDto get(@PathVariable Long id) { return mapper.toDto(service.findById(id)); }
@@ -128,10 +152,25 @@ public class ContractController {
     @Operation(summary = "Lấy hợp đồng chờ duyệt",
             description = "Lấy danh sách hợp đồng đang chờ duyệt")
     @GetMapping("/pending-approval")
-    public List<ContractDto> getContractsPendingApproval() {
-        return service.getContractsPendingApproval().stream()
-                .map(mapper::toDto)
-                .collect(Collectors.toList());
+    public PageResponse<ContractDto> getContractsPendingApproval(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã hợp đồng hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
+            @Parameter(description = "Lọc theo ngày giao hàng (yyyy-MM-dd)") @RequestParam(required = false) String deliveryDate) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        java.time.LocalDate deliveryDateLocal = null;
+        if (deliveryDate != null && !deliveryDate.trim().isEmpty()) {
+            try {
+                deliveryDateLocal = java.time.LocalDate.parse(deliveryDate);
+            } catch (Exception e) {
+                // Ignore invalid date format
+            }
+        }
+        Page<Contract> contractPage = service.getContractsPendingApproval(pageable, search, status, deliveryDateLocal);
+        List<ContractDto> content = contractPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, contractPage.getNumber(), contractPage.getSize(), 
+                contractPage.getTotalElements(), contractPage.getTotalPages(), contractPage.isFirst(), contractPage.isLast());
     }
     
     @Operation(summary = "Re-upload hợp đồng",
@@ -151,10 +190,34 @@ public class ContractController {
     @Operation(summary = "Lấy hợp đồng chờ duyệt (Director)",
             description = "Director lấy danh sách hợp đồng chờ duyệt")
     @GetMapping("/director/pending")
-    public List<ContractDto> getDirectorPendingContracts() {
-        return service.getDirectorPendingContracts().stream()
-                .map(mapper::toDto)
-                .collect(Collectors.toList());
+    public PageResponse<ContractDto> getDirectorPendingContracts(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã hợp đồng hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
+            @Parameter(description = "Lọc theo ngày ký hợp đồng (yyyy-MM-dd)") @RequestParam(required = false) String contractDate,
+            @Parameter(description = "Lọc theo ngày giao hàng (yyyy-MM-dd)") @RequestParam(required = false) String deliveryDate) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        java.time.LocalDate contractDateLocal = null;
+        if (contractDate != null && !contractDate.trim().isEmpty()) {
+            try {
+                contractDateLocal = java.time.LocalDate.parse(contractDate);
+            } catch (Exception e) {
+                // Ignore invalid date format
+            }
+        }
+        java.time.LocalDate deliveryDateLocal = null;
+        if (deliveryDate != null && !deliveryDate.trim().isEmpty()) {
+            try {
+                deliveryDateLocal = java.time.LocalDate.parse(deliveryDate);
+            } catch (Exception e) {
+                // Ignore invalid date format
+            }
+        }
+        Page<Contract> contractPage = service.getDirectorPendingContracts(pageable, search, status, contractDateLocal, deliveryDateLocal);
+        List<ContractDto> content = contractPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, contractPage.getNumber(), contractPage.getSize(), 
+                contractPage.getTotalElements(), contractPage.getTotalPages(), contractPage.isFirst(), contractPage.isLast());
     }
     
     @Operation(summary = "Duyệt hợp đồng",

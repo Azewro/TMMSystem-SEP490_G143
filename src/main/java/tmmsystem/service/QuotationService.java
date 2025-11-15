@@ -12,6 +12,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class QuotationService {
@@ -57,6 +59,37 @@ public class QuotationService {
 
     public List<Quotation> findAll() { 
         return quotationRepository.findAll(); 
+    }
+    
+    public Page<Quotation> findAll(Pageable pageable) {
+        return quotationRepository.findAll(pageable);
+    }
+    
+    public Page<Quotation> findAll(Pageable pageable, String search, String status) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            return quotationRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return quotationRepository.findAll(pageable);
+        }
     }
 
     public Quotation findById(Long id) { 
@@ -338,17 +371,109 @@ public class QuotationService {
 
     // Sale Staff: Lấy báo giá chờ gửi
     public List<Quotation> findPendingQuotations() {
-        return quotationRepository.findAll().stream()
-                .filter(q -> "DRAFT".equals(q.getStatus()))
-                .collect(Collectors.toList());
+        return quotationRepository.findByStatus("DRAFT");
+    }
+    
+    public Page<Quotation> findPendingQuotations(Pageable pageable) {
+        return quotationRepository.findByStatus("DRAFT", pageable);
     }
 
     // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation được gán cho Sales này
     public List<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId) {
-        return quotationRepository.findAll().stream()
-                .filter(q -> "DRAFT".equals(q.getStatus()))
-                .filter(q -> q.getAssignedSales() != null && salesUserId.equals(q.getAssignedSales().getId()))
-                .collect(Collectors.toList());
+        return quotationRepository.findByStatusAndAssignedSales_Id("DRAFT", salesUserId);
+    }
+    
+    public Page<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId, Pageable pageable) {
+        return quotationRepository.findByStatusAndAssignedSales_Id("DRAFT", salesUserId, pageable);
+    }
+    
+    public List<Quotation> findByCustomerId(Long customerId) {
+        return quotationRepository.findByCustomer_Id(customerId);
+    }
+    
+    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable) {
+        return quotationRepository.findByCustomer_Id(customerId, pageable);
+    }
+    
+    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable, String search) {
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.trim().toLowerCase();
+            return quotationRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                predicates.add(cb.equal(root.get("customer").get("id"), customerId));
+                
+                var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
+                predicates.add(searchPredicate);
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return quotationRepository.findByCustomer_Id(customerId, pageable);
+        }
+    }
+    
+    public Page<Quotation> findByAssignedSales(Long salesId, Pageable pageable) {
+        return quotationRepository.findByAssignedSales_Id(salesId, pageable);
+    }
+    
+    public Page<Quotation> findByAssignedSales(Long salesId, Pageable pageable, String search, String status) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            return quotationRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                predicates.add(cb.equal(root.get("assignedSales").get("id"), salesId));
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return quotationRepository.findByAssignedSales_Id(salesId, pageable);
+        }
+    }
+    
+    public Page<Quotation> findByAssignedPlanning(Long planningId, Pageable pageable) {
+        return quotationRepository.findByAssignedPlanning_Id(planningId, pageable);
+    }
+    
+    public Page<Quotation> findByAssignedPlanning(Long planningId, Pageable pageable, String search, String status) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            return quotationRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                predicates.add(cb.equal(root.get("assignedPlanning").get("id"), planningId));
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return quotationRepository.findByAssignedPlanning_Id(planningId, pageable);
+        }
     }
 
     // Sale Staff: Gửi báo giá cho Customer

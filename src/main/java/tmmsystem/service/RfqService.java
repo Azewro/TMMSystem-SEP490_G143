@@ -14,7 +14,8 @@ import tmmsystem.dto.sales.SalesRfqCreateRequest;
 import tmmsystem.dto.sales.SalesRfqEditRequest;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class RfqService {
@@ -33,6 +34,46 @@ public class RfqService {
     }
 
     public List<Rfq> findAll() { return rfqRepository.findAll(); }
+    public Page<Rfq> findAll(Pageable pageable) { return rfqRepository.findAll(pageable); }
+    
+    public Page<Rfq> findAll(Pageable pageable, String search, String status) {
+        return findAll(pageable, search, status, null);
+    }
+    
+    public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || customerId != null) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            Long finalCustomerId = customerId;
+            return rfqRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                
+                // Customer filter
+                if (finalCustomerId != null) {
+                    predicates.add(cb.equal(root.get("customer").get("id"), finalCustomerId));
+                }
+                
+                // Search predicate
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                // Status filter
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return rfqRepository.findAll(pageable);
+        }
+    }
+    
     public Rfq findById(Long id) { return rfqRepository.findById(id).orElseThrow(); }
 
     @Transactional
@@ -522,23 +563,86 @@ public class RfqService {
 
     public List<Rfq> findByAssignedSales(Long salesId) {
         if (salesId == null) return java.util.Collections.emptyList();
-        return rfqRepository.findAll().stream()
-                .filter(r -> r.getAssignedSales() != null && salesId.equals(r.getAssignedSales().getId()))
-                .collect(Collectors.toList());
+        return rfqRepository.findByAssignedSales_Id(salesId);
+    }
+    
+    public Page<Rfq> findByAssignedSales(Long salesId, Pageable pageable) {
+        if (salesId == null) return Page.empty(pageable);
+        return rfqRepository.findByAssignedSales_Id(salesId, pageable);
+    }
+    
+    public Page<Rfq> findByAssignedSales(Long salesId, Pageable pageable, String search, String status) {
+        if (salesId == null) return Page.empty(pageable);
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            return rfqRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                predicates.add(cb.equal(root.get("assignedSales").get("id"), salesId));
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return rfqRepository.findByAssignedSales_Id(salesId, pageable);
+        }
     }
 
     public List<Rfq> findByAssignedPlanning(Long planningId) {
         if (planningId == null) return java.util.Collections.emptyList();
-        return rfqRepository.findAll().stream()
-                .filter(r -> r.getAssignedPlanning() != null && planningId.equals(r.getAssignedPlanning().getId()))
-                .collect(Collectors.toList());
+        return rfqRepository.findByAssignedPlanning_Id(planningId);
+    }
+    
+    public Page<Rfq> findByAssignedPlanning(Long planningId, Pageable pageable) {
+        if (planningId == null) return Page.empty(pageable);
+        return rfqRepository.findByAssignedPlanning_Id(planningId, pageable);
+    }
+    
+    public Page<Rfq> findByAssignedPlanning(Long planningId, Pageable pageable, String search, String status) {
+        if (planningId == null) return Page.empty(pageable);
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            return rfqRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                predicates.add(cb.equal(root.get("assignedPlanning").get("id"), planningId));
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return rfqRepository.findByAssignedPlanning_Id(planningId, pageable);
+        }
     }
 
     public List<Rfq> findDraftUnassigned() {
-        return rfqRepository.findAll().stream()
-                .filter(r -> "DRAFT".equals(r.getStatus()))
-                .filter(r -> r.getAssignedSales() == null || r.getAssignedPlanning() == null)
-                .collect(Collectors.toList());
+        return rfqRepository.findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull("DRAFT");
+    }
+    
+    public Page<Rfq> findDraftUnassigned(Pageable pageable) {
+        return rfqRepository.findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull("DRAFT", pageable);
     }
 
     private String generateRfqNumber() {

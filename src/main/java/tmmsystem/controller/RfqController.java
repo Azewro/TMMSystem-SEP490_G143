@@ -30,6 +30,11 @@ import tmmsystem.dto.sales.SalesRfqCreateRequest;
 import tmmsystem.dto.sales.SalesRfqEditRequest;
 import tmmsystem.dto.sales.AssignSalesRequest;
 import tmmsystem.dto.sales.AssignPlanningRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import tmmsystem.dto.PageResponse;
 
 @RestController
 @RequestMapping("/v1/rfqs")
@@ -50,10 +55,21 @@ public class RfqController {
             description = "Trả về danh sách RFQ đã tạo (bao gồm trạng thái hiện tại và chi tiết nếu có)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Danh sách RFQ",
-                    content = @Content(schema = @Schema(implementation = RfqDto.class)))
+                    content = @Content(schema = @Schema(implementation = PageResponse.class)))
     })
     @GetMapping
-    public List<RfqDto> list() { return service.findAll().stream().map(mapper::toDto).collect(Collectors.toList()); }
+    public PageResponse<RfqDto> list(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã RFQ hoặc người liên hệ") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
+            @Parameter(description = "Lọc theo ID khách hàng") @RequestParam(required = false) Long customerId) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Rfq> rfqPage = service.findAll(pageable, search, status, customerId);
+        List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
+                rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
+    }
 
     @Operation(summary = "Lấy chi tiết RFQ",
             description = "Lấy thông tin RFQ theo id, bao gồm danh sách sản phẩm chi tiết nếu có")
@@ -273,25 +289,50 @@ public class RfqController {
     @Operation(summary = "Danh sách RFQ được gán cho Sales",
             description = "Trả về danh sách RFQ mà Sales (header X-User-Id) được gán vào")
     @GetMapping("/for-sales")
-    public List<RfqDto> listForSales(@RequestHeader("X-User-Id") Long userId) {
-        return service.findByAssignedSales(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    public PageResponse<RfqDto> listForSales(
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã RFQ hoặc người liên hệ") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Rfq> rfqPage = service.findByAssignedSales(userId, pageable, search, status);
+        List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
+                rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
     }
 
     // NEW: Danh sách RFQ cho Planning (chỉ RFQ được gán cho planning này)
     @Operation(summary = "Danh sách RFQ được gán cho Planning",
             description = "Trả về danh sách RFQ mà Planning (header X-User-Id) được gán vào")
     @GetMapping("/for-planning")
-    public List<RfqDto> listForPlanning(@RequestHeader("X-User-Id") Long userId) {
-        return service.findByAssignedPlanning(userId).stream().map(mapper::toDto).collect(Collectors.toList());
+    public PageResponse<RfqDto> listForPlanning(
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã RFQ hoặc người liên hệ") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Rfq> rfqPage = service.findByAssignedPlanning(userId, pageable, search, status);
+        List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
+                rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
     }
 
     // NEW: Danh sách RFQ DRAFT chưa được gán (dành cho Director để phân công)
     @Operation(summary = "Danh sách RFQ DRAFT chưa được gán",
             description = "Trả về danh sách RFQ ở trạng thái DRAFT mà Sales or Planning chưa được gán. Dành cho Director để phân công.")
     @GetMapping("/drafts/unassigned")
-    public List<RfqDto> listDraftsUnassigned(@RequestHeader(value = "X-User-Id", required = false) Long directorUserId) {
+    public PageResponse<RfqDto> listDraftsUnassigned(
+            @RequestHeader(value = "X-User-Id", required = false) Long directorUserId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size) {
         // Hiện chưa kiểm tra role thật sự của user; giả sử caller là director.
-        return service.findDraftUnassigned().stream().map(mapper::toDto).collect(Collectors.toList());
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Rfq> rfqPage = service.findDraftUnassigned(pageable);
+        List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
+                rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
     }
 
     // 1) Sales tạo RFQ hộ khách không dùng hệ thống (tự assign bản thân)

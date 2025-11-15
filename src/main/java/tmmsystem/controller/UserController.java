@@ -13,7 +13,11 @@ import tmmsystem.entity.Role;
 import tmmsystem.entity.User;
 import tmmsystem.service.UserService;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import tmmsystem.dto.PageResponse;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -23,8 +27,16 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public List<UserDto> getAll() {
-        return userService.getAllUsers();
+    public PageResponse<UserDto> getAll(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") int size,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String search,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String roleName,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Boolean isActive) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<UserDto> userPage = userService.getAllUsers(pageable, search, roleName, isActive);
+        return new PageResponse<>(userPage.getContent(), userPage.getNumber(), userPage.getSize(), 
+                userPage.getTotalElements(), userPage.getTotalPages(), userPage.isFirst(), userPage.isLast());
     }
 
     @GetMapping("/{id}")

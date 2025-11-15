@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import tmmsystem.repository.ProductionLotOrderRepository;
 import tmmsystem.repository.ProductionLotRepository;
 
@@ -49,6 +51,39 @@ public class ContractService {
     }
 
     public List<Contract> findAll() { return repository.findAll(); }
+    public Page<Contract> findAll(Pageable pageable) { return repository.findAll(pageable); }
+    
+    public Page<Contract> findAll(Pageable pageable, String search, String status, java.time.LocalDate deliveryDate) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || deliveryDate != null) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            java.time.LocalDate finalDeliveryDate = deliveryDate;
+            return repository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                if (finalDeliveryDate != null) {
+                    predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return repository.findAll(pageable);
+        }
+    }
     public Contract findById(Long id) { return repository.findById(id).orElseThrow(); }
 
     // NEW: queries by approved sales/planning id
@@ -178,8 +213,79 @@ public class ContractService {
         return repository.findByStatus("PENDING_APPROVAL");
     }
     
+    public Page<Contract> getContractsPendingApproval(Pageable pageable) {
+        return repository.findByStatus("PENDING_APPROVAL", pageable);
+    }
+    
+    public Page<Contract> getContractsPendingApproval(Pageable pageable, String search, String status, java.time.LocalDate deliveryDate) {
+        String searchLower = search != null ? search.trim().toLowerCase() : "";
+        String finalStatus = status;
+        java.time.LocalDate finalDeliveryDate = deliveryDate;
+        return repository.findAll((root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(cb.equal(root.get("status"), "PENDING_APPROVAL"));
+            
+            if (search != null && !search.trim().isEmpty()) {
+                var searchPredicate = cb.or(
+                    cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                );
+                predicates.add(searchPredicate);
+            }
+            
+            if (finalStatus != null && !finalStatus.trim().isEmpty() && !finalStatus.equals("PENDING_APPROVAL")) {
+                predicates.add(cb.equal(root.get("status"), finalStatus));
+            }
+            
+            if (finalDeliveryDate != null) {
+                predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
+            }
+            
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        }, pageable);
+    }
+    
     public List<Contract> getDirectorPendingContracts() {
         return repository.findByStatus("PENDING_APPROVAL");
+    }
+    
+    public Page<Contract> getDirectorPendingContracts(Pageable pageable) {
+        return repository.findByStatus("PENDING_APPROVAL", pageable);
+    }
+    
+    public Page<Contract> getDirectorPendingContracts(Pageable pageable, String search, String status, java.time.LocalDate contractDate, java.time.LocalDate deliveryDate) {
+        String searchLower = search != null ? search.trim().toLowerCase() : "";
+        String finalStatus = status;
+        java.time.LocalDate finalContractDate = contractDate;
+        java.time.LocalDate finalDeliveryDate = deliveryDate;
+        return repository.findAll((root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(cb.equal(root.get("status"), "PENDING_APPROVAL"));
+            
+            if (search != null && !search.trim().isEmpty()) {
+                var searchPredicate = cb.or(
+                    cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
+                );
+                predicates.add(searchPredicate);
+            }
+            
+            if (finalStatus != null && !finalStatus.trim().isEmpty() && !finalStatus.equals("PENDING_APPROVAL")) {
+                predicates.add(cb.equal(root.get("status"), finalStatus));
+            }
+            
+            if (finalContractDate != null) {
+                predicates.add(cb.equal(root.get("contractDate"), finalContractDate));
+            }
+            
+            if (finalDeliveryDate != null) {
+                predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
+            }
+            
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        }, pageable);
     }
     
     public String getContractFileUrl(Long contractId) {

@@ -15,6 +15,11 @@ import tmmsystem.service.MachineService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import tmmsystem.dto.PageResponse;
 
 @RestController
 @RequestMapping("/v1/machines")
@@ -25,7 +30,18 @@ public class MachineController {
     public MachineController(MachineService service, MachineMapper mapper) { this.service = service; this.mapper = mapper; }
 
     @GetMapping
-    public List<MachineDto> list() { return service.findAll().stream().map(mapper::toDto).collect(Collectors.toList()); }
+    public PageResponse<MachineDto> list(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") int size,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String search,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String type,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+        Page<tmmsystem.entity.Machine> machinePage = service.findAll(pageable, search, type, status);
+        List<MachineDto> content = machinePage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, machinePage.getNumber(), machinePage.getSize(), 
+                machinePage.getTotalElements(), machinePage.getTotalPages(), machinePage.isFirst(), machinePage.isLast());
+    }
 
     @GetMapping("/{id}")
     public MachineDto get(@PathVariable Long id) { return mapper.toDto(service.findById(id)); }

@@ -24,6 +24,11 @@ import tmmsystem.service.QuotationService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import tmmsystem.dto.PageResponse;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,10 +46,20 @@ public class QuotationController {
             description = "Trả về danh sách tất cả báo giá trong hệ thống")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Danh sách báo giá",
-                    content = @Content(schema = @Schema(implementation = QuotationDto.class)))
+                    content = @Content(schema = @Schema(implementation = PageResponse.class)))
     })
     @GetMapping
-    public List<QuotationDto> list() { return service.findAll().stream().map(mapper::toDto).collect(Collectors.toList()); }
+    public PageResponse<QuotationDto> list(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã báo giá hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Quotation> quotationPage = service.findAll(pageable, search, status);
+        List<QuotationDto> content = quotationPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, quotationPage.getNumber(), quotationPage.getSize(), 
+                quotationPage.getTotalElements(), quotationPage.getTotalPages(), quotationPage.isFirst(), quotationPage.isLast());
+    }
 
     @Operation(summary = "Lấy chi tiết báo giá",
             description = "Lấy thông tin chi tiết của 1 báo giá theo ID")
@@ -195,30 +210,50 @@ public class QuotationController {
     @Operation(summary = "Danh sách báo giá theo Sales được phân công",
             description = "Trả về danh sách báo giá mà Sales (header X-User-Id) được gán vào")
     @GetMapping("/for-sales")
-    public List<QuotationDto> listForSales(@RequestHeader("X-User-Id") Long userId) {
-        return service.findAll().stream()
-                .filter(q -> q.getAssignedSales() != null && userId.equals(q.getAssignedSales().getId()))
-                .map(mapper::toDto)
-                .collect(Collectors.toList());
+    public PageResponse<QuotationDto> listForSales(
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã báo giá hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Quotation> quotationPage = service.findByAssignedSales(userId, pageable, search, status);
+        List<QuotationDto> content = quotationPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, quotationPage.getNumber(), quotationPage.getSize(), 
+                quotationPage.getTotalElements(), quotationPage.getTotalPages(), quotationPage.isFirst(), quotationPage.isLast());
     }
 
     // NEW: List quotations assigned to a specific Planning
     @Operation(summary = "Danh sách báo giá theo Planning được phân công",
             description = "Trả về danh sách báo giá mà Planning (header X-User-Id) được gán vào")
     @GetMapping("/for-planning")
-    public List<QuotationDto> listForPlanning(@RequestHeader("X-User-Id") Long userId) {
-        return service.findAll().stream()
-                .filter(q -> q.getAssignedPlanning() != null && userId.equals(q.getAssignedPlanning().getId()))
-                .map(mapper::toDto)
-                .collect(Collectors.toList());
+    public PageResponse<QuotationDto> listForPlanning(
+            @RequestHeader("X-User-Id") Long userId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã báo giá hoặc tên khách hàng") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Quotation> quotationPage = service.findByAssignedPlanning(userId, pageable, search, status);
+        List<QuotationDto> content = quotationPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, quotationPage.getNumber(), quotationPage.getSize(), 
+                quotationPage.getTotalElements(), quotationPage.getTotalPages(), quotationPage.isFirst(), quotationPage.isLast());
     }
 
     // Customer APIs
     @Operation(summary = "Lấy báo giá của khách hàng",
             description = "Customer lấy danh sách báo giá của mình")
     @GetMapping("/customer/{customerId}")
-    public List<QuotationDto> getCustomerQuotations(@Parameter(description = "ID Customer") @PathVariable Long customerId) {
-        return service.findQuotationsByCustomer(customerId).stream().map(mapper::toDto).collect(Collectors.toList());
+    public PageResponse<QuotationDto> getCustomerQuotations(
+            @Parameter(description = "ID Customer") @PathVariable Long customerId,
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo mã báo giá") @RequestParam(required = false) String search) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Quotation> quotationPage = service.findByCustomerId(customerId, pageable, search);
+        List<QuotationDto> content = quotationPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, quotationPage.getNumber(), quotationPage.getSize(), 
+                quotationPage.getTotalElements(), quotationPage.getTotalPages(), quotationPage.isFirst(), quotationPage.isLast());
     }
 
     @Operation(summary = "Duyệt báo giá",

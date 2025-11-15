@@ -18,6 +18,8 @@ import tmmsystem.util.JwtService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class UserService {
@@ -141,6 +143,66 @@ public class UserService {
                 .stream()
                 .map(UserMapper::toDto)
                 .collect(Collectors.toList());
+    }
+    
+    public Page<UserDto> getAllUsers(Pageable pageable) {
+        return userRepo.findAll(pageable)
+                .map(UserMapper::toDto);
+    }
+    
+    public Page<UserDto> getAllUsers(Pageable pageable, String search, String roleName, Boolean isActive) {
+        Page<User> userPage;
+        
+        // Build query conditions
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.trim().toLowerCase();
+            // Search in name, email, phoneNumber, or role name
+            userPage = userRepo.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                
+                // Search predicate
+                var searchPredicate = cb.or(
+                    cb.like(cb.lower(root.get("name")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("email")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("phoneNumber")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("role").get("name")), "%" + searchLower + "%")
+                );
+                predicates.add(searchPredicate);
+                
+                // Role filter
+                if (roleName != null && !roleName.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("role").get("name"), roleName));
+                }
+                
+                // Status filter
+                if (isActive != null) {
+                    predicates.add(cb.equal(root.get("active"), isActive));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            // No search, just filters
+            if (roleName != null || isActive != null) {
+                userPage = userRepo.findAll((root, query, cb) -> {
+                    var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                    
+                    if (roleName != null && !roleName.trim().isEmpty()) {
+                        predicates.add(cb.equal(root.get("role").get("name"), roleName));
+                    }
+                    
+                    if (isActive != null) {
+                        predicates.add(cb.equal(root.get("active"), isActive));
+                    }
+                    
+                    return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+                }, pageable);
+            } else {
+                userPage = userRepo.findAll(pageable);
+            }
+        }
+        
+        return userPage.map(UserMapper::toDto);
     }
 
     public UserDto getUserById(Long id) {
