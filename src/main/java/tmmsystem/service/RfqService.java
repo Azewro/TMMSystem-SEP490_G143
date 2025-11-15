@@ -45,54 +45,62 @@ public class RfqService {
     }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, java.time.LocalDate createdDate) {
-        boolean hasFilters = (search != null && !search.trim().isEmpty()) || 
-                            (status != null && !status.trim().isEmpty()) || 
-                            customerId != null || 
-                            createdDate != null;
-        if (hasFilters) {
-            String searchLower = search != null ? search.trim().toLowerCase() : "";
-            String finalStatus = status;
-            Long finalCustomerId = customerId;
-            java.time.LocalDate finalCreatedDate = createdDate;
-            return rfqRepository.findAll((root, query, cb) -> {
-                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                
-                // Customer filter
-                if (finalCustomerId != null) {
-                    predicates.add(cb.equal(root.get("customer").get("id"), finalCustomerId));
-                }
-                
-                // Search predicate
-                if (search != null && !search.trim().isEmpty()) {
-                    var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
-                    );
-                    predicates.add(searchPredicate);
-                }
-                
-                // Status filter
-                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
-                    predicates.add(cb.equal(root.get("status"), finalStatus));
-                }
-                
-                // Created date filter
-                if (finalCreatedDate != null) {
-                    // Filter by createdAt (date part only, ignore time)
-                    // Convert LocalDate to start and end of day in Instant
-                    java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-                    java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-                    predicates.add(cb.and(
-                        cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
-                        cb.lessThan(root.get("createdAt"), endOfDay)
-                    ));
-                }
-                
-                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
-            }, pageable);
-        } else {
+        // Check if we have any actual filters (not null and not empty)
+        boolean hasSearch = search != null && !search.trim().isEmpty();
+        boolean hasStatus = status != null && !status.trim().isEmpty();
+        boolean hasCustomerId = customerId != null;
+        boolean hasCreatedDate = createdDate != null;
+        
+        if (!hasSearch && !hasStatus && !hasCustomerId && !hasCreatedDate) {
             return rfqRepository.findAll(pageable);
         }
+        
+        String searchLower = hasSearch && search != null ? search.trim().toLowerCase() : "";
+        String finalStatus = status;
+        Long finalCustomerId = customerId;
+        java.time.LocalDate finalCreatedDate = createdDate;
+        
+        return rfqRepository.findAll((root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            
+            // Customer filter
+            if (hasCustomerId && finalCustomerId != null) {
+                predicates.add(cb.equal(root.get("customer").get("id"), finalCustomerId));
+            }
+            
+            // Search predicate
+            if (hasSearch && search != null) {
+                var searchPredicate = cb.or(
+                    cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                    cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                );
+                predicates.add(searchPredicate);
+            }
+            
+            // Status filter
+            if (hasStatus && finalStatus != null) {
+                predicates.add(cb.equal(root.get("status"), finalStatus));
+            }
+            
+            // Created date filter
+            if (hasCreatedDate && finalCreatedDate != null) {
+                // Filter by createdAt (date part only, ignore time)
+                // Convert LocalDate to start and end of day in Instant
+                java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                predicates.add(cb.and(
+                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                    cb.lessThan(root.get("createdAt"), endOfDay)
+                ));
+            }
+            
+            // Ensure we have at least one predicate before combining
+            if (predicates.isEmpty()) {
+                return cb.conjunction(); // Return true predicate if no filters
+            }
+            
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        }, pageable);
     }
     
     public Rfq findById(Long id) { return rfqRepository.findById(id).orElseThrow(); }
