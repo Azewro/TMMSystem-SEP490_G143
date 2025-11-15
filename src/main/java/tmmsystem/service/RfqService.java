@@ -37,28 +37,22 @@ public class RfqService {
     public Page<Rfq> findAll(Pageable pageable) { return rfqRepository.findAll(pageable); }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status) {
-        return findAll(pageable, search, status, null, null);
+        return findAll(pageable, search, status, null);
     }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId) {
-        return findAll(pageable, search, status, customerId, null);
-    }
-    
-    public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, java.time.LocalDate createdDate) {
         // Check if we have any actual filters (not null and not empty)
         boolean hasSearch = search != null && !search.trim().isEmpty();
         boolean hasStatus = status != null && !status.trim().isEmpty();
         boolean hasCustomerId = customerId != null;
-        boolean hasCreatedDate = createdDate != null;
         
-        if (!hasSearch && !hasStatus && !hasCustomerId && !hasCreatedDate) {
+        if (!hasSearch && !hasStatus && !hasCustomerId) {
             return rfqRepository.findAll(pageable);
         }
         
         String searchLower = hasSearch && search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
         Long finalCustomerId = customerId;
-        java.time.LocalDate finalCreatedDate = createdDate;
         
         return rfqRepository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
@@ -68,11 +62,11 @@ public class RfqService {
                 predicates.add(cb.equal(root.get("customer").get("id"), finalCustomerId));
             }
             
-            // Search predicate
+            // Search predicate - chỉ tìm theo mã RFQ và tên khách hàng
             if (hasSearch && search != null) {
                 var searchPredicate = cb.or(
                     cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%")
                 );
                 predicates.add(searchPredicate);
             }
@@ -80,18 +74,6 @@ public class RfqService {
             // Status filter
             if (hasStatus && finalStatus != null) {
                 predicates.add(cb.equal(root.get("status"), finalStatus));
-            }
-            
-            // Created date filter
-            if (hasCreatedDate && finalCreatedDate != null) {
-                // Filter by createdAt (date part only, ignore time)
-                // Convert LocalDate to start and end of day in Instant
-                java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-                java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-                predicates.add(cb.and(
-                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
-                    cb.lessThan(root.get("createdAt"), endOfDay)
-                ));
             }
             
             // Ensure we have at least one predicate before combining
