@@ -33,7 +33,7 @@ public class UserController {
             @org.springframework.web.bind.annotation.RequestParam(required = false) String search,
             @org.springframework.web.bind.annotation.RequestParam(required = false) String roleName,
             @org.springframework.web.bind.annotation.RequestParam(required = false) Boolean isActive) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
         Page<UserDto> userPage = userService.getAllUsers(pageable, search, roleName, isActive);
         return new PageResponse<>(userPage.getContent(), userPage.getNumber(), userPage.getSize(), 
                 userPage.getTotalElements(), userPage.getTotalPages(), userPage.isFirst(), userPage.isLast());

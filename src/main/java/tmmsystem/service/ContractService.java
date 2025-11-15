@@ -254,14 +254,27 @@ public class ContractService {
         return repository.findByStatus("PENDING_APPROVAL", pageable);
     }
     
-    public Page<Contract> getDirectorPendingContracts(Pageable pageable, String search, String status, java.time.LocalDate contractDate, java.time.LocalDate deliveryDate) {
+    public Page<Contract> getDirectorPendingContracts(Pageable pageable, String search, String status, java.time.LocalDate createdDate, java.time.LocalDate deliveryDate) {
+        // If no filters provided, return only PENDING_APPROVAL contracts (default behavior)
+        if ((search == null || search.trim().isEmpty()) && 
+            (status == null || status.trim().isEmpty()) && 
+            createdDate == null && 
+            deliveryDate == null) {
+            return repository.findByStatus("PENDING_APPROVAL", pageable);
+        }
+        
         String searchLower = search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
-        java.time.LocalDate finalContractDate = contractDate;
+        java.time.LocalDate finalCreatedDate = createdDate;
         java.time.LocalDate finalDeliveryDate = deliveryDate;
         return repository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-            predicates.add(cb.equal(root.get("status"), "PENDING_APPROVAL"));
+            
+            // Only filter by status if status filter is provided
+            if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("status"), finalStatus));
+            }
+            // If no status filter, don't filter by status (show all)
             
             if (search != null && !search.trim().isEmpty()) {
                 var searchPredicate = cb.or(
@@ -272,12 +285,15 @@ public class ContractService {
                 predicates.add(searchPredicate);
             }
             
-            if (finalStatus != null && !finalStatus.trim().isEmpty() && !finalStatus.equals("PENDING_APPROVAL")) {
-                predicates.add(cb.equal(root.get("status"), finalStatus));
-            }
-            
-            if (finalContractDate != null) {
-                predicates.add(cb.equal(root.get("contractDate"), finalContractDate));
+            if (finalCreatedDate != null) {
+                // Filter by createdAt (date part only, ignore time)
+                // Convert LocalDate to start and end of day in Instant
+                java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                predicates.add(cb.and(
+                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                    cb.lessThan(root.get("createdAt"), endOfDay)
+                ));
             }
             
             if (finalDeliveryDate != null) {

@@ -17,6 +17,12 @@ import tmmsystem.service.CustomerService;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import tmmsystem.dto.PageResponse;
+import io.swagger.v3.oas.annotations.Parameter;
 
 @RestController
 @RequestMapping("/v1/customers")
@@ -27,7 +33,17 @@ public class CustomerController {
     public CustomerController(CustomerService service, CustomerMapper mapper) { this.service = service; this.mapper = mapper; }
 
     @GetMapping
-    public List<CustomerDto> list() { return service.findAll().stream().map(mapper::toDto).collect(Collectors.toList()); }
+    public PageResponse<CustomerDto> list(
+            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Tìm kiếm theo tên công ty, người liên hệ, email, số điện thoại, mã số thuế") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái (true/false)") @RequestParam(required = false) Boolean isActive) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Customer> customerPage = service.findAll(pageable, search, isActive);
+        List<CustomerDto> content = customerPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
+        return new PageResponse<>(content, customerPage.getNumber(), customerPage.getSize(), 
+                customerPage.getTotalElements(), customerPage.getTotalPages(), customerPage.isFirst(), customerPage.isLast());
+    }
 
     @GetMapping("/{id}")
     public CustomerDto get(@PathVariable Long id) { return mapper.toDto(service.findById(id)); }

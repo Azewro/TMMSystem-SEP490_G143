@@ -195,13 +195,13 @@ public class ContractController {
             @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Tìm kiếm theo mã hợp đồng hoặc tên khách hàng") @RequestParam(required = false) String search,
             @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
-            @Parameter(description = "Lọc theo ngày ký hợp đồng (yyyy-MM-dd)") @RequestParam(required = false) String contractDate,
+            @Parameter(description = "Lọc theo ngày tạo (yyyy-MM-dd)") @RequestParam(required = false) String createdDate,
             @Parameter(description = "Lọc theo ngày giao hàng (yyyy-MM-dd)") @RequestParam(required = false) String deliveryDate) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        java.time.LocalDate contractDateLocal = null;
-        if (contractDate != null && !contractDate.trim().isEmpty()) {
+        java.time.LocalDate createdDateLocal = null;
+        if (createdDate != null && !createdDate.trim().isEmpty()) {
             try {
-                contractDateLocal = java.time.LocalDate.parse(contractDate);
+                createdDateLocal = java.time.LocalDate.parse(createdDate);
             } catch (Exception e) {
                 // Ignore invalid date format
             }
@@ -214,7 +214,7 @@ public class ContractController {
                 // Ignore invalid date format
             }
         }
-        Page<Contract> contractPage = service.getDirectorPendingContracts(pageable, search, status, contractDateLocal, deliveryDateLocal);
+        Page<Contract> contractPage = service.getDirectorPendingContracts(pageable, search, status, createdDateLocal, deliveryDateLocal);
         List<ContractDto> content = contractPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
         return new PageResponse<>(content, contractPage.getNumber(), contractPage.getSize(), 
                 contractPage.getTotalElements(), contractPage.getTotalPages(), contractPage.isFirst(), contractPage.isLast());

@@ -12,6 +12,8 @@ import tmmsystem.repository.UserRepository;
 import tmmsystem.repository.OtpTokenRepository;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class CustomerService {
@@ -40,6 +42,37 @@ public class CustomerService {
     }
 
     public List<Customer> findAll() { return customerRepository.findAll(); }
+    
+    public Page<Customer> findAll(Pageable pageable, String search, Boolean isActive) {
+        if (search != null && !search.trim().isEmpty() || isActive != null) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            Boolean finalIsActive = isActive;
+            return customerRepository.findAll((root, query, cb) -> {
+                var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                
+                // Search predicate
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.or(
+                        cb.like(cb.lower(root.get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("email")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("phoneNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("taxCode")), "%" + searchLower + "%")
+                    );
+                    predicates.add(searchPredicate);
+                }
+                
+                // Status filter
+                if (finalIsActive != null) {
+                    predicates.add(cb.equal(root.get("active"), finalIsActive));
+                }
+                
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else {
+            return customerRepository.findAll(pageable);
+        }
+    }
     public Customer findById(Long id) { return customerRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Customer not found")); }
     public Customer findByEmailOrThrow(String email) { return customerRepository.findByEmail(email).orElseThrow(); }
