@@ -275,18 +275,6 @@ public class CapacityCheckService {
         return faceDays.max(bathDays).max(sportsDays);
     }
     
-    public CapacityCheckResultDto checkWarehouseCapacity(Long rfqId) {
-        // Kho luôn đủ theo yêu cầu
-        CapacityCheckResultDto result = new CapacityCheckResultDto();
-        
-        CapacityCheckResultDto.WarehouseCapacityDto warehouseCapacity = new CapacityCheckResultDto.WarehouseCapacityDto();
-        warehouseCapacity.setSufficient(true);
-        warehouseCapacity.setMessage("Kho luôn đủ nguyên liệu");
-        result.setWarehouseCapacity(warehouseCapacity);
-        
-        return result;
-    }
-    
     /**
      * Populate thông tin chi tiết các công đoạn tuần tự
      */

@@ -14,7 +14,6 @@ import tmmsystem.dto.auth.ForgotPasswordRequest;
 import tmmsystem.dto.auth.VerifyResetCodeRequest;
 import tmmsystem.service.UserService;
 import tmmsystem.service.CustomerService;
-import tmmsystem.dto.auth.CustomerRegisterRequest;
 import tmmsystem.dto.CustomerCreateRequest;
 import tmmsystem.entity.Customer;
 
@@ -84,26 +83,6 @@ public class AuthController {
     public ResponseEntity<?> customerChangePassword(@RequestBody tmmsystem.dto.auth.ChangePasswordRequest req) {
         try { customerService.changeCustomerPasswordByEmail(req.email(), req.currentPassword(), req.newPassword()); return ResponseEntity.ok().build(); }
         catch (RuntimeException ex) { return ResponseEntity.badRequest().body(ex.getMessage()); }
-    }
-
-    @PostMapping("/customer/register")
-    public ResponseEntity<?> registerCustomerUser(@Valid @RequestBody CustomerRegisterRequest req){
-        try {
-            if (customerService.existsByEmail(req.email())) { return ResponseEntity.badRequest().body("Email đã được sử dụng"); }
-            Customer customer = new Customer();
-            customer.setCompanyName("");
-            customer.setContactPerson(null);
-            customer.setEmail(req.email().toLowerCase().trim());
-            customer.setPhoneNumber(null);
-            customer.setAddress(null);
-            customer.setTaxCode(null);
-            customer.setActive(true);
-            customer.setVerified(false);
-            customer.setRegistrationType("SELF_REGISTERED");
-            customerService.create(customer, null);
-            return ResponseEntity.ok("Đăng ký thành công. Vui lòng cập nhật thông tin công ty sau khi đăng nhập.");
-        } catch (RuntimeException ex) { return ResponseEntity.badRequest().body("Lỗi đăng ký: " + ex.getMessage()); }
-        catch (Exception ex) { return ResponseEntity.internalServerError().body("Lỗi hệ thống: " + ex.getMessage()); }
     }
 
     @PostMapping("/customer/create-company")

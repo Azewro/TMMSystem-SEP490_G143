@@ -29,7 +29,6 @@ public class BusinessFlowCheck {
         System.out.println("\n⚖️ GIAI ĐOẠN 2: KIỂM TRA NĂNG LỰC & TẠO BÁO GIÁ");
         System.out.println("✅ 5. Planning kiểm tra năng lực");
         System.out.println("   - POST /v1/rfqs/{id}/check-machine-capacity");
-        System.out.println("   - POST /v1/rfqs/{id}/check-warehouse-capacity");
         
         System.out.println("\n✅ 6. Planning tạo báo giá");
         System.out.println("   - POST /v1/quotations/create-from-rfq");

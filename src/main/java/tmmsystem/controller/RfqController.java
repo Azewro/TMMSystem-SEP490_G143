@@ -16,9 +16,7 @@ import tmmsystem.dto.sales.CapacityCheckResultDto;
 import tmmsystem.dto.sales.RfqAssignRequest;
 import tmmsystem.dto.sales.RfqCreateDto;
 import tmmsystem.dto.sales.RfqPublicCreateDto;
-import tmmsystem.entity.Customer;
 import tmmsystem.entity.Rfq;
-import tmmsystem.entity.User;
 import tmmsystem.mapper.RfqMapper;
 import tmmsystem.service.RfqService;
 import tmmsystem.service.CapacityCheckService;
@@ -232,13 +230,6 @@ public class RfqController {
     @PostMapping("/{id}/check-machine-capacity")
     public CapacityCheckResultDto checkMachineCapacity(@Parameter(description = "ID RFQ") @PathVariable Long id) {
         return capacityCheckService.checkMachineCapacity(id);
-    }
-
-    @Operation(summary = "Kiểm tra năng lực kho hàng",
-            description = "Planning Department kiểm tra năng lực kho hàng cho RFQ (luôn đủ theo giả định)")
-    @PostMapping("/{id}/check-warehouse-capacity")
-    public CapacityCheckResultDto checkWarehouseCapacity(@Parameter(description = "ID RFQ") @PathVariable Long id) {
-        return capacityCheckService.checkWarehouseCapacity(id);
     }
 
     @Operation(summary = "Gán Sales và Planning cho RFQ (chỉ khi DRAFT)")

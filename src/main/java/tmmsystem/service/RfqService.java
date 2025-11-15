@@ -567,10 +567,12 @@ public class RfqService {
         rfq.setCapacityStatus(capacityStatus);
         rfq.setCapacityReason(reason);
         rfq.setProposedNewDeliveryDate(proposedNewDate);
-        rfqRepository.save(rfq);
+        // Khi không đủ năng lực, chuyển status về SENT để Sales có thể chỉnh sửa hoặc hủy
         if ("INSUFFICIENT".equalsIgnoreCase(capacityStatus)) {
+            rfq.setStatus("SENT");
             notificationService.notifyCapacityInsufficient(rfq);
         }
+        rfqRepository.save(rfq);
     }
 
     @Transactional
