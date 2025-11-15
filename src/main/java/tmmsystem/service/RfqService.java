@@ -45,7 +45,11 @@ public class RfqService {
     }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, java.time.LocalDate createdDate) {
-        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || customerId != null || createdDate != null) {
+        boolean hasFilters = (search != null && !search.trim().isEmpty()) || 
+                            (status != null && !status.trim().isEmpty()) || 
+                            customerId != null || 
+                            createdDate != null;
+        if (hasFilters) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             Long finalCustomerId = customerId;
