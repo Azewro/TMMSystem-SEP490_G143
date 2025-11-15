@@ -63,9 +63,18 @@ public class RfqController {
             @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Tìm kiếm theo mã RFQ hoặc người liên hệ") @RequestParam(required = false) String search,
             @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
-            @Parameter(description = "Lọc theo ID khách hàng") @RequestParam(required = false) Long customerId) {
+            @Parameter(description = "Lọc theo ID khách hàng") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Lọc theo ngày tạo (yyyy-MM-dd)") @RequestParam(required = false) String createdDate) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Rfq> rfqPage = service.findAll(pageable, search, status, customerId);
+        java.time.LocalDate createdDateLocal = null;
+        if (createdDate != null && !createdDate.trim().isEmpty()) {
+            try {
+                createdDateLocal = java.time.LocalDate.parse(createdDate);
+            } catch (Exception e) {
+                // Ignore invalid date format
+            }
+        }
+        Page<Rfq> rfqPage = service.findAll(pageable, search, status, customerId, createdDateLocal);
         List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
         return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
                 rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());

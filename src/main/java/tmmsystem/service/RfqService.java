@@ -37,14 +37,19 @@ public class RfqService {
     public Page<Rfq> findAll(Pageable pageable) { return rfqRepository.findAll(pageable); }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status) {
-        return findAll(pageable, search, status, null);
+        return findAll(pageable, search, status, null, null);
     }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId) {
-        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || customerId != null) {
+        return findAll(pageable, search, status, customerId, null);
+    }
+    
+    public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, java.time.LocalDate createdDate) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || customerId != null || createdDate != null) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             Long finalCustomerId = customerId;
+            java.time.LocalDate finalCreatedDate = createdDate;
             return rfqRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 
@@ -65,6 +70,18 @@ public class RfqService {
                 // Status filter
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
+                
+                // Created date filter
+                if (finalCreatedDate != null) {
+                    // Filter by createdAt (date part only, ignore time)
+                    // Convert LocalDate to start and end of day in Instant
+                    java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                    java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                    predicates.add(cb.and(
+                        cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                        cb.lessThan(root.get("createdAt"), endOfDay)
+                    ));
                 }
                 
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
