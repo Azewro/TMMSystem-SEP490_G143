@@ -594,7 +594,7 @@ public class RfqService {
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
                         cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                        cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%")
                     );
                     predicates.add(searchPredicate);
                 }
@@ -632,7 +632,7 @@ public class RfqService {
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
                         cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("contactPerson")), "%" + searchLower + "%")
+                        cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%")
                     );
                     predicates.add(searchPredicate);
                 }
