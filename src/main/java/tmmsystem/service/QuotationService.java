@@ -1,5 +1,7 @@
 package tmmsystem.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
@@ -17,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 
 @Service
 public class QuotationService {
+    private static final Logger log = LoggerFactory.getLogger(QuotationService.class);
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final RfqRepository rfqRepository;
@@ -287,9 +290,22 @@ public class QuotationService {
         Customer customer = rfq.getCustomer();
         String tempPassword = null;
         if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank())) {
-            try { tempPassword = customerService.provisionTemporaryPassword(customer.getId()); } catch (Exception ignore) {}
+            try { 
+                tempPassword = customerService.provisionTemporaryPassword(customer.getId());
+                log.info("Temporary password provisioned for customer {}: {}", customer.getId(), tempPassword != null ? "***" : "null");
+            } catch (Exception e) {
+                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(), e.getMessage(), e);
+            }
+        } else if (customer != null) {
+            log.info("Customer {} already has password, skipping temporary password provision", customer.getId());
         }
-        try { emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword); } catch (Exception ignore) {}
+        try { 
+            emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
+            log.info("Quotation email with login sent to customer {} (tempPassword provided: {})", 
+                customer != null ? customer.getId() : "null", tempPassword != null && !tempPassword.isBlank());
+        } catch (Exception e) {
+            log.error("Failed to send quotation email with login for quotation {}: {}", savedQuotation.getId(), e.getMessage(), e);
+        }
         return savedQuotation;
     }
 

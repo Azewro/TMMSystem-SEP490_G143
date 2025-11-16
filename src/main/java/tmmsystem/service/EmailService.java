@@ -47,14 +47,15 @@ public class EmailService {
             StringBuilder loginSection = new StringBuilder();
             loginSection.append("<div style='margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;'>");
             loginSection.append("<h3 style='color: #007bff; margin-top: 0;'>Đăng nhập để phê duyệt báo giá:</h3>");
-            loginSection.append("<p><strong>Portal:</strong> <a href='https://portal.example.com/login'>https://portal.example.com/login</a></p>");
+            String baseUrl = "https://tmmsystem-sep490g143-front-production.up.railway.app";
+            loginSection.append("<p><strong>Portal:</strong> <a href='").append(baseUrl).append("/login'>").append(baseUrl).append("/login</a></p>");
             loginSection.append("<p><strong>Email đăng nhập:</strong> ").append(quotation.getCustomer().getEmail()).append("</p>");
-            if (tempPassword != null) {
+            if (tempPassword != null && !tempPassword.isBlank()) {
                 loginSection.append("<p><strong>Mật khẩu tạm:</strong> <span style='color: #dc3545; font-weight: bold;'>").append(tempPassword).append("</span> (hãy đổi mật khẩu sau khi đăng nhập)</p>");
             } else {
                 loginSection.append("<p>Bạn đã có tài khoản. Đăng nhập bằng mật khẩu hiện tại của bạn.</p>");
             }
-            loginSection.append("<p><strong>Link báo giá:</strong> <a href='https://portal.example.com/quotations/").append(quotation.getId()).append("'>Xem chi tiết báo giá</a></p>");
+            loginSection.append("<p><strong>Link báo giá:</strong> <a href='").append(baseUrl).append("/customer/quotations/").append(quotation.getId()).append("'>Xem chi tiết báo giá</a></p>");
             loginSection.append("</div>");
             
             // Chèn login section trước closing tag của body
