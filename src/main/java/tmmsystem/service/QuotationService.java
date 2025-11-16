@@ -395,21 +395,94 @@ public class QuotationService {
         return quotationRepository.findByCustomer_Id(customerId, pageable);
     }
     
-    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable, String search) {
-        if (search != null && !search.trim().isEmpty()) {
-            String searchLower = search.trim().toLowerCase();
-            return quotationRepository.findAll((root, query, cb) -> {
+    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable, String search, String status, String selectedDate) {
+        // Parse selectedDate if provided
+        java.time.LocalDate targetDate = null;
+        if (selectedDate != null && !selectedDate.trim().isEmpty()) {
+            try {
+                targetDate = java.time.LocalDate.parse(selectedDate.trim());
+            } catch (Exception e) {
+                // Invalid date format, keep as null
+            }
+        }
+        final java.time.LocalDate finalTargetDate = targetDate; // Make effectively final for lambda
+        
+        // If selectedDate is provided and we're sorting by validUntil, we need to fetch all and sort by distance
+        if (finalTargetDate != null && pageable.getSort().getOrderFor("validUntil") != null) {
+            // Fetch all quotations matching criteria (without pagination)
+            List<Quotation> allQuotations;
+            if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+                String searchLower = search != null ? search.trim().toLowerCase() : "";
+                String finalStatus = status;
+                allQuotations = quotationRepository.findAll((root, query, cb) -> {
+                    var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                    predicates.add(cb.equal(root.get("customer").get("id"), customerId));
+                    
+                    if (search != null && !search.trim().isEmpty()) {
+                        var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
+                        predicates.add(searchPredicate);
+                    }
+                    
+                    if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                        predicates.add(cb.equal(root.get("status"), finalStatus));
+                    }
+                    
+                    return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+                });
+            } else {
+                allQuotations = quotationRepository.findByCustomer_Id(customerId);
+            }
+            
+            // Sort by distance from selected date
+            allQuotations.sort((a, b) -> {
+                long distanceA = a.getValidUntil() != null 
+                    ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, a.getValidUntil()))
+                    : Long.MAX_VALUE;
+                long distanceB = b.getValidUntil() != null 
+                    ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, b.getValidUntil()))
+                    : Long.MAX_VALUE;
+                
+                int comparison = Long.compare(distanceA, distanceB);
+                // If sorting desc, reverse the order
+                if (pageable.getSort().getOrderFor("validUntil").getDirection() == org.springframework.data.domain.Sort.Direction.DESC) {
+                    return -comparison;
+                }
+                return comparison;
+            });
+            
+            // Apply pagination
+            int start = (int) pageable.getOffset();
+            int end = Math.min(start + pageable.getPageSize(), allQuotations.size());
+            List<Quotation> pagedContent = allQuotations.subList(start, end);
+            
+            return new org.springframework.data.domain.PageImpl<>(pagedContent, pageable, allQuotations.size());
+        }
+        
+        // Normal pagination without date-based sorting
+        Page<Quotation> quotationPage;
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+            String searchLower = search != null ? search.trim().toLowerCase() : "";
+            String finalStatus = status;
+            quotationPage = quotationRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("customer").get("id"), customerId));
                 
-                var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
-                predicates.add(searchPredicate);
+                if (search != null && !search.trim().isEmpty()) {
+                    var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
+                    predicates.add(searchPredicate);
+                }
+                
+                if (finalStatus != null && !finalStatus.trim().isEmpty()) {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
                 
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
-            return quotationRepository.findByCustomer_Id(customerId, pageable);
+            quotationPage = quotationRepository.findByCustomer_Id(customerId, pageable);
         }
+        
+        return quotationPage;
     }
     
     public Page<Quotation> findByAssignedSales(Long salesId, Pageable pageable) {

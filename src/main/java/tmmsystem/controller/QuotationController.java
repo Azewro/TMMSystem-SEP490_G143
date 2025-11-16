@@ -248,9 +248,17 @@ public class QuotationController {
             @Parameter(description = "ID Customer") @PathVariable Long customerId,
             @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Tìm kiếm theo mã báo giá") @RequestParam(required = false) String search) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Quotation> quotationPage = service.findByCustomerId(customerId, pageable, search);
+            @Parameter(description = "Tìm kiếm theo mã báo giá") @RequestParam(required = false) String search,
+            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
+            @Parameter(description = "Sắp xếp theo trường (createdAt, validUntil)") @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Thứ tự sắp xếp (asc, desc)") @RequestParam(required = false, defaultValue = "desc") String sortOrder,
+            @Parameter(description = "Chọn ngày để sắp xếp theo khoảng cách (yyyy-MM-dd)") @RequestParam(required = false) String selectedDate) {
+        // Build sort
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortOrder) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        String sortField = sortBy != null && !sortBy.trim().isEmpty() ? sortBy : "createdAt";
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
+        
+        Page<Quotation> quotationPage = service.findByCustomerId(customerId, pageable, search, status, selectedDate);
         List<QuotationDto> content = quotationPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
         return new PageResponse<>(content, quotationPage.getNumber(), quotationPage.getSize(), 
                 quotationPage.getTotalElements(), quotationPage.getTotalPages(), quotationPage.isFirst(), quotationPage.isLast());
