@@ -10,9 +10,14 @@ public class InventoryMapper {
         if (e == null) return null;
         MaterialStockDto dto = new MaterialStockDto();
         dto.setId(e.getId());
-        dto.setMaterialId(e.getMaterial() != null ? e.getMaterial().getId() : null);
+        if (e.getMaterial() != null) {
+            dto.setMaterialId(e.getMaterial().getId());
+            dto.setMaterialCode(e.getMaterial().getCode());
+            dto.setMaterialName(e.getMaterial().getName());
+        }
         dto.setQuantity(e.getQuantity());
         dto.setUnit(e.getUnit());
+        dto.setUnitPrice(e.getUnitPrice());
         dto.setLocation(e.getLocation());
         dto.setBatchNumber(e.getBatchNumber());
         dto.setReceivedDate(e.getReceivedDate());
