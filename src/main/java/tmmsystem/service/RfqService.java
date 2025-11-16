@@ -41,18 +41,34 @@ public class RfqService {
     }
     
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId) {
+        return findAll(pageable, search, status, customerId, null);
+    }
+    
+    public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, String createdDate) {
         // Check if we have any actual filters (not null and not empty)
         boolean hasSearch = search != null && !search.trim().isEmpty();
         boolean hasStatus = status != null && !status.trim().isEmpty();
         boolean hasCustomerId = customerId != null;
+        boolean hasCreatedDate = createdDate != null && !createdDate.trim().isEmpty();
         
-        if (!hasSearch && !hasStatus && !hasCustomerId) {
+        if (!hasSearch && !hasStatus && !hasCustomerId && !hasCreatedDate) {
             return rfqRepository.findAll(pageable);
         }
         
         String searchLower = hasSearch && search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
         Long finalCustomerId = customerId;
+        
+        // Parse createdDate if provided
+        java.time.LocalDate targetDate = null;
+        if (hasCreatedDate) {
+            try {
+                targetDate = java.time.LocalDate.parse(createdDate.trim());
+            } catch (Exception e) {
+                // Invalid date format, ignore
+            }
+        }
+        final java.time.LocalDate finalTargetDate = targetDate;
         
         return rfqRepository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
@@ -74,6 +90,18 @@ public class RfqService {
             // Status filter
             if (hasStatus && finalStatus != null) {
                 predicates.add(cb.equal(root.get("status"), finalStatus));
+            }
+            
+            // Created date filter
+            if (hasCreatedDate && finalTargetDate != null) {
+                // Filter by date (ignoring time part)
+                // Compare date part only: createdAt >= start of day AND createdAt < start of next day
+                java.time.LocalDateTime startOfDay = finalTargetDate.atStartOfDay();
+                java.time.LocalDateTime startOfNextDay = finalTargetDate.plusDays(1).atStartOfDay();
+                predicates.add(cb.and(
+                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                    cb.lessThan(root.get("createdAt"), startOfNextDay)
+                ));
             }
             
             // Ensure we have at least one predicate before combining
@@ -459,9 +487,9 @@ public class RfqService {
         if (!"DRAFT".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be in DRAFT status to send");
         }
-        // must have assignments before sending
-        if (rfq.getAssignedSales() == null || rfq.getAssignedPlanning() == null) {
-            throw new IllegalStateException("Cần gán Sales và Planning trước khi gửi RFQ");
+        // must have sales assignment before sending
+        if (rfq.getAssignedSales() == null) {
+            throw new IllegalStateException("Cần gán Sales trước khi gửi RFQ");
         }
         rfq.setStatus("SENT");
         rfq.setSent(true);
@@ -550,24 +578,17 @@ public class RfqService {
         return rfqRepository.save(rfq);
     }
 
-    @Transactional
-    public Rfq assignPlanning(Long rfqId, Long planningId) {
-        if (planningId == null) throw new IllegalArgumentException("assignedPlanningId is required");
-        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
-        if (!"DRAFT".equals(rfq.getStatus())) throw new IllegalStateException("Chỉ gán Planning khi RFQ ở DRAFT");
-        User planning = new User(); planning.setId(planningId);
-        rfq.setAssignedPlanning(planning);
-        return rfqRepository.save(rfq);
-    }
 
     @Transactional
-    public Rfq assignStaff(Long rfqId, Long salesId, Long planningId, Long approvedById) {
+    public Rfq assignStaff(Long rfqId, Long salesId, Long approvedById) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
         if (!"DRAFT".equals(rfq.getStatus())) {
             throw new IllegalStateException("Chỉ có thể gán nhân sự khi RFQ đang ở trạng thái DRAFT");
         }
-        if (salesId != null) { User sales = new User(); sales.setId(salesId); rfq.setAssignedSales(sales); }
-        if (planningId != null) { User planning = new User(); planning.setId(planningId); rfq.setAssignedPlanning(planning); }
+        if (salesId == null) {
+            throw new IllegalArgumentException("assignedSalesId là bắt buộc");
+        }
+        User sales = new User(); sales.setId(salesId); rfq.setAssignedSales(sales);
         if (approvedById != null) { User director = new User(); director.setId(approvedById); rfq.setApprovedBy(director); rfq.setApprovalDate(java.time.Instant.now()); }
         return rfqRepository.save(rfq);
     }
@@ -649,11 +670,11 @@ public class RfqService {
     }
 
     public List<Rfq> findDraftUnassigned() {
-        return rfqRepository.findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull("DRAFT");
+        return rfqRepository.findByStatusAndAssignedSalesIsNull("DRAFT");
     }
     
     public Page<Rfq> findDraftUnassigned(Pageable pageable) {
-        return rfqRepository.findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull("DRAFT", pageable);
+        return rfqRepository.findByStatusAndAssignedSalesIsNull("DRAFT", pageable);
     }
 
     private String generateRfqNumber() {

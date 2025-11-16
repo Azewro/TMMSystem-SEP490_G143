@@ -17,6 +17,11 @@ public interface RfqRepository extends JpaRepository<Rfq, Long>, JpaSpecificatio
     Page<Rfq> findByAssignedSales_Id(Long salesId, Pageable pageable);
     java.util.List<Rfq> findByAssignedPlanning_Id(Long planningId);
     Page<Rfq> findByAssignedPlanning_Id(Long planningId, Pageable pageable);
+    java.util.List<Rfq> findByStatusAndAssignedSalesIsNull(String status);
+    Page<Rfq> findByStatusAndAssignedSalesIsNull(String status, Pageable pageable);
+    // Deprecated: kept for backward compatibility, use findByStatusAndAssignedSalesIsNull instead
+    @Deprecated
     java.util.List<Rfq> findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull(String status);
+    @Deprecated
     Page<Rfq> findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull(String status, Pageable pageable);
 }

@@ -29,7 +29,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import tmmsystem.dto.sales.SalesRfqCreateRequest;
 import tmmsystem.dto.sales.SalesRfqEditRequest;
 import tmmsystem.dto.sales.AssignSalesRequest;
-import tmmsystem.dto.sales.AssignPlanningRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -63,9 +62,10 @@ public class RfqController {
             @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Tìm kiếm theo mã RFQ hoặc tên khách hàng") @RequestParam(required = false) String search,
             @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status,
-            @Parameter(description = "Lọc theo ID khách hàng") @RequestParam(required = false) Long customerId) {
+            @Parameter(description = "Lọc theo ID khách hàng") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Lọc theo ngày tạo (yyyy-MM-dd)") @RequestParam(required = false) String createdDate) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Rfq> rfqPage = service.findAll(pageable, search, status, customerId);
+        Page<Rfq> rfqPage = service.findAll(pageable, search, status, customerId, createdDate);
         List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
         return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
                 rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
@@ -248,14 +248,14 @@ public class RfqController {
         return capacityCheckService.checkMachineCapacity(id);
     }
 
-    @Operation(summary = "Gán Sales và Planning cho RFQ (chỉ khi DRAFT)")
+    @Operation(summary = "Gán Sales cho RFQ (chỉ khi DRAFT)")
     @PostMapping("/{id}/assign")
     public RfqDto assign(
             @Parameter(description = "ID RFQ") @PathVariable Long id,
-            @RequestBody(description = "Payload gán nhân sự", required = true,
+            @RequestBody(description = "Payload gán Sales", required = true,
                     content = @Content(schema = @Schema(implementation = RfqAssignRequest.class)))
             @Valid @org.springframework.web.bind.annotation.RequestBody RfqAssignRequest body) {
-        Rfq updated = service.assignStaff(id, body.getAssignedSalesId(), body.getAssignedPlanningId(), body.getApprovedById());
+        Rfq updated = service.assignStaff(id, body.getAssignedSalesId(), body.getApprovedById());
         return mapper.toDto(updated);
     }
 
@@ -272,18 +272,6 @@ public class RfqController {
         return mapper.toDto(rfq);
     }
 
-    // Endpoint riêng cho Planning được giao
-    @Operation(summary = "Lấy RFQ cho Planning được giao",
-            description = "Chỉ Planning được gán vào RFQ mới có thể xem chi tiết thông qua endpoint này")
-    @GetMapping("/{id}/for-planning")
-    public RfqDto getForPlanning(@Parameter(description = "ID RFQ") @PathVariable Long id,
-                                 @RequestHeader("X-User-Id") Long userId) {
-        Rfq rfq = service.findById(id);
-        if (rfq.getAssignedPlanning() == null || rfq.getAssignedPlanning().getId() == null || !userId.equals(rfq.getAssignedPlanning().getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: not assigned planning");
-        }
-        return mapper.toDto(rfq);
-    }
 
     // NEW: Danh sách RFQ cho Sales (chỉ RFQ được gán cho sales này)
     @Operation(summary = "Danh sách RFQ được gán cho Sales",
@@ -302,26 +290,10 @@ public class RfqController {
                 rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
     }
 
-    // NEW: Danh sách RFQ cho Planning (chỉ RFQ được gán cho planning này)
-    @Operation(summary = "Danh sách RFQ được gán cho Planning",
-            description = "Trả về danh sách RFQ mà Planning (header X-User-Id) được gán vào")
-    @GetMapping("/for-planning")
-    public PageResponse<RfqDto> listForPlanning(
-            @RequestHeader("X-User-Id") Long userId,
-            @Parameter(description = "Số trang (bắt đầu từ 0)") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Số lượng bản ghi mỗi trang") @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Tìm kiếm theo mã RFQ hoặc người liên hệ") @RequestParam(required = false) String search,
-            @Parameter(description = "Lọc theo trạng thái") @RequestParam(required = false) String status) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Rfq> rfqPage = service.findByAssignedPlanning(userId, pageable, search, status);
-        List<RfqDto> content = rfqPage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
-        return new PageResponse<>(content, rfqPage.getNumber(), rfqPage.getSize(), 
-                rfqPage.getTotalElements(), rfqPage.getTotalPages(), rfqPage.isFirst(), rfqPage.isLast());
-    }
 
     // NEW: Danh sách RFQ DRAFT chưa được gán (dành cho Director để phân công)
     @Operation(summary = "Danh sách RFQ DRAFT chưa được gán",
-            description = "Trả về danh sách RFQ ở trạng thái DRAFT mà Sales or Planning chưa được gán. Dành cho Director để phân công.")
+            description = "Trả về danh sách RFQ ở trạng thái DRAFT mà Sales chưa được gán. Dành cho Director để phân công.")
     @GetMapping("/drafts/unassigned")
     public PageResponse<RfqDto> listDraftsUnassigned(
             @RequestHeader(value = "X-User-Id", required = false) Long directorUserId,
@@ -385,15 +357,4 @@ public class RfqController {
         return mapper.toDto(updated);
     }
 
-    // Assign Planning separately (DRAFT only)
-    @Operation(summary = "Assign Planning for RFQ (DRAFT)", description = "Assign Planning by userId while RFQ is in DRAFT. Sales assignment not required here.")
-    @PostMapping("/{id}/assign-planning")
-    public RfqDto assignPlanning(
-            @Parameter(description = "RFQ ID") @PathVariable Long id,
-            @RequestBody(description = "Assign Planning payload", required = true,
-                    content = @Content(schema = @Schema(implementation = AssignPlanningRequest.class)))
-            @Valid @org.springframework.web.bind.annotation.RequestBody AssignPlanningRequest body) {
-        Rfq updated = service.assignPlanning(id, body.getAssignedPlanningId());
-        return mapper.toDto(updated);
-    }
 }
