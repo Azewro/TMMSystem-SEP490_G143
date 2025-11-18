@@ -180,15 +180,18 @@ public class RfqService {
 
         if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
 
-        // Snapshot contact from customer if available (for historical integrity)
+        // Prioritize contact info from DTO, fall back to customer profile for historical snapshot
         Customer loaded = customerRepository.findById(dto.getCustomerId()).orElse(null);
         if (loaded != null) {
-            rfq.setContactPersonSnapshot(loaded.getContactPerson());
-            rfq.setContactEmailSnapshot(loaded.getEmail());
-            rfq.setContactPhoneSnapshot(loaded.getPhoneNumber());
-            rfq.setContactAddressSnapshot(loaded.getAddress());
-            // Determine contact method if possible (prefer EMAIL if valid email present)
-            String method = inferContactMethod(loaded.getEmail(), loaded.getPhoneNumber());
+            rfq.setContactPersonSnapshot(dto.getContactPerson() != null && !dto.getContactPerson().isBlank() ? dto.getContactPerson() : loaded.getContactPerson());
+            rfq.setContactEmailSnapshot(dto.getContactEmail() != null && !dto.getContactEmail().isBlank() ? normalizeEmail(dto.getContactEmail()) : normalizeEmail(loaded.getEmail()));
+            rfq.setContactPhoneSnapshot(dto.getContactPhone() != null && !dto.getContactPhone().isBlank() ? normalizePhone(dto.getContactPhone()) : normalizePhone(loaded.getPhoneNumber()));
+            rfq.setContactAddressSnapshot(dto.getContactAddress() != null && !dto.getContactAddress().isBlank() ? dto.getContactAddress() : loaded.getAddress());
+
+            // Prioritize contact method from DTO, then infer from the chosen contact info
+            String rfqContactEmail = rfq.getContactEmailSnapshot();
+            String rfqContactPhone = rfq.getContactPhoneSnapshot();
+            String method = validateAndDetermineMethod(dto.getContactMethod(), rfqContactEmail, rfqContactPhone);
             rfq.setContactMethod(method);
         }
 

@@ -27,4 +27,11 @@ public class RfqCreateDto {
 
     // Optional: employee code of sale staff creating (auto-assign if valid)
     private String employeeCode;
+
+    // Contact fields for this specific RFQ, overriding customer's default info
+    private String contactPerson;
+    private String contactEmail;
+    private String contactPhone;
+    private String contactAddress;
+    private String contactMethod;
 }
