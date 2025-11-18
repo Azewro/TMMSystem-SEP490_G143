@@ -363,13 +363,13 @@ public class ProductionPlanService {
     }
 
     @Transactional
-    public ProductionPlan calculateAndSetPlanDates(Long planId) {
+    public ProductionPlanDto calculateAndSetPlanDates(Long planId) {
         ProductionPlan plan = planRepo.findById(planId).orElseThrow(() -> new RuntimeException("Production plan not found"));
         List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
 
         if (stages.isEmpty()) {
             // Cannot calculate dates if there are no stages
-            return plan;
+            return mapper.toDto(plan);
         }
 
         LocalDateTime overallStartTime = stages.stream()
@@ -387,6 +387,7 @@ public class ProductionPlanService {
         plan.setProposedStartDate(overallStartTime != null ? overallStartTime.toLocalDate() : null);
         plan.setProposedEndDate(overallEndTime != null ? overallEndTime.toLocalDate() : null);
 
-        return planRepo.save(plan);
+        ProductionPlan savedPlan = planRepo.save(plan);
+        return mapper.toDto(savedPlan);
     }
 }

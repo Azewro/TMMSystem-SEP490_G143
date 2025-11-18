@@ -385,7 +385,6 @@ public class ProductionPlanController {
     @Operation(summary = "Tính toán và cập nhật ngày kế hoạch", description = "Tự động tính toán ngày bắt đầu và kết thúc dự kiến cho toàn bộ kế hoạch dựa trên thời gian của các công đoạn và cập nhật lại kế hoạch.")
     @PostMapping("/{id}/calculate-schedule")
     public ProductionPlanDto calculateSchedule(@PathVariable Long id) {
-        tmmsystem.entity.ProductionPlan updatedPlan = service.calculateAndSetPlanDates(id);
-        return service.mapper.toDto(updatedPlan);
+        return service.calculateAndSetPlanDates(id);
     }
 }
