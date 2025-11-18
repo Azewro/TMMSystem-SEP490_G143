@@ -71,6 +71,12 @@ public class ProductionPlan {
     @Column(name = "is_current_version")
     private Boolean currentVersion = true;
 
+    @Column(name = "proposed_start_date")
+    private java.time.LocalDate proposedStartDate;
+
+    @Column(name = "proposed_end_date")
+    private java.time.LocalDate proposedEndDate;
+
     public enum PlanStatus {
         DRAFT,           // Nháp
         PENDING_APPROVAL, // Chờ phê duyệt
