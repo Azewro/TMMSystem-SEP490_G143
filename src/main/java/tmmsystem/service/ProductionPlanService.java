@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -359,5 +360,33 @@ public class ProductionPlanService {
 
     public java.util.List<ProductionPlanStageDto> listStagesOfPlan(Long planId){
         return stageRepo.findByPlanIdOrderBySequenceNo(planId).stream().map(mapper::toDto).toList();
+    }
+
+    @Transactional
+    public ProductionPlan calculateAndSetPlanDates(Long planId) {
+        ProductionPlan plan = planRepo.findById(planId).orElseThrow(() -> new RuntimeException("Production plan not found"));
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
+
+        if (stages.isEmpty()) {
+            // Cannot calculate dates if there are no stages
+            return plan;
+        }
+
+        LocalDateTime overallStartTime = stages.stream()
+                .map(ProductionPlanStage::getPlannedStartTime)
+                .filter(Objects::nonNull)
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+
+        LocalDateTime overallEndTime = stages.stream()
+                .map(ProductionPlanStage::getPlannedEndTime)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+
+        plan.setProposedStartDate(overallStartTime != null ? overallStartTime.toLocalDate() : null);
+        plan.setProposedEndDate(overallEndTime != null ? overallEndTime.toLocalDate() : null);
+
+        return planRepo.save(plan);
     }
 }
