@@ -33,7 +33,7 @@ public class ProductionPlanService {
     private final MaterialRepository materialRepo;
     @SuppressWarnings("unused")
     private final NotificationService notificationService;
-    private final ProductionPlanMapper mapper;
+    public final ProductionPlanMapper mapper;
     private final MachineSelectionService machineSelectionService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
