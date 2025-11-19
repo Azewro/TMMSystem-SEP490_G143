@@ -567,18 +567,33 @@ public class RfqService {
         }
         User salesUser;
         if (salesId != null) {
-            salesUser = new User(); salesUser.setId(salesId);
+            salesUser = userRepository.findById(salesId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sales user not found with id: " + salesId));
         } else {
-            User user = userRepository.findByEmployeeCode(employeeCode.trim()).orElseThrow(() ->
+            salesUser = userRepository.findByEmployeeCode(employeeCode.trim()).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + employeeCode));
-            String roleName = user.getRole() != null ? user.getRole().getName() : null;
-            if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + employeeCode);
-            }
-            salesUser = user;
         }
+
+        String roleName = salesUser.getRole() != null ? salesUser.getRole().getName() : null;
+        if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff");
+        }
+
         rfq.setAssignedSales(salesUser);
-        return rfqRepository.save(rfq);
+        Rfq savedRfq = rfqRepository.save(rfq);
+
+        // Notify the assigned sales user
+        notificationService.notifyUser(
+            salesUser,
+            "ORDER",
+            "INFO",
+            "Bạn có RFQ mới được phân công",
+            "RFQ #" + savedRfq.getRfqNumber() + " từ khách hàng " + (savedRfq.getCustomer() != null ? (savedRfq.getCustomer().getContactPerson() != null ? savedRfq.getCustomer().getContactPerson() : "N/A") : "N/A") + " đã được gán cho bạn.",
+            "RFQ",
+            savedRfq.getId()
+        );
+
+        return savedRfq;
     }
 
 
