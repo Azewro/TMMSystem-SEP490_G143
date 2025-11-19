@@ -801,9 +801,10 @@ public class RfqService {
     private void validateExpectedDeliveryDate(java.time.LocalDate date) {
         if (date == null) throw new IllegalArgumentException("expectedDeliveryDate is required");
         java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalDate min = today.plusDays(30);
+        // Use 29 days to be lenient for timezone differences, while the UI and error message still enforce 30 days.
+        java.time.LocalDate min = today.plusDays(29);
         if (date.isBefore(min)) {
-            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from today (>= " + min + ")");
+            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from today (>= " + today.plusDays(30) + ")");
         }
     }
 }
