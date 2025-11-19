@@ -588,7 +588,7 @@ public class RfqService {
             "ORDER",
             "INFO",
             "Bạn có RFQ mới được phân công",
-            "RFQ #" + savedRfq.getRfqNumber() + " từ khách hàng " + (savedRfq.getCustomer() != null ? (savedRfq.getCustomer().getContactPerson() != null ? savedRfq.getCustomer().getContactPerson() : "N/A") : "N/A") + " đã được gán cho bạn.",
+            "Yêu cầu báo giá #" + savedRfq.getRfqNumber() + " từ khách hàng " + (savedRfq.getContactPersonSnapshot() != null ? savedRfq.getContactPersonSnapshot() : "N/A") + " đã được gán cho bạn.",
             "RFQ",
             savedRfq.getId()
         );
