@@ -1,5 +1,6 @@
 package tmmsystem.dto.sales;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Getter; import lombok.Setter;
 
 import java.time.Instant;
@@ -12,6 +13,7 @@ public class RfqDto {
     private String rfqNumber;
     private Long customerId;
     private String sourceType; // CUSTOMER_PORTAL | PUBLIC_FORM | BY_SALES
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate expectedDeliveryDate;
     private String status;
     private Boolean isSent;
