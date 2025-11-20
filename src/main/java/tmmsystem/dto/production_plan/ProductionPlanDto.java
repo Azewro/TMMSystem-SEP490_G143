@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @Getter
@@ -23,6 +24,8 @@ public class ProductionPlanDto {
     private Instant createdAt;
     private Instant updatedAt;
     private List<ProductionPlanDetailDto> details;
+    private LocalDate proposedStartDate;
+    private LocalDate proposedEndDate;
     
     // Contract information
     private String customerName;

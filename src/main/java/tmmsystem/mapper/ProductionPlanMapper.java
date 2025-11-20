@@ -25,6 +25,8 @@ public class ProductionPlanMapper {
         dto.setApprovalNotes(plan.getApprovalNotes());
         dto.setCreatedAt(plan.getCreatedAt());
         dto.setUpdatedAt(plan.getUpdatedAt());
+        dto.setProposedStartDate(plan.getProposedStartDate());
+        dto.setProposedEndDate(plan.getProposedEndDate());
         
         // Contract information
         if (plan.getContract() != null) {
