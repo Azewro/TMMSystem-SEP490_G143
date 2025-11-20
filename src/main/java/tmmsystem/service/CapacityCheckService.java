@@ -4,6 +4,8 @@ import org.springframework.stereotype.Service;
 import tmmsystem.dto.sales.CapacityCheckResultDto;
 import tmmsystem.entity.*;
 import tmmsystem.repository.*;
+import tmmsystem.service.timeline.SequentialCapacityCalculator;
+import tmmsystem.service.timeline.SequentialCapacityResult;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -12,39 +14,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-
-// Inner class để lưu kết quả tính toán tuần tự
-class SequentialCapacityResult {
-    private BigDecimal warpingDays;
-    private BigDecimal weavingDays;
-    private BigDecimal dyeingDays;
-    private BigDecimal cuttingDays;
-    private BigDecimal sewingDays;
-    private BigDecimal totalDays;
-    private String bottleneck;
-    
-    // Getters and setters
-    public BigDecimal getWarpingDays() { return warpingDays; }
-    public void setWarpingDays(BigDecimal warpingDays) { this.warpingDays = warpingDays; }
-    
-    public BigDecimal getWeavingDays() { return weavingDays; }
-    public void setWeavingDays(BigDecimal weavingDays) { this.weavingDays = weavingDays; }
-    
-    public BigDecimal getDyeingDays() { return dyeingDays; }
-    public void setDyeingDays(BigDecimal dyeingDays) { this.dyeingDays = dyeingDays; }
-    
-    public BigDecimal getCuttingDays() { return cuttingDays; }
-    public void setCuttingDays(BigDecimal cuttingDays) { this.cuttingDays = cuttingDays; }
-    
-    public BigDecimal getSewingDays() { return sewingDays; }
-    public void setSewingDays(BigDecimal sewingDays) { this.sewingDays = sewingDays; }
-    
-    public BigDecimal getTotalDays() { return totalDays; }
-    public void setTotalDays(BigDecimal totalDays) { this.totalDays = totalDays; }
-    
-    public String getBottleneck() { return bottleneck; }
-    public void setBottleneck(String bottleneck) { this.bottleneck = bottleneck; }
-}
 
 @Service
 public class CapacityCheckService {
@@ -57,6 +26,8 @@ public class CapacityCheckService {
     private final ProductionStageRepository productionStageRepository;
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final MachineMaintenanceRepository machineMaintenanceRepository;
+    private final PlanningTimelineCalculator timelineCalculator;
+    private final SequentialCapacityCalculator sequentialCapacityCalculator;
     
     private static final BigDecimal WORKING_HOURS_PER_DAY = new BigDecimal("8"); // giờ/ngày
     
@@ -75,7 +46,9 @@ public class CapacityCheckService {
                                WorkOrderRepository workOrderRepository,
                                ProductionStageRepository productionStageRepository,
                                MachineAssignmentRepository machineAssignmentRepository,
-                               MachineMaintenanceRepository machineMaintenanceRepository) {
+                               MachineMaintenanceRepository machineMaintenanceRepository,
+                               PlanningTimelineCalculator timelineCalculator,
+                               SequentialCapacityCalculator sequentialCapacityCalculator) {
         this.rfqRepository = rfqRepository;
         this.rfqDetailRepository = rfqDetailRepository;
         this.productRepository = productRepository;
@@ -84,6 +57,8 @@ public class CapacityCheckService {
         this.productionStageRepository = productionStageRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.machineMaintenanceRepository = machineMaintenanceRepository;
+        this.timelineCalculator = timelineCalculator;
+        this.sequentialCapacityCalculator = sequentialCapacityCalculator;
     }
     
     public CapacityCheckResultDto checkMachineCapacity(Long rfqId) {
@@ -122,7 +97,7 @@ public class CapacityCheckService {
         }
         
         // Tính toán theo mô hình tuần tự: Mắc → Dệt → Nhuộm → Cắt → May
-        SequentialCapacityResult capacityResult = calculateSequentialCapacity(totalWeight, totalFaceTowels, totalBathTowels, totalSportsTowels);
+        SequentialCapacityResult capacityResult = sequentialCapacityCalculator.calculate(totalWeight, totalFaceTowels, totalBathTowels, totalSportsTowels);
         
         // Kiểm tra xung đột với đơn hàng khác
         List<CapacityCheckResultDto.ConflictDto> conflicts = checkSequentialConflicts(productionStartDate, productionEndDate, capacityResult);
@@ -166,6 +141,7 @@ public class CapacityCheckService {
     /**
      * Tính toán năng lực theo mô hình tuần tự: Mắc → Dệt → Nhuộm → Cắt → May
      */
+    @SuppressWarnings("unused")
     private SequentialCapacityResult calculateSequentialCapacity(BigDecimal totalWeight, 
                                                                  BigDecimal totalFaceTowels, 
                                                                  BigDecimal totalBathTowels, 
@@ -278,48 +254,36 @@ public class CapacityCheckService {
     /**
      * Populate thông tin chi tiết các công đoạn tuần tự
      */
-    private void populateSequentialStages(CapacityCheckResultDto.MachineCapacityDto machineCapacity, 
-                                          SequentialCapacityResult capacityResult, 
+    private void populateSequentialStages(CapacityCheckResultDto.MachineCapacityDto machineCapacity,
+                                          SequentialCapacityResult capacityResult,
                                           LocalDate productionStartDate) {
-        
-        // Tính thời gian bắt đầu và kết thúc cho từng công đoạn
-        LocalDate warpingStart = productionStartDate;
-        LocalDate warpingEnd = warpingStart.plusDays(capacityResult.getWarpingDays().longValue());
-        
-        LocalDate weavingStart = warpingEnd.plusDays(WARPING_WAIT_TIME.longValue());
-        LocalDate weavingEnd = weavingStart.plusDays(capacityResult.getWeavingDays().longValue());
-        
-        LocalDate dyeingStart = weavingEnd.plusDays(WEAVING_WAIT_TIME.longValue());
-        LocalDate dyeingEnd = dyeingStart.plusDays(capacityResult.getDyeingDays().longValue());
-        
-        LocalDate cuttingStart = dyeingEnd.plusDays(DYEING_WAIT_TIME.longValue());
-        LocalDate cuttingEnd = cuttingStart.plusDays(capacityResult.getCuttingDays().longValue());
-        
-        LocalDate sewingStart = cuttingEnd.plusDays(CUTTING_WAIT_TIME.longValue());
-        LocalDate sewingEnd = sewingStart.plusDays(capacityResult.getSewingDays().longValue());
-        
-        // Tạo thông tin cho từng công đoạn
-        machineCapacity.setWarpingStage(createStageInfo("Mắc cuồng", "WARPING", capacityResult.getWarpingDays(), 
-                                                      WARPING_WAIT_TIME, warpingStart, warpingEnd, 
-                                                      getMachineCapacity("WARPING"), "Mắc sợi thành cuồng"));
-        
-        machineCapacity.setWeavingStage(createStageInfo("Dệt vải", "WEAVING", capacityResult.getWeavingDays(), 
-                                                      WEAVING_WAIT_TIME, weavingStart, weavingEnd, 
-                                                      getMachineCapacity("WEAVING"), "Dệt cuồng thành vải"));
-        
-        machineCapacity.setDyeingStage(createStageInfo("Nhuộm vải", "DYEING", capacityResult.getDyeingDays(), 
-                                                     DYEING_WAIT_TIME, dyeingStart, dyeingEnd, 
-                                                     BigDecimal.ZERO, "Gửi vendor nhuộm (2 ngày cố định)"));
-        
-        machineCapacity.setCuttingStage(createStageInfo("Cắt vải", "CUTTING", capacityResult.getCuttingDays(), 
-                                                      CUTTING_WAIT_TIME, cuttingStart, cuttingEnd, 
-                                                      getMachineCapacity("CUTTING"), "Cắt vải theo kích thước"));
-        
-        machineCapacity.setSewingStage(createStageInfo("May thành phẩm", "SEWING", capacityResult.getSewingDays(), 
-                                                      SEWING_WAIT_TIME, sewingStart, sewingEnd, 
-                                                      getMachineCapacity("SEWING"), "May vải thành sản phẩm hoàn chỉnh"));
-        
-        // Tính tổng thời gian chờ
+        var timelines = timelineCalculator.buildTimeline(productionStartDate, capacityResult);
+        var warping = findTimeline(timelines, "WARPING");
+        var weaving = findTimeline(timelines, "WEAVING");
+        var dyeing = findTimeline(timelines, "DYEING");
+        var cutting = findTimeline(timelines, "CUTTING");
+        var hemming = findTimeline(timelines, "HEMMING");
+
+        machineCapacity.setWarpingStage(createStageInfo("Mắc cuồng", "WARPING", capacityResult.getWarpingDays(),
+                WARPING_WAIT_TIME, warping.start().toLocalDate(), warping.end().toLocalDate(),
+                getMachineCapacity("WARPING"), "Mắc sợi thành cuồng"));
+
+        machineCapacity.setWeavingStage(createStageInfo("Dệt vải", "WEAVING", capacityResult.getWeavingDays(),
+                WEAVING_WAIT_TIME, weaving.start().toLocalDate(), weaving.end().toLocalDate(),
+                getMachineCapacity("WEAVING"), "Dệt cuồng thành vải"));
+
+        machineCapacity.setDyeingStage(createStageInfo("Nhuộm vải", "DYEING", capacityResult.getDyeingDays(),
+                DYEING_WAIT_TIME, dyeing.start().toLocalDate(), dyeing.end().toLocalDate(),
+                BigDecimal.ZERO, "Gửi vendor nhuộm (2 ngày cố định)"));
+
+        machineCapacity.setCuttingStage(createStageInfo("Cắt vải", "CUTTING", capacityResult.getCuttingDays(),
+                CUTTING_WAIT_TIME, cutting.start().toLocalDate(), cutting.end().toLocalDate(),
+                getMachineCapacity("CUTTING"), "Cắt vải theo kích thước"));
+
+        machineCapacity.setSewingStage(createStageInfo("May thành phẩm", "SEWING", capacityResult.getSewingDays(),
+                SEWING_WAIT_TIME, hemming.start().toLocalDate(), hemming.end().toLocalDate(),
+                getMachineCapacity("SEWING"), "May vải thành sản phẩm hoàn chỉnh"));
+
         BigDecimal totalWaitTime = WARPING_WAIT_TIME
                 .add(WEAVING_WAIT_TIME)
                 .add(DYEING_WAIT_TIME)
@@ -345,6 +309,13 @@ public class CapacityCheckService {
         stage.setCapacity(capacity);
         stage.setDescription(description);
         return stage;
+    }
+
+    private PlanningTimelineCalculator.StageTimeline findTimeline(List<PlanningTimelineCalculator.StageTimeline> timelines, String type) {
+        return timelines.stream()
+                .filter(t -> type.equalsIgnoreCase(t.stageType()))
+                .findFirst()
+                .orElseThrow();
     }
     
     /**

@@ -7,6 +7,8 @@ import tmmsystem.dto.production_plan.*;
 import tmmsystem.entity.*;
 import tmmsystem.mapper.ProductionPlanMapper;
 import tmmsystem.repository.*;
+import tmmsystem.service.timeline.SequentialCapacityCalculator;
+import tmmsystem.service.timeline.SequentialCapacityResult;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -37,6 +39,8 @@ public class ProductionPlanService {
     private final MachineSelectionService machineSelectionService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
+    private final PlanningTimelineCalculator timelineCalculator;
+    private final SequentialCapacityCalculator sequentialCapacityCalculator;
     private final MachineAssignmentRepository machineAssignmentRepository;
 
     @Value("${planning.autoInitStages:true}")
@@ -58,7 +62,9 @@ public class ProductionPlanService {
                                 MachineSelectionService machineSelectionService,
                                 ProductionLotRepository lotRepo,
                                 ProductionLotOrderRepository lotOrderRepo,
-                                MachineAssignmentRepository machineAssignmentRepository) {
+                                MachineAssignmentRepository machineAssignmentRepository,
+                                PlanningTimelineCalculator timelineCalculator,
+                                SequentialCapacityCalculator sequentialCapacityCalculator) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
@@ -76,6 +82,8 @@ public class ProductionPlanService {
         this.lotRepo = lotRepo;
         this.lotOrderRepo = lotOrderRepo;
         this.machineAssignmentRepository = machineAssignmentRepository;
+        this.timelineCalculator = timelineCalculator;
+        this.sequentialCapacityCalculator = sequentialCapacityCalculator;
     }
     
     // ===== LOT & PLAN VERSIONING =====
@@ -192,6 +200,7 @@ public class ProductionPlanService {
         plan.setApprovalNotes(request.getNotes());
         ProductionPlan saved = planRepo.save(plan);
         if (autoInitStages) { initDefaultStages(saved); }
+        applyTimelineToPlan(saved);
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
@@ -202,6 +211,7 @@ public class ProductionPlanService {
         ProductionPlan plan = createPlanVersion(lotId);
         ProductionPlan saved = planRepo.save(plan);
         if (autoInitStages) { initDefaultStages(saved); }
+        applyTimelineToPlan(saved);
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
@@ -402,7 +412,9 @@ public class ProductionPlanService {
     }
 
     public ProductionPlanDto calculateScheduleAndReturnDto(Long planId) {
-        ProductionPlan updatedPlan = calculateAndSetPlanDates(planId);
+        ProductionPlan plan = planRepo.findById(planId).orElseThrow(() -> new RuntimeException("Production plan not found"));
+        applyTimelineToPlan(plan);
+        ProductionPlan updatedPlan = calculateAndSetPlanDates(plan.getId());
         return mapper.toDto(updatedPlan);
     }
 
@@ -433,5 +445,56 @@ public class ProductionPlanService {
     private Instant toInstant(LocalDateTime value) {
         if (value == null) return null;
         return value.atZone(java.time.ZoneId.systemDefault()).toInstant();
+    }
+
+    private void applyTimelineToPlan(ProductionPlan plan) {
+        if (plan == null || plan.getLot() == null || plan.getLot().getProduct() == null) {
+            return;
+        }
+        ProductionLot lot = plan.getLot();
+        BigDecimal quantity = lot.getTotalQuantity() != null ? lot.getTotalQuantity() : BigDecimal.ZERO;
+        BigDecimal unitWeight = lot.getProduct().getStandardWeight() != null
+                ? lot.getProduct().getStandardWeight().divide(new BigDecimal("1000"), 4, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ONE;
+        BigDecimal totalWeight = unitWeight.multiply(quantity);
+
+        QuantityBreakdown breakdown = classifyQuantity(lot.getProduct().getName(), quantity);
+        SequentialCapacityResult result = sequentialCapacityCalculator.calculate(totalWeight, breakdown.face(), breakdown.bath(), breakdown.sport());
+        java.time.LocalDate startDate = lot.getContractDateMin() != null ? lot.getContractDateMin() : java.time.LocalDate.now();
+        var timelines = timelineCalculator.buildTimeline(startDate, result);
+
+        var stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
+        for (ProductionPlanStage stage : stages) {
+            var timeline = timelines.stream()
+                    .filter(t -> stage.getStageType().equalsIgnoreCase(t.stageType()))
+                    .findFirst().orElse(null);
+            if (timeline == null) continue;
+            stage.setPlannedStartTime(timeline.start());
+            stage.setPlannedEndTime(timeline.end());
+            stageRepo.save(stage);
+        }
+
+        if (!timelines.isEmpty()) {
+            plan.setProposedStartDate(timelines.get(0).start().toLocalDate());
+            plan.setProposedEndDate(timelines.get(timelines.size() - 1).end().toLocalDate());
+        }
+        planRepo.save(plan);
+    }
+
+    private record QuantityBreakdown(BigDecimal face, BigDecimal bath, BigDecimal sport) {}
+
+    private QuantityBreakdown classifyQuantity(String productName, BigDecimal quantity) {
+        String name = productName != null ? productName.toLowerCase() : "";
+        BigDecimal face = BigDecimal.ZERO;
+        BigDecimal bath = BigDecimal.ZERO;
+        BigDecimal sport = BigDecimal.ZERO;
+        if (name.contains("khăn mặt")) {
+            face = quantity;
+        } else if (name.contains("khăn tắm")) {
+            bath = quantity;
+        } else {
+            sport = quantity;
+        }
+        return new QuantityBreakdown(face, bath, sport);
     }
 }

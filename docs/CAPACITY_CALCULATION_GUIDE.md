@@ -1,6 +1,6 @@
 # HƯỚNG DẪN TÍNH NĂNG LỰC SẢN XUẤT (PRODUCTION CAPACITY)
 
-Tài liệu này ghi rõ công thức, dữ liệu đầu vào, luồng và API kiểm tra năng lực theo mô hình tuần tự đã được implement trong `CapacityCheckService`.
+Tài liệu này ghi rõ công thức, dữ liệu đầu vào, luồng và API kiểm tra năng lực theo mô hình tuần tự đã được implement trong `CapacityCheckService`. Kể từ bản cập nhật 2025-11-20, cùng mô hình này cũng được dùng để tự động sinh timeline cho màn Lập Kế Hoạch. Các stage được phân bổ theo **giờ hành chính** (08:00–17:00, tối đa 8h/ngày) và có thời gian chờ cố định giữa các công đoạn như mô tả dưới đây.
 
 ## 1. Tổng quan mô hình
 Quy trình tuần tự 5 công đoạn:
