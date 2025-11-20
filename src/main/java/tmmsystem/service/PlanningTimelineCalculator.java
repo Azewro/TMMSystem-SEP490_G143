@@ -81,33 +81,46 @@ public class PlanningTimelineCalculator {
         return time;
     }
 
-    private LocalDateTime addWait(LocalDateTime current, double waitDays) {
-        if (waitDays <= 0) return current;
-        long fullDays = (long) waitDays;
-        double fractional = waitDays - fullDays;
-        LocalDateTime time = current.plusDays(fullDays);
-        return addWorkingHours(time, fractional * dailyHours);
+    private LocalDateTime addWait(LocalDateTime current, int waitHours) {
+        if (waitHours <= 0) return current;
+        return addWorkingHours(current, waitHours);
     }
 
     private LocalDateTime addWorkingHours(LocalDateTime start, double hours) {
         if (hours <= 0) return start;
-        LocalDateTime time = start;
-        double remaining = hours;
+        long remainingMinutes = Math.max(1, Math.round(hours * 60));
+        long dailyMinutes = dailyHours * 60L;
+        LocalDateTime time = alignToWorkingWindow(start);
 
-        while (remaining > 0.0) {
-            LocalDateTime dayStart = time.withHour(startHour).withMinute(0).withSecond(0).withNano(0);
-            LocalDateTime dayEnd = dayStart.plusHours(dailyHours);
-            if (time.isBefore(dayStart)) {
-                time = dayStart;
-            }
-            long available = Math.max(0, ChronoUnit.MINUTES.between(time, dayEnd));
-            if (available <= 0) {
-                time = dayStart.plusDays(1);
-                continue;
-            }
-            long consume = (long) Math.min(remaining * 60, available);
-            time = time.plusMinutes(consume);
-            remaining -= consume / 60.0;
+        LocalDateTime dayStart = time.withHour(startHour).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime dayEnd = dayStart.plusMinutes(dailyMinutes);
+        long availableToday = ChronoUnit.MINUTES.between(time, dayEnd);
+        if (availableToday >= remainingMinutes) {
+            return time.plusMinutes(remainingMinutes);
+        }
+        remainingMinutes -= availableToday;
+
+        long fullDays = remainingMinutes / dailyMinutes;
+        if (fullDays > 0) {
+            time = dayStart.plusDays(1 + fullDays);
+            remainingMinutes -= fullDays * dailyMinutes;
+        } else {
+            time = dayStart.plusDays(1);
+        }
+
+        LocalDateTime finalDayStart = time.withHour(startHour).withMinute(0).withSecond(0).withNano(0);
+        long finalMinutes = remainingMinutes % dailyMinutes;
+        return finalDayStart.plusMinutes(finalMinutes);
+    }
+
+    private LocalDateTime alignToWorkingWindow(LocalDateTime time) {
+        LocalDateTime dayStart = time.withHour(startHour).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime dayEnd = dayStart.plusHours(dailyHours);
+        if (time.isBefore(dayStart)) {
+            return dayStart;
+        }
+        if (!time.isBefore(dayEnd)) {
+            return dayStart.plusDays(1);
         }
         return time;
     }
