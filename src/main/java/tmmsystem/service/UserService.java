@@ -46,7 +46,7 @@ public class UserService {
                             "role", u.getRole().getName()
                     ));
                     long expiresIn = jwtService.getExpirationMillis();
-                    return new LoginResponse(u.getId(), u.getName(), u.getEmail(), u.getRole().getName(), u.getActive(), token, expiresIn);
+                    return new LoginResponse(u.getId(), u.getName(), u.getEmail(), u.getRole().getName(), u.getActive(), token, expiresIn, u.getEmployeeCode());
                 })
                 .orElse(null);
     }
