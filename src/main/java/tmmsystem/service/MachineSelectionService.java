@@ -16,23 +16,17 @@ public class MachineSelectionService {
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final MachineMaintenanceRepository machineMaintenanceRepository;
     private final ProductionPlanStageRepository productionPlanStageRepository;
-    private final WorkOrderRepository workOrderRepository;
-    private final ProductionStageRepository productionStageRepository;
     private final ProductRepository productRepository;
     
     public MachineSelectionService(MachineRepository machineRepository,
                                   MachineAssignmentRepository machineAssignmentRepository,
                                   MachineMaintenanceRepository machineMaintenanceRepository,
                                   ProductionPlanStageRepository productionPlanStageRepository,
-                                  WorkOrderRepository workOrderRepository,
-                                  ProductionStageRepository productionStageRepository,
                                   ProductRepository productRepository) {
         this.machineRepository = machineRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.machineMaintenanceRepository = machineMaintenanceRepository;
         this.productionPlanStageRepository = productionPlanStageRepository;
-        this.workOrderRepository = workOrderRepository;
-        this.productionStageRepository = productionStageRepository;
         this.productRepository = productRepository;
     }
     
@@ -237,36 +231,21 @@ public class MachineSelectionService {
                 stage.getPlannedStartTime() + " đến " + stage.getPlannedEndTime());
         }
         
-        // 3. Kiểm tra WorkOrder đang chạy
-        List<WorkOrder> activeWorkOrders = workOrderRepository.findAll().stream()
-            .filter(wo -> "APPROVED".equals(wo.getStatus()) || "IN_PROGRESS".equals(wo.getStatus()))
+        // 3. Kiểm tra MachineAssignment đang hoạt động
+        List<MachineAssignment> assignments = machineAssignmentRepository.findAll().stream()
+            .filter(assignment -> machine.getId().equals(assignment.getMachine().getId()))
+            .filter(assignment -> assignment.getReleasedAt() == null)
             .collect(Collectors.toList());
         
-        for (WorkOrder workOrder : activeWorkOrders) {
-            List<ProductionStage> activeStages = productionStageRepository.findAll().stream()
-                .filter(stage -> stage.getWorkOrderDetail() != null && stage.getWorkOrderDetail().getWorkOrder() != null)
-                .filter(stage -> workOrder.getId().equals(stage.getWorkOrderDetail().getWorkOrder().getId()))
-                .filter(stage -> "IN_PROGRESS".equals(stage.getStatus()))
-                .collect(Collectors.toList());
-            
-            for (ProductionStage stage : activeStages) {
-                // Kiểm tra MachineAssignment
-                List<MachineAssignment> assignments = machineAssignmentRepository.findAll().stream()
-                    .filter(assignment -> machine.getId().equals(assignment.getMachine().getId()))
-                    .filter(assignment -> assignment.getReleasedAt() == null)
-                    .collect(Collectors.toList());
+        for (MachineAssignment assignment : assignments) {
+            LocalDateTime assignedAt = assignment.getAssignedAt() != null ? 
+                assignment.getAssignedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : null;
+            LocalDateTime releasedAt = assignment.getReleasedAt() != null ? 
+                assignment.getReleasedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : null;
                 
-                for (MachineAssignment assignment : assignments) {
-                    LocalDateTime assignedAt = assignment.getAssignedAt() != null ? 
-                        assignment.getAssignedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : null;
-                    LocalDateTime releasedAt = assignment.getReleasedAt() != null ? 
-                        assignment.getReleasedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : null;
-                        
-                    if (isTimeOverlap(startTime, endTime, assignedAt, releasedAt)) {
-                        info.setAvailable(false);
-                        info.getConflicts().add("Máy đang được sử dụng cho Work Order từ " + assignedAt);
-                    }
-                }
+            if (isTimeOverlap(startTime, endTime, assignedAt, releasedAt)) {
+                info.setAvailable(false);
+                info.getConflicts().add("Máy đang được sử dụng cho Work Order từ " + assignedAt);
             }
         }
         
@@ -276,15 +255,7 @@ public class MachineSelectionService {
             info.setSuggestedStartTime(startTime);
             info.setSuggestedEndTime(endTime);
         } else {
-            // Tìm khoảng thời gian gần nhất có sẵn
-            LocalDateTime suggestedStart = findNextAvailableTime(machine, startTime);
-            if (suggestedStart != null) {
-                info.setSuggestedStartTime(suggestedStart);
-                info.setSuggestedEndTime(suggestedStart.plusHours(8)); // Giả định 8 giờ làm việc
-                info.setScore(50.0); // Điểm thấp hơn vì không đúng thời gian mong muốn
-            } else {
-                info.setScore(0.0);
-            }
+            info.setScore(0.0);
         }
         
         return info;
@@ -342,29 +313,6 @@ public class MachineSelectionService {
         }
         
         return score;
-    }
-    
-    /**
-     * Tìm thời gian sẵn sàng tiếp theo
-     */
-    private LocalDateTime findNextAvailableTime(Machine machine, LocalDateTime fromTime) {
-        // Logic đơn giản: tìm thời gian trống tiếp theo
-        LocalDateTime nextAvailable = fromTime;
-        
-        // Kiểm tra trong 7 ngày tới
-        for (int i = 0; i < 7; i++) {
-            LocalDateTime dayStart = nextAvailable.toLocalDate().atStartOfDay().plusHours(8); // 8:00 AM
-            LocalDateTime dayEnd = dayStart.plusHours(8); // 5:00 PM
-            
-            AvailabilityInfo availability = checkMachineAvailability(machine, dayStart, dayEnd);
-            if (availability.isAvailable()) {
-                return dayStart;
-            }
-            
-            nextAvailable = nextAvailable.plusDays(1);
-        }
-        
-        return null;
     }
     
     /**

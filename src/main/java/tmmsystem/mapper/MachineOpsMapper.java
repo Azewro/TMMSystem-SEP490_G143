@@ -12,8 +12,11 @@ public class MachineOpsMapper {
         dto.setId(e.getId());
         dto.setMachineId(e.getMachine() != null ? e.getMachine().getId() : null);
         dto.setProductionStageId(e.getProductionStage() != null ? e.getProductionStage().getId() : null);
+        dto.setPlanStageId(e.getPlanStage() != null ? e.getPlanStage().getId() : null);
         dto.setAssignedAt(e.getAssignedAt());
         dto.setReleasedAt(e.getReleasedAt());
+        dto.setReservationType(e.getReservationType());
+        dto.setReservationStatus(e.getReservationStatus());
         return dto;
     }
 

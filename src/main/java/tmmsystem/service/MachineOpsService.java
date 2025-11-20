@@ -21,7 +21,12 @@ public class MachineOpsService {
     public List<MachineAssignment> listAssignmentsByStage(Long stageId) { return assignmentRepo.findByProductionStageId(stageId); }
     public MachineAssignment getAssignment(Long id) { return assignmentRepo.findById(id).orElseThrow(); }
     @Transactional public MachineAssignment createAssignment(MachineAssignment e) { return assignmentRepo.save(e); }
-    @Transactional public MachineAssignment releaseAssignment(Long id, java.time.Instant releasedAt) { MachineAssignment e = assignmentRepo.findById(id).orElseThrow(); e.setReleasedAt(releasedAt); return e; }
+    @Transactional public MachineAssignment releaseAssignment(Long id, java.time.Instant releasedAt) {
+        MachineAssignment e = assignmentRepo.findById(id).orElseThrow();
+        e.setReleasedAt(releasedAt);
+        e.setReservationStatus("RELEASED");
+        return e;
+    }
     public void deleteAssignment(Long id) { assignmentRepo.deleteById(id); }
 
     // Maintenance

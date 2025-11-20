@@ -38,6 +38,11 @@ public class MachineOpsController {
         MachineAssignment e = new MachineAssignment();
         if (body.getMachineId() != null) { Machine m = new Machine(); m.setId(body.getMachineId()); e.setMachine(m); }
         if (body.getProductionStageId() != null) { ProductionStage s = new ProductionStage(); s.setId(body.getProductionStageId()); e.setProductionStage(s); }
+        if (body.getPlanStageId() != null) { ProductionPlanStage ps = new ProductionPlanStage(); ps.setId(body.getPlanStageId()); e.setPlanStage(ps); }
+        e.setReservationType(body.getReservationType() != null ? body.getReservationType() : e.getReservationType());
+        e.setReservationStatus(body.getReservationStatus() != null ? body.getReservationStatus() : e.getReservationStatus());
+        e.setAssignedAt(body.getAssignedAt());
+        e.setReleasedAt(body.getReleasedAt());
         return mapper.toDto(service.createAssignment(e));
     }
     @Operation(summary = "Release assignment")

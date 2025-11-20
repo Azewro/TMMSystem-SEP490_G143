@@ -9,8 +9,11 @@ public class MachineAssignmentDto {
     private Long id;
     private Long machineId;
     private Long productionStageId;
+    private Long planStageId;
     private Instant assignedAt;
     private Instant releasedAt;
+    private String reservationType;
+    private String reservationStatus;
 }
 
 

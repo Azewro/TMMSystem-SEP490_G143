@@ -34,6 +34,7 @@ Tài liệu này mô tả luồng lập kế hoạch sau khi báo giá được 
 12. Submit kế hoạch: PUT `/v1/production-plans/{id}/submit`.
 13. Approve / Reject: PUT `/v1/production-plans/{id}/approve` hoặc `/reject`.
 14. Sau APPROVED hệ thống sinh Production Order tự động.
+15. Khi APPROVED, hệ thống cũng sinh bản ghi `machine_assignment` cho từng stage đã gán máy (start/end theo plannedStartTime/EndTime) để khóa lịch máy phục vụ check capacity.
 
 ## 3. Cơ chế gộp Lot (Lot Merging)
 Điều kiện đưa Contract vào Lot hiện hữu:
@@ -164,6 +165,7 @@ PUT /v1/production-plans/stages/{stageId}
 
 ## 8. Kiểm tra khả dụng máy (Availability)
 Thứ tự kiểm tra: maintenance → stages đã gán → work orders active → assignments. Nếu conflict, thuật toán gợi ý slot 8h tiếp theo trong 7 ngày.
+- Mỗi lần Planner chỉnh `assignedMachineId` + `plannedStartTime/plannedEndTime` qua `PUT /v1/production-plans/stages/{stageId}`, dữ liệu được ghi trực tiếp vào bảng `production_plan_stage`. `MachineSelectionService` sử dụng chính các bản ghi này như “lịch máy” hiện tại nên chỉ cần update stage là đủ để mọi lần gợi ý/check-conflicts nhận biết slot đã bị chiếm.
 
 ## 9. Check Conflicts Stage
 GET `/v1/production-plans/stages/{stageId}/check-conflicts` → List<String>.

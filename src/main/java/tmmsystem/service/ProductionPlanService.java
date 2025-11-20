@@ -37,6 +37,7 @@ public class ProductionPlanService {
     private final MachineSelectionService machineSelectionService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
+    private final MachineAssignmentRepository machineAssignmentRepository;
 
     @Value("${planning.autoInitStages:true}")
     private boolean autoInitStages;
@@ -56,7 +57,8 @@ public class ProductionPlanService {
                                 ProductionPlanMapper mapper,
                                 MachineSelectionService machineSelectionService,
                                 ProductionLotRepository lotRepo,
-                                ProductionLotOrderRepository lotOrderRepo) {
+                                ProductionLotOrderRepository lotOrderRepo,
+                                MachineAssignmentRepository machineAssignmentRepository) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
@@ -73,6 +75,7 @@ public class ProductionPlanService {
         this.machineSelectionService = machineSelectionService;
         this.lotRepo = lotRepo;
         this.lotOrderRepo = lotOrderRepo;
+        this.machineAssignmentRepository = machineAssignmentRepository;
     }
     
     // ===== LOT & PLAN VERSIONING =====
@@ -152,7 +155,12 @@ public class ProductionPlanService {
             lot.setStatus("PLANNING");
             lotRepo.save(lot);
         }
-        planRepo.findByLotIdAndCurrentVersionTrue(lotId).forEach(p->{ p.setCurrentVersion(false); p.setStatus(ProductionPlan.PlanStatus.SUPERSEDED); planRepo.save(p); });
+        planRepo.findByLotIdAndCurrentVersionTrue(lotId).forEach(p -> {
+            p.setCurrentVersion(false);
+            p.setStatus(ProductionPlan.PlanStatus.SUPERSEDED);
+            planRepo.save(p);
+            releasePlanReservations(p.getId());
+        });
         ProductionPlan plan = new ProductionPlan();
         plan.setLot(lot);
         ProductionLotOrder any = lotOrderRepo.findByLotId(lotId).stream().findFirst().orElse(null);
@@ -231,6 +239,7 @@ public class ProductionPlanService {
         plan.setStatus(ProductionPlan.PlanStatus.APPROVED); plan.setApprovedBy(getCurrentUser()); plan.setApprovedAt(Instant.now()); plan.setApprovalNotes(request.getApprovalNotes());
         ProductionPlan saved = planRepo.save(plan);
         if (saved.getLot()!=null){ saved.getLot().setStatus("PLAN_APPROVED"); lotRepo.save(saved.getLot()); }
+        reservePlanStages(saved);
         createProductionOrderFromPlan(saved); notificationService.notifyProductionPlanApproved(saved); return mapper.toDto(saved);
     }
 
@@ -239,7 +248,9 @@ public class ProductionPlanService {
         ProductionPlan plan = planRepo.findById(planId).orElseThrow();
         if (plan.getStatus()!=ProductionPlan.PlanStatus.PENDING_APPROVAL) throw new RuntimeException("Only pending approval plans can be rejected");
         plan.setStatus(ProductionPlan.PlanStatus.REJECTED); plan.setApprovedBy(getCurrentUser()); plan.setApprovedAt(Instant.now()); plan.setApprovalNotes(request.getRejectionReason());
-        ProductionPlan saved = planRepo.save(plan); notificationService.notifyProductionPlanRejected(saved); return mapper.toDto(saved);
+        ProductionPlan saved = planRepo.save(plan);
+        releasePlanReservations(saved.getId());
+        notificationService.notifyProductionPlanRejected(saved); return mapper.toDto(saved);
     }
     
     public List<ProductionPlanDto> findAllPlans(){ return planRepo.findAll().stream().map(mapper::toDto).toList(); }
@@ -388,5 +399,39 @@ public class ProductionPlanService {
         plan.setProposedEndDate(overallEndTime != null ? overallEndTime.toLocalDate() : null);
 
         return planRepo.save(plan);
+    }
+
+    public ProductionPlanDto calculateScheduleAndReturnDto(Long planId) {
+        ProductionPlan updatedPlan = calculateAndSetPlanDates(planId);
+        return mapper.toDto(updatedPlan);
+    }
+
+    private void reservePlanStages(ProductionPlan plan) {
+        if (plan == null) return;
+        releasePlanReservations(plan.getId());
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
+        for (ProductionPlanStage stage : stages) {
+            if (stage.getAssignedMachine() == null || stage.getPlannedStartTime() == null || stage.getPlannedEndTime() == null) {
+                continue;
+            }
+            MachineAssignment assignment = new MachineAssignment();
+            assignment.setMachine(stage.getAssignedMachine());
+            assignment.setPlanStage(stage);
+            assignment.setReservationType("PLAN");
+            assignment.setReservationStatus("RESERVED");
+            assignment.setAssignedAt(toInstant(stage.getPlannedStartTime()));
+            assignment.setReleasedAt(toInstant(stage.getPlannedEndTime()));
+            machineAssignmentRepository.save(assignment);
+        }
+    }
+
+    private void releasePlanReservations(Long planId) {
+        if (planId == null) return;
+        machineAssignmentRepository.deleteByPlanStagePlanId(planId);
+    }
+
+    private Instant toInstant(LocalDateTime value) {
+        if (value == null) return null;
+        return value.atZone(java.time.ZoneId.systemDefault()).toInstant();
     }
 }

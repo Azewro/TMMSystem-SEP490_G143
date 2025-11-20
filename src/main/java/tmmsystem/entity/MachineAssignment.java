@@ -2,13 +2,12 @@ package tmmsystem.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.Instant;
 
 @Entity @Table(name = "machine_assignment",
         indexes = {
                 @Index(name = "idx_machine_assignment_unique", columnList = "machine_id, production_stage_id", unique = true),
+                @Index(name = "idx_machine_assignment_plan_stage", columnList = "plan_stage_id"),
                 @Index(name = "idx_machine_assignment_time", columnList = "machine_id, assigned_at")
         }
 )
@@ -25,8 +24,17 @@ public class MachineAssignment {
     @JoinColumn(name = "production_stage_id")
     private ProductionStage productionStage;
 
-    @CreationTimestamp
-    @Column(name = "assigned_at", updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_stage_id")
+    private ProductionPlanStage planStage;
+
+    @Column(name = "reservation_type", length = 20, nullable = false)
+    private String reservationType = "PRODUCTION"; // PRODUCTION, PLAN
+
+    @Column(name = "reservation_status", length = 20, nullable = false)
+    private String reservationStatus = "ACTIVE"; // ACTIVE, RELEASED
+
+    @Column(name = "assigned_at", nullable = false)
     private Instant assignedAt;
 
     @Column(name = "released_at")
