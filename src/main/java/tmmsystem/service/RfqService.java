@@ -178,7 +178,7 @@ public class RfqService {
             User u = new User(); u.setId(dto.getAssignedSalesId()); rfq.setAssignedSales(u);
         }
 
-        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
         // Prioritize contact info from DTO, fall back to customer profile for historical snapshot
         Customer loaded = customerRepository.findById(dto.getCustomerId()).orElse(null);
@@ -267,7 +267,7 @@ public class RfqService {
             rfq.setAssignedSales(user);
         }
 
-        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
         return createWithDetails(rfq, dto.getDetails());
     }
@@ -318,7 +318,7 @@ public class RfqService {
         rfq.setContactPhoneSnapshot(phone);
         rfq.setContactAddressSnapshot(req.getContactAddress());
         rfq.setContactMethod(method);
-        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), java.time.LocalDate.now());
         return createWithDetails(rfq, req.getDetails());
     }
 
@@ -385,7 +385,8 @@ public class RfqService {
         
         // Update basic fields
         if (dto.getExpectedDeliveryDate() != null) {
-            validateExpectedDeliveryDate(dto.getExpectedDeliveryDate());
+            java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+            validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), baseDate);
             rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
         }
         if (dto.getNotes() != null) rfq.setNotes(dto.getNotes());
@@ -750,7 +751,8 @@ public class RfqService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not assigned sales");
         }
         if (req.getExpectedDeliveryDate() != null) {
-            validateExpectedDeliveryDate(req.getExpectedDeliveryDate());
+            java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+            validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), baseDate);
             rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
         }
         if (req.getNotes() != null) rfq.setNotes(req.getNotes());
@@ -795,7 +797,8 @@ public class RfqService {
             throw new IllegalStateException("RFQ is locked and cannot change expected delivery date");
         }
         java.time.LocalDate date = parseFlexibleDate(expectedDateStr);
-        validateExpectedDeliveryDate(date);
+        java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+        validateExpectedDeliveryDate(date, baseDate);
         rfq.setExpectedDeliveryDate(date);
         return rfqRepository.save(rfq);
     }
@@ -821,13 +824,14 @@ public class RfqService {
         }
     }
 
-    private void validateExpectedDeliveryDate(java.time.LocalDate date) {
+    private void validateExpectedDeliveryDate(java.time.LocalDate date, java.time.LocalDate baseDate) {
         if (date == null) throw new IllegalArgumentException("expectedDeliveryDate is required");
-        java.time.LocalDate today = java.time.LocalDate.now();
+        if (baseDate == null) baseDate = java.time.LocalDate.now();
+        
         // Use 29 days to be lenient for timezone differences, while the UI and error message still enforce 30 days.
-        java.time.LocalDate min = today.plusDays(29);
+        java.time.LocalDate min = baseDate.plusDays(29);
         if (date.isBefore(min)) {
-            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from today (>= " + today.plusDays(30) + ")");
+            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from creation date (" + baseDate + ") (>= " + baseDate.plusDays(30) + ")");
         }
     }
 }
