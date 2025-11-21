@@ -301,7 +301,15 @@ public class RfqService {
         rfq.setCustomer(customer);
         rfq.setSourceType("BY_SALES");
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
-        rfq.setStatus("DRAFT");
+        
+        // Logic: If employeeCode is provided, status is SENT (auto-assigned). 
+        // If not, status is DRAFT (assigned but not sent).
+        if (req.getEmployeeCode() != null && !req.getEmployeeCode().isBlank()) {
+            rfq.setStatus("SENT");
+        } else {
+            rfq.setStatus("DRAFT");
+        }
+        
         rfq.setNotes(req.getNotes());
         User sales = new User(); sales.setId(salesUserId); rfq.setAssignedSales(sales);
         // snapshots

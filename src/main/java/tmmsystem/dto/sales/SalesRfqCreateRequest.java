@@ -23,4 +23,5 @@ public class SalesRfqCreateRequest {
     private LocalDate expectedDeliveryDate;
     private String notes;
     private List<RfqDetailDto> details;
+    private String employeeCode;
 }
