@@ -362,6 +362,13 @@ public class ProductionPlanService {
             lotOrderRepo.findByLotId(plan.getLot().getId()).forEach(lo -> {
                 if (lo.getContract() != null)
                     contractIds.add(lo.getContract().getId());
+                // Validate required fields để tránh null pointer
+                if (lo.getQuotationDetail() == null || lo.getQuotationDetail().getProduct() == null) {
+                    throw new RuntimeException("QuotationDetail or Product is null for LotOrder: " + lo.getId());
+                }
+                if (lo.getAllocatedQuantity() == null) {
+                    throw new RuntimeException("AllocatedQuantity is null for LotOrder: " + lo.getId());
+                }
                 ProductionOrderDetail pod = new ProductionOrderDetail();
                 pod.setProductionOrder(savedPO);
                 pod.setProduct(lo.getQuotationDetail().getProduct());

@@ -74,4 +74,14 @@ public class ExecutionController {
     public java.util.List<ProductionStage> pmStages(@PathVariable Long orderId){
         return service.listStagesForPm(orderId);
     }
+
+    @GetMapping("/material-requisitions")
+    public java.util.List<tmmsystem.entity.MaterialRequisition> listMaterialRequisitions(@RequestParam(required = false) String status){
+        return service.listMaterialRequisitions(status);
+    }
+
+    @GetMapping("/material-requisitions/{reqId}")
+    public tmmsystem.entity.MaterialRequisition getMaterialRequisition(@PathVariable Long reqId){
+        return service.getMaterialRequisition(reqId);
+    }
 }

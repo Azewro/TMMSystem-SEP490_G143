@@ -17,7 +17,6 @@ import tmmsystem.repository.UserRepository;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class ExecutionOrchestrationService {
@@ -343,5 +342,19 @@ public class ExecutionOrchestrationService {
     @Transactional(readOnly = true)
     public java.util.List<ProductionStage> listStagesForPm(Long orderId) {
         return stageRepo.findStagesByOrderId(orderId);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<MaterialRequisition> listMaterialRequisitions(String status) {
+        if (status != null && !status.isEmpty()) {
+            return materialReqRepo.findByStatus(status);
+        }
+        return materialReqRepo.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public MaterialRequisition getMaterialRequisition(Long reqId) {
+        return materialReqRepo.findById(reqId)
+                .orElseThrow(() -> new RuntimeException("Material requisition not found: " + reqId));
     }
 }

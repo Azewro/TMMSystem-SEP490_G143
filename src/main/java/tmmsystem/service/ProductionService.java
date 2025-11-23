@@ -43,6 +43,7 @@ public class ProductionService {
     private final StagePauseLogRepository stagePauseLogRepository;
     private final OutsourcingTaskRepository outsourcingTaskRepository;
     private final MachineAssignmentRepository machineAssignmentRepository;
+    private final MachineRepository machineRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -59,7 +60,8 @@ public class ProductionService {
             StageTrackingRepository stageTrackingRepository,
             StagePauseLogRepository stagePauseLogRepository,
             OutsourcingTaskRepository outsourcingTaskRepository,
-            MachineAssignmentRepository machineAssignmentRepository) {
+            MachineAssignmentRepository machineAssignmentRepository,
+            MachineRepository machineRepository) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -76,6 +78,7 @@ public class ProductionService {
         this.stagePauseLogRepository = stagePauseLogRepository;
         this.outsourcingTaskRepository = outsourcingTaskRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
+        this.machineRepository = machineRepository;
     }
 
     // Production Order
@@ -658,9 +661,10 @@ public class ProductionService {
                 stage.setWorkOrderDetail(wod);
                 stage.setStageType(planStage.getStageType());
                 stage.setStageSequence(planStage.getSequenceNo());
-                stage.setMachine(planStage.getAssignedMachine());
-                stage.setAssignedLeader(planStage.getInChargeUser());
-                stage.setQcAssignee(planStage.getQcUser());
+                // Validate và resolve machine/user từ DB để tránh FK constraint violation
+                stage.setMachine(resolveMachine(planStage.getAssignedMachine()));
+                stage.setAssignedLeader(resolveUser(planStage.getInChargeUser()));
+                stage.setQcAssignee(resolveUser(planStage.getQcUser()));
                 stage.setPlannedStartAt(toInstant(planStage.getPlannedStartTime()));
                 stage.setPlannedEndAt(toInstant(planStage.getPlannedEndTime()));
                 stage.setPlannedDurationHours(calculateDurationHours(planStage.getPlannedStartTime(),
@@ -893,5 +897,27 @@ public class ProductionService {
             return "Sản phẩm";
         }
         return pod.getProduct().getName();
+    }
+
+    /**
+     * Validate và resolve User từ DB để tránh FK constraint violation
+     * Nếu user không tồn tại hoặc null, trả về null
+     */
+    private User resolveUser(User user) {
+        if (user == null || user.getId() == null) {
+            return null;
+        }
+        return userRepository.findById(user.getId()).orElse(null);
+    }
+
+    /**
+     * Validate và resolve Machine từ DB để tránh FK constraint violation
+     * Nếu machine không tồn tại hoặc null, trả về null
+     */
+    private Machine resolveMachine(Machine machine) {
+        if (machine == null || machine.getId() == null) {
+            return null;
+        }
+        return machineRepository.findById(machine.getId()).orElse(null);
     }
 }
