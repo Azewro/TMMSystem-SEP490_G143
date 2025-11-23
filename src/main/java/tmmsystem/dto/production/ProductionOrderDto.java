@@ -1,17 +1,20 @@
 package tmmsystem.dto.production;
 
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
-@Getter @Setter
+@Getter
+@Setter
 public class ProductionOrderDto {
     private Long id;
     private String poNumber;
     private Long contractId;
+    private List<Long> contractIds;
     private BigDecimal totalQuantity;
     private LocalDate plannedStartDate;
     private LocalDate plannedEndDate;

@@ -11,7 +11,8 @@ import java.time.Instant;
         uniqueConstraints = { @UniqueConstraint(columnNames = {"requisition_number"}) },
         indexes = {
                 @Index(name = "idx_requisition_stage", columnList = "production_stage_id"),
-                @Index(name = "idx_requisition_status_time", columnList = "status, requested_at")
+                @Index(name = "idx_requisition_status_time", columnList = "status, requested_at"),
+                @Index(name = "idx_requisition_issue", columnList = "source_issue_id")
         }
 )
 @Getter @Setter
@@ -49,6 +50,11 @@ public class MaterialRequisition {
 
     @Column(columnDefinition = "text")
     private String notes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_issue_id")
+    private QualityIssue sourceIssue; // phát sinh từ lỗi QC mức nặng
+
+    @Column(name = "requisition_type", length = 30)
+    private String requisitionType; // YARN_SUPPLY, OTHER
 }
-
-

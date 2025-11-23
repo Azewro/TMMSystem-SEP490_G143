@@ -1,0 +1,347 @@
+package tmmsystem.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tmmsystem.entity.MaterialRequisition;
+import tmmsystem.entity.ProductionOrder;
+import tmmsystem.entity.ProductionStage;
+import tmmsystem.entity.QcSession;
+import tmmsystem.entity.QualityIssue;
+import tmmsystem.entity.User;
+import tmmsystem.repository.MaterialRequisitionRepository;
+import tmmsystem.repository.ProductionOrderRepository;
+import tmmsystem.repository.ProductionStageRepository;
+import tmmsystem.repository.QualityIssueRepository;
+import tmmsystem.repository.QcSessionRepository;
+import tmmsystem.repository.UserRepository;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+public class ExecutionOrchestrationService {
+    private final ProductionOrderRepository orderRepo;
+    private final ProductionStageRepository stageRepo;
+    private final QualityIssueRepository issueRepo;
+    private final QcSessionRepository sessionRepo;
+    private final UserRepository userRepo;
+    private final NotificationService notificationService;
+    private final MaterialRequisitionRepository materialReqRepo;
+
+    public ExecutionOrchestrationService(ProductionOrderRepository orderRepo,
+            ProductionStageRepository stageRepo,
+            QualityIssueRepository issueRepo,
+            QcSessionRepository sessionRepo,
+            UserRepository userRepo,
+            NotificationService notificationService,
+            MaterialRequisitionRepository materialReqRepo) {
+        this.orderRepo = orderRepo;
+        this.stageRepo = stageRepo;
+        this.issueRepo = issueRepo;
+        this.sessionRepo = sessionRepo;
+        this.userRepo = userRepo;
+        this.notificationService = notificationService;
+        this.materialReqRepo = materialReqRepo;
+    }
+
+    // Helper lấy tất cả stage thuộc orderId (dựa trên quan hệ WorkOrderDetail ->
+    // ProductionOrderDetail -> ProductionOrder)
+    private List<ProductionStage> findStagesByOrderId(Long orderId) {
+        return stageRepo.findStagesByOrderId(orderId);
+    }
+
+    @Transactional
+    public ProductionOrder startProductionOrder(Long orderId, Long pmUserId) {
+        ProductionOrder order = orderRepo.findById(orderId).orElseThrow();
+        if (order.getExecutionStatus() == null || order.getExecutionStatus().isBlank()) {
+            order.setExecutionStatus("WAITING_PRODUCTION");
+        }
+        if (!"WAITING_PRODUCTION".equals(order.getExecutionStatus())) {
+            return order; // không đúng trạng thái để start
+        }
+        order.setExecutionStatus("IN_PROGRESS");
+        List<ProductionStage> stages = findStagesByOrderId(orderId);
+        for (ProductionStage s : stages) {
+            if (s.getStageSequence() != null && s.getStageSequence() == 1) {
+                s.setExecutionStatus("READY");
+                stageRepo.save(s);
+            } else {
+                if (s.getExecutionStatus() == null)
+                    s.setExecutionStatus("PENDING");
+            }
+        }
+        return orderRepo.save(order);
+    }
+
+    @Transactional
+    public ProductionStage startStage(Long stageId, Long userId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        if (!"READY".equals(stage.getExecutionStatus()))
+            return stage;
+        validateStageStartPermission(stage, userId);
+        stage.setStartAt(Instant.now());
+        stage.setExecutionStatus("IN_PROGRESS");
+        if (stage.getProgressPercent() == null)
+            stage.setProgressPercent(0);
+        return stageRepo.save(stage);
+    }
+
+    private void validateStageStartPermission(ProductionStage stage, Long userId) {
+        User u = userRepo.findById(userId).orElseThrow();
+        boolean isPm = u.getRole() != null && "PRODUCTION_MANAGER".equalsIgnoreCase(u.getRole().getName());
+        if ("DYEING".equalsIgnoreCase(stage.getStageType())) {
+            if (!isPm && (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(userId))) {
+                throw new RuntimeException("Không có quyền bắt đầu công đoạn nhuộm");
+            }
+        } else {
+            if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(userId)) {
+                throw new RuntimeException("Không có quyền: không phải leader được phân công");
+            }
+        }
+    }
+
+    @Transactional
+    public ProductionStage updateProgress(Long stageId, Long userId, Integer percent) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        if (!"IN_PROGRESS".equals(stage.getExecutionStatus())
+                && !"REWORK_IN_PROGRESS".equals(stage.getExecutionStatus())) {
+            throw new RuntimeException("Công đoạn không ở trạng thái đang làm");
+        }
+        if (percent == null || percent < 0 || percent > 100)
+            throw new RuntimeException("% không hợp lệ");
+        if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(userId)) {
+            throw new RuntimeException("Không có quyền cập nhật tiến độ");
+        }
+        stage.setProgressPercent(percent);
+        if (percent == 100) {
+            stage.setExecutionStatus("WAITING_QC");
+            if (stage.getQcAssignee() != null) {
+                notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO", "Chờ kiểm tra",
+                        "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
+            } else {
+                notificationService.notifyRole("QC_STAFF", "QC", "INFO", "Chờ kiểm tra",
+                        "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
+            }
+        }
+        return stageRepo.save(stage);
+    }
+
+    @Transactional
+    public QcSession startQcSession(Long stageId, Long qcUserId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        if (!"WAITING_QC".equals(stage.getExecutionStatus()))
+            throw new RuntimeException("Không ở trạng thái chờ QC");
+        User qc = userRepo.findById(qcUserId).orElseThrow();
+        stage.setExecutionStatus("QC_IN_PROGRESS");
+        stageRepo.save(stage);
+        QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
+        if (existing != null)
+            return existing;
+        QcSession session = new QcSession();
+        session.setProductionStage(stage);
+        session.setStartedBy(qc);
+        session.setStatus("IN_PROGRESS");
+        return sessionRepo.save(session);
+    }
+
+    @Transactional
+    public QcSession submitQcSession(Long sessionId, String overallResult, String notes, Long qcUserId) {
+        QcSession session = sessionRepo.findById(sessionId).orElseThrow();
+        if (!"IN_PROGRESS".equals(session.getStatus()))
+            throw new RuntimeException("Session không ở trạng thái IN_PROGRESS");
+        if (!"PASS".equalsIgnoreCase(overallResult) && !"FAIL".equalsIgnoreCase(overallResult))
+            throw new RuntimeException("Kết quả không hợp lệ");
+        session.setOverallResult(overallResult.toUpperCase());
+        session.setNotes(notes);
+        session.setStatus("SUBMITTED");
+        session.setSubmittedAt(Instant.now());
+        sessionRepo.save(session);
+        ProductionStage stage = session.getProductionStage();
+        if ("PASS".equalsIgnoreCase(overallResult)) {
+            stage.setExecutionStatus("QC_PASSED");
+            stageRepo.save(stage);
+            openNextStage(stage);
+        } else {
+            stage.setExecutionStatus("QC_FAILED");
+            stageRepo.save(stage);
+            QualityIssue issue = new QualityIssue();
+            issue.setProductionStage(stage);
+            issue.setProductionOrder(resolveOrder(stage));
+            issue.setSeverity("MINOR");
+            issue.setIssueType("REWORK");
+            issue.setDescription(notes);
+            issueRepo.save(issue);
+            notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "WARNING", "Lỗi QC",
+                    "Công đoạn " + stage.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
+        }
+        return session;
+    }
+
+    private ProductionOrder resolveOrder(ProductionStage stage) {
+        if (stage.getWorkOrderDetail() == null || stage.getWorkOrderDetail().getProductionOrderDetail() == null)
+            return null;
+        return stage.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder();
+    }
+
+    @Transactional
+    public ProductionStage requestRework(Long issueId, Long techUserId) {
+        QualityIssue issue = issueRepo.findById(issueId).orElseThrow();
+        ProductionStage stage = issue.getProductionStage();
+        issue.setStatus("PROCESSED");
+        issue.setProcessedAt(Instant.now());
+        issue.setProcessedBy(userRepo.findById(techUserId).orElseThrow());
+        issueRepo.save(issue);
+        stage.setExecutionStatus("WAITING_REWORK");
+        stage.setIsRework(true);
+        stage.setProgressPercent(0);
+        stageRepo.save(stage);
+        if (stage.getAssignedLeader() != null) {
+            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO", "Chờ sửa",
+                    "Công đoạn " + stage.getStageType() + " cần sửa lại", "PRODUCTION_STAGE", stage.getId());
+        }
+        return stage;
+    }
+
+    @Transactional
+    public ProductionStage startRework(Long stageId, Long leaderUserId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        if (!"WAITING_REWORK".equals(stage.getExecutionStatus()))
+            throw new RuntimeException("Không ở trạng thái chờ sửa");
+        if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(leaderUserId))
+            throw new RuntimeException("Không có quyền sửa");
+        stage.setExecutionStatus("REWORK_IN_PROGRESS");
+        stageRepo.save(stage);
+        return stage;
+    }
+
+    private void openNextStage(ProductionStage current) {
+        if (current.getWorkOrderDetail() == null)
+            return;
+        List<ProductionStage> stages = stageRepo
+                .findByWorkOrderDetailIdOrderByStageSequenceAsc(current.getWorkOrderDetail().getId());
+        ProductionStage next = stages.stream()
+                .filter(s -> s.getStageSequence() != null && current.getStageSequence() != null
+                        && s.getStageSequence() == current.getStageSequence() + 1)
+                .findFirst().orElse(null);
+        if (next == null) {
+            ProductionOrder order = resolveOrder(current);
+            if (order != null) {
+                order.setExecutionStatus("COMPLETED");
+                orderRepo.save(order);
+                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Hoàn thành",
+                        "Đơn hàng đã hoàn thành", "PRODUCTION_ORDER", order.getId());
+            }
+            return;
+        }
+        next.setExecutionStatus("READY");
+        stageRepo.save(next);
+        if ("DYEING".equalsIgnoreCase(next.getStageType())) {
+            notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị nhuộm",
+                    "Công đoạn Nhuộm đã sẵn sàng", "PRODUCTION_STAGE", next.getId());
+        } else if (next.getAssignedLeader() != null) {
+            notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS", "Sẵn sàng",
+                    "Công đoạn " + next.getStageType() + " đã sẵn sàng", "PRODUCTION_STAGE", next.getId());
+        } else {
+            notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn tiếp theo",
+                    "Công đoạn " + next.getStageType() + " sẵn sàng", "PRODUCTION_STAGE", next.getId());
+        }
+    }
+
+    @Transactional
+    public MaterialRequisition createMaterialRequest(Long issueId, Long techUserId, String notes) {
+        QualityIssue issue = issueRepo.findById(issueId).orElseThrow();
+        ProductionStage stage = issue.getProductionStage();
+        issue.setIssueType("MATERIAL_REQUEST");
+        issue.setSeverity("MAJOR");
+        issue.setMaterialNeeded(true);
+
+        // Update issue status to PROCESSED as per Technical workflow
+        issue.setStatus("PROCESSED");
+        issue.setProcessedAt(Instant.now());
+        issue.setProcessedBy(userRepo.findById(techUserId).orElseThrow());
+
+        issueRepo.save(issue);
+
+        MaterialRequisition req = new MaterialRequisition();
+        req.setRequisitionNumber("MR-" + System.currentTimeMillis());
+        req.setProductionStage(stage);
+        req.setRequestedBy(userRepo.findById(techUserId).orElseThrow());
+        req.setStatus("PENDING");
+        req.setSourceIssue(issue);
+        req.setRequisitionType("YARN_SUPPLY");
+        req.setNotes(notes);
+        materialReqRepo.save(req);
+
+        ProductionOrder order = resolveOrder(stage);
+        if (order != null) {
+            order.setExecutionStatus("WAITING_MATERIAL_APPROVAL");
+            orderRepo.save(order);
+        }
+
+        notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "WARNING", "Yêu cầu cấp sợi",
+                "Có yêu cầu cấp sợi cho công đoạn " + stage.getStageType(), "MATERIAL_REQUISITION", req.getId());
+        return req;
+    }
+
+    @Transactional
+    public MaterialRequisition approveMaterialRequest(Long requisitionId, Long pmUserId) {
+        MaterialRequisition req = materialReqRepo.findById(requisitionId).orElseThrow();
+        if (!"PENDING".equals(req.getStatus()))
+            return req;
+        req.setStatus("APPROVED");
+        req.setApprovedBy(userRepo.findById(pmUserId).orElseThrow());
+        req.setApprovedAt(Instant.now());
+        materialReqRepo.save(req);
+        QualityIssue issue = req.getSourceIssue();
+        if (issue != null) {
+            issue.setStatus("PROCESSED");
+            issue.setProcessedAt(Instant.now());
+            issue.setProcessedBy(req.getApprovedBy());
+            issueRepo.save(issue);
+        }
+        ProductionStage stage = req.getProductionStage();
+        // Khi cấp sợi phê duyệt -> cho phép sửa lại các stage từ đầu tới stage bị lỗi
+        // (đơn giản: set stage WAITING_REWORK)
+        if (stage != null) {
+            stage.setExecutionStatus("WAITING_REWORK");
+            stage.setIsRework(true);
+            stage.setProgressPercent(0);
+            stageRepo.save(stage);
+        }
+        ProductionOrder order = resolveOrder(stage);
+        if (order != null) {
+            order.setExecutionStatus("IN_REWORK");
+            orderRepo.save(order);
+        }
+        if (stage != null && stage.getAssignedLeader() != null) {
+            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO", "Chờ sửa (cấp sợi)",
+                    "Công đoạn " + stage.getStageType() + " đã được cấp sợi, tiến hành sửa", "PRODUCTION_STAGE",
+                    stage.getId());
+        }
+        return req;
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ProductionStage> listStagesForLeader(Long leaderUserId) {
+        return stageRepo.findByAssignedLeaderIdAndExecutionStatusIn(leaderUserId,
+                java.util.List.of("READY", "IN_PROGRESS", "WAITING_QC", "REWORK_IN_PROGRESS", "WAITING_REWORK"));
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ProductionStage> listStagesForQc(Long qcUserId) {
+        return stageRepo.findByQcAssigneeIdAndExecutionStatusIn(qcUserId,
+                java.util.List.of("WAITING_QC", "QC_IN_PROGRESS"));
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ProductionStage> listStagesForTechnical() {
+        // Lấy các stage FAILED hoặc WAITING_REWORK thông qua issue PENDING
+        return issueRepo.findByStatus("PENDING").stream().map(QualityIssue::getProductionStage).distinct().toList();
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ProductionStage> listStagesForPm(Long orderId) {
+        return stageRepo.findStagesByOrderId(orderId);
+    }
+}

@@ -1,11 +1,13 @@
 package tmmsystem.dto.production;
 
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Getter @Setter
+@Getter
+@Setter
 public class ProductionStageDto {
     private Long id;
     private Long workOrderDetailId;
@@ -32,4 +34,7 @@ public class ProductionStageDto {
     private String qcLastResult;
     private Instant qcLastCheckedAt;
     private Long qcAssigneeId;
+    private String executionStatus;
+    private Integer progressPercent;
+    private Boolean isRework;
 }

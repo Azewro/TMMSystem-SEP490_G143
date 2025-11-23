@@ -7,7 +7,8 @@ import tmmsystem.entity.*;
 @Component
 public class ProductionMapper {
     public ProductionOrderDto toDto(ProductionOrder e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         ProductionOrderDto dto = new ProductionOrderDto();
         dto.setId(e.getId());
         dto.setPoNumber(e.getPoNumber());
@@ -17,19 +18,24 @@ public class ProductionMapper {
         dto.setPlannedEndDate(e.getPlannedEndDate());
         dto.setStatus(e.getStatus());
         dto.setPriority(e.getPriority());
-        dto.setNotes(e.getNotes());
-        dto.setCreatedById(e.getCreatedBy() != null ? e.getCreatedBy().getId() : null);
-        dto.setApprovedById(e.getApprovedBy() != null ? e.getApprovedBy().getId() : null);
-        dto.setApprovedAt(e.getApprovedAt());
-        dto.setCreatedAt(e.getCreatedAt());
-        dto.setUpdatedAt(e.getUpdatedAt());
-        dto.setAssignedTechnicianId(e.getAssignedTechnician()!=null? e.getAssignedTechnician().getId(): null);
+        dto.setAssignedTechnicianId(e.getAssignedTechnician() != null ? e.getAssignedTechnician().getId() : null);
         dto.setAssignedAt(e.getAssignedAt());
+        if (e.getContractIds() != null && !e.getContractIds().isBlank()) {
+            try {
+                String clean = e.getContractIds().replace("[", "").replace("]", "").replace(" ", "");
+                if (!clean.isEmpty()) {
+                    dto.setContractIds(java.util.Arrays.stream(clean.split(","))
+                            .map(Long::valueOf).collect(java.util.stream.Collectors.toList()));
+                }
+            } catch (Exception ex) {
+                /* ignore parse error */ }
+        }
         return dto;
     }
 
     public ProductionOrderDetailDto toDto(ProductionOrderDetail d) {
-        if (d == null) return null;
+        if (d == null)
+            return null;
         ProductionOrderDetailDto dto = new ProductionOrderDetailDto();
         dto.setId(d.getId());
         dto.setProductionOrderId(d.getProductionOrder() != null ? d.getProductionOrder().getId() : null);
@@ -43,7 +49,8 @@ public class ProductionMapper {
     }
 
     public TechnicalSheetDto toDto(TechnicalSheet t) {
-        if (t == null) return null;
+        if (t == null)
+            return null;
         TechnicalSheetDto dto = new TechnicalSheetDto();
         dto.setId(t.getId());
         dto.setProductionOrderId(t.getProductionOrder() != null ? t.getProductionOrder().getId() : null);
@@ -60,9 +67,9 @@ public class ProductionMapper {
     }
 
     public WorkOrderDto toDto(WorkOrder w) {
-        if (w == null) return null;
+        if (w == null)
+            return null;
         WorkOrderDto dto = new WorkOrderDto();
-        dto.setId(w.getId());
         dto.setProductionOrderId(w.getProductionOrder() != null ? w.getProductionOrder().getId() : null);
         dto.setWoNumber(w.getWoNumber());
         dto.setDeadline(w.getDeadline());
@@ -77,11 +84,13 @@ public class ProductionMapper {
     }
 
     public WorkOrderDetailDto toDto(WorkOrderDetail d) {
-        if (d == null) return null;
+        if (d == null)
+            return null;
         WorkOrderDetailDto dto = new WorkOrderDetailDto();
         dto.setId(d.getId());
         dto.setWorkOrderId(d.getWorkOrder() != null ? d.getWorkOrder().getId() : null);
-        dto.setProductionOrderDetailId(d.getProductionOrderDetail() != null ? d.getProductionOrderDetail().getId() : null);
+        dto.setProductionOrderDetailId(
+                d.getProductionOrderDetail() != null ? d.getProductionOrderDetail().getId() : null);
         dto.setStageSequence(d.getStageSequence());
         dto.setPlannedStartAt(d.getPlannedStartAt());
         dto.setPlannedEndAt(d.getPlannedEndAt());
@@ -93,7 +102,8 @@ public class ProductionMapper {
     }
 
     public ProductionStageDto toDto(ProductionStage s) {
-        if (s == null) return null;
+        if (s == null)
+            return null;
         ProductionStageDto dto = new ProductionStageDto();
         dto.setId(s.getId());
         dto.setWorkOrderDetailId(s.getWorkOrderDetail() != null ? s.getWorkOrderDetail().getId() : null);
@@ -119,7 +129,10 @@ public class ProductionMapper {
         dto.setQrToken(s.getQrToken());
         dto.setQcLastResult(s.getQcLastResult());
         dto.setQcLastCheckedAt(s.getQcLastCheckedAt());
-        dto.setQcAssigneeId(s.getQcAssignee()!=null? s.getQcAssignee().getId(): null);
+        dto.setQcAssigneeId(s.getQcAssignee() != null ? s.getQcAssignee().getId() : null);
+        dto.setExecutionStatus(s.getExecutionStatus());
+        dto.setProgressPercent(s.getProgressPercent());
+        dto.setIsRework(s.getIsRework());
         return dto;
     }
 }

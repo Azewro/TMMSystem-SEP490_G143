@@ -34,22 +34,26 @@ public class ProductionService {
     private final OutsourcingTaskRepository outsourcingTaskRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
-                             ProductionOrderDetailRepository podRepo,
-                             TechnicalSheetRepository techRepo,
-                             WorkOrderRepository woRepo,
-                             WorkOrderDetailRepository wodRepo,
-                             ProductionStageRepository stageRepo,
-                             UserRepository userRepository,
-                             NotificationService notificationService,
-                             ContractRepository contractRepository,
-                             BomRepository bomRepository,
-                             ProductionOrderDetailRepository productionOrderDetailRepository,
-                             ProductionPlanService productionPlanService,
-                             StageTrackingRepository stageTrackingRepository,
-                             StagePauseLogRepository stagePauseLogRepository,
-                             OutsourcingTaskRepository outsourcingTaskRepository) {
-        this.poRepo = poRepo; this.podRepo = podRepo; this.techRepo = techRepo;
-        this.woRepo = woRepo; this.wodRepo = wodRepo; this.stageRepo = stageRepo;
+            ProductionOrderDetailRepository podRepo,
+            TechnicalSheetRepository techRepo,
+            WorkOrderRepository woRepo,
+            WorkOrderDetailRepository wodRepo,
+            ProductionStageRepository stageRepo,
+            UserRepository userRepository,
+            NotificationService notificationService,
+            ContractRepository contractRepository,
+            BomRepository bomRepository,
+            ProductionOrderDetailRepository productionOrderDetailRepository,
+            ProductionPlanService productionPlanService,
+            StageTrackingRepository stageTrackingRepository,
+            StagePauseLogRepository stagePauseLogRepository,
+            OutsourcingTaskRepository outsourcingTaskRepository) {
+        this.poRepo = poRepo;
+        this.podRepo = podRepo;
+        this.techRepo = techRepo;
+        this.woRepo = woRepo;
+        this.wodRepo = wodRepo;
+        this.stageRepo = stageRepo;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.contractRepository = contractRepository;
@@ -62,110 +66,229 @@ public class ProductionService {
     }
 
     // Production Order
-    public List<ProductionOrder> findAllPO() { return poRepo.findAll(); }
-    public ProductionOrder findPO(Long id) { return poRepo.findById(id).orElseThrow(); }
-    @Transactional public ProductionOrder createPO(ProductionOrder po) { return poRepo.save(po); }
-    @Transactional public ProductionOrder updatePO(Long id, ProductionOrder upd) {
+    public List<ProductionOrder> findAllPO() {
+        return poRepo.findAll();
+    }
+
+    public ProductionOrder findPO(Long id) {
+        return poRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public ProductionOrder createPO(ProductionOrder po) {
+        return poRepo.save(po);
+    }
+
+    @Transactional
+    public ProductionOrder updatePO(Long id, ProductionOrder upd) {
         ProductionOrder e = poRepo.findById(id).orElseThrow();
-        e.setPoNumber(upd.getPoNumber()); e.setContract(upd.getContract()); e.setTotalQuantity(upd.getTotalQuantity());
-        e.setPlannedStartDate(upd.getPlannedStartDate()); e.setPlannedEndDate(upd.getPlannedEndDate());
-        e.setStatus(upd.getStatus()); e.setPriority(upd.getPriority()); e.setNotes(upd.getNotes());
-        e.setCreatedBy(upd.getCreatedBy()); e.setApprovedBy(upd.getApprovedBy()); e.setApprovedAt(upd.getApprovedAt());
+        e.setPoNumber(upd.getPoNumber());
+        e.setContract(upd.getContract());
+        e.setTotalQuantity(upd.getTotalQuantity());
+        e.setPlannedStartDate(upd.getPlannedStartDate());
+        e.setPlannedEndDate(upd.getPlannedEndDate());
+        e.setStatus(upd.getStatus());
+        e.setPriority(upd.getPriority());
+        e.setNotes(upd.getNotes());
+        e.setCreatedBy(upd.getCreatedBy());
+        e.setApprovedBy(upd.getApprovedBy());
+        e.setApprovedAt(upd.getApprovedAt());
         return e;
     }
-    public void deletePO(Long id) { poRepo.deleteById(id); }
+
+    public void deletePO(Long id) {
+        poRepo.deleteById(id);
+    }
 
     // PO Detail
-    public List<ProductionOrderDetail> findPODetails(Long poId) { return podRepo.findByProductionOrderId(poId); }
-    public ProductionOrderDetail findPODetail(Long id) { return podRepo.findById(id).orElseThrow(); }
-    @Transactional public ProductionOrderDetail createPODetail(ProductionOrderDetail d) { return podRepo.save(d); }
-    @Transactional public ProductionOrderDetail updatePODetail(Long id, ProductionOrderDetail upd) {
+    public List<ProductionOrderDetail> findPODetails(Long poId) {
+        return podRepo.findByProductionOrderId(poId);
+    }
+
+    public ProductionOrderDetail findPODetail(Long id) {
+        return podRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public ProductionOrderDetail createPODetail(ProductionOrderDetail d) {
+        return podRepo.save(d);
+    }
+
+    @Transactional
+    public ProductionOrderDetail updatePODetail(Long id, ProductionOrderDetail upd) {
         ProductionOrderDetail e = podRepo.findById(id).orElseThrow();
-        e.setProductionOrder(upd.getProductionOrder()); e.setProduct(upd.getProduct()); e.setBom(upd.getBom());
-        e.setBomVersion(upd.getBomVersion()); e.setQuantity(upd.getQuantity()); e.setUnit(upd.getUnit()); e.setNoteColor(upd.getNoteColor());
+        e.setProductionOrder(upd.getProductionOrder());
+        e.setProduct(upd.getProduct());
+        e.setBom(upd.getBom());
+        e.setBomVersion(upd.getBomVersion());
+        e.setQuantity(upd.getQuantity());
+        e.setUnit(upd.getUnit());
+        e.setNoteColor(upd.getNoteColor());
         return e;
     }
-    public void deletePODetail(Long id) { podRepo.deleteById(id); }
+
+    public void deletePODetail(Long id) {
+        podRepo.deleteById(id);
+    }
 
     // Technical Sheet
-    public TechnicalSheet findTechSheet(Long id) { return techRepo.findById(id).orElseThrow(); }
-    @Transactional public TechnicalSheet createTechSheet(TechnicalSheet t) { return techRepo.save(t); }
-    @Transactional public TechnicalSheet updateTechSheet(Long id, TechnicalSheet upd) {
+    public TechnicalSheet findTechSheet(Long id) {
+        return techRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public TechnicalSheet createTechSheet(TechnicalSheet t) {
+        return techRepo.save(t);
+    }
+
+    @Transactional
+    public TechnicalSheet updateTechSheet(Long id, TechnicalSheet upd) {
         TechnicalSheet e = techRepo.findById(id).orElseThrow();
-        e.setProductionOrder(upd.getProductionOrder()); e.setSheetNumber(upd.getSheetNumber());
-        e.setYarnSpecifications(upd.getYarnSpecifications()); e.setMachineSettings(upd.getMachineSettings());
-        e.setQualityStandards(upd.getQualityStandards()); e.setSpecialInstructions(upd.getSpecialInstructions());
-        e.setCreatedBy(upd.getCreatedBy()); e.setApprovedBy(upd.getApprovedBy());
+        e.setProductionOrder(upd.getProductionOrder());
+        e.setSheetNumber(upd.getSheetNumber());
+        e.setYarnSpecifications(upd.getYarnSpecifications());
+        e.setMachineSettings(upd.getMachineSettings());
+        e.setQualityStandards(upd.getQualityStandards());
+        e.setSpecialInstructions(upd.getSpecialInstructions());
+        e.setCreatedBy(upd.getCreatedBy());
+        e.setApprovedBy(upd.getApprovedBy());
         return e;
     }
-    public void deleteTechSheet(Long id) { techRepo.deleteById(id); }
+
+    public void deleteTechSheet(Long id) {
+        techRepo.deleteById(id);
+    }
 
     // Work Order
-    public List<WorkOrder> findWOs(Long poId) { return woRepo.findByProductionOrderId(poId); }
-    public WorkOrder findWO(Long id) { return woRepo.findById(id).orElseThrow(); }
-    @Transactional public WorkOrder createWO(WorkOrder w) { return woRepo.save(w); }
-    @Transactional public WorkOrder updateWO(Long id, WorkOrder upd) {
+    public List<WorkOrder> findWOs(Long poId) {
+        return woRepo.findByProductionOrderId(poId);
+    }
+
+    public WorkOrder findWO(Long id) {
+        return woRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public WorkOrder createWO(WorkOrder w) {
+        return woRepo.save(w);
+    }
+
+    @Transactional
+    public WorkOrder updateWO(Long id, WorkOrder upd) {
         WorkOrder e = woRepo.findById(id).orElseThrow();
-        e.setProductionOrder(upd.getProductionOrder()); e.setWoNumber(upd.getWoNumber()); e.setDeadline(upd.getDeadline());
-        e.setStatus(upd.getStatus()); e.setSendStatus(upd.getSendStatus()); e.setProduction(upd.getProduction());
-        e.setCreatedBy(upd.getCreatedBy()); e.setApprovedBy(upd.getApprovedBy());
+        e.setProductionOrder(upd.getProductionOrder());
+        e.setWoNumber(upd.getWoNumber());
+        e.setDeadline(upd.getDeadline());
+        e.setStatus(upd.getStatus());
+        e.setSendStatus(upd.getSendStatus());
+        e.setProduction(upd.getProduction());
+        e.setCreatedBy(upd.getCreatedBy());
+        e.setApprovedBy(upd.getApprovedBy());
         return e;
     }
-    public void deleteWO(Long id) { woRepo.deleteById(id); }
+
+    public void deleteWO(Long id) {
+        woRepo.deleteById(id);
+    }
 
     // Work Order Detail
-    public List<WorkOrderDetail> findWODetails(Long woId) { return wodRepo.findByWorkOrderId(woId); }
-    public WorkOrderDetail findWODetail(Long id) { return wodRepo.findById(id).orElseThrow(); }
-    @Transactional public WorkOrderDetail createWODetail(WorkOrderDetail d) { return wodRepo.save(d); }
-    @Transactional public WorkOrderDetail updateWODetail(Long id, WorkOrderDetail upd) {
+    public List<WorkOrderDetail> findWODetails(Long woId) {
+        return wodRepo.findByWorkOrderId(woId);
+    }
+
+    public WorkOrderDetail findWODetail(Long id) {
+        return wodRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public WorkOrderDetail createWODetail(WorkOrderDetail d) {
+        return wodRepo.save(d);
+    }
+
+    @Transactional
+    public WorkOrderDetail updateWODetail(Long id, WorkOrderDetail upd) {
         WorkOrderDetail e = wodRepo.findById(id).orElseThrow();
-        e.setWorkOrder(upd.getWorkOrder()); e.setProductionOrderDetail(upd.getProductionOrderDetail()); e.setStageSequence(upd.getStageSequence());
-        e.setPlannedStartAt(upd.getPlannedStartAt()); e.setPlannedEndAt(upd.getPlannedEndAt()); e.setStartAt(upd.getStartAt()); e.setCompleteAt(upd.getCompleteAt());
-        e.setWorkStatus(upd.getWorkStatus()); e.setNotes(upd.getNotes());
+        e.setWorkOrder(upd.getWorkOrder());
+        e.setProductionOrderDetail(upd.getProductionOrderDetail());
+        e.setStageSequence(upd.getStageSequence());
+        e.setPlannedStartAt(upd.getPlannedStartAt());
+        e.setPlannedEndAt(upd.getPlannedEndAt());
+        e.setStartAt(upd.getStartAt());
+        e.setCompleteAt(upd.getCompleteAt());
+        e.setWorkStatus(upd.getWorkStatus());
+        e.setNotes(upd.getNotes());
         return e;
     }
-    public void deleteWODetail(Long id) { wodRepo.deleteById(id); }
+
+    public void deleteWODetail(Long id) {
+        wodRepo.deleteById(id);
+    }
 
     // Stage
-    public List<ProductionStage> findStages(Long woDetailId) { return stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(woDetailId); }
-    public ProductionStage findStage(Long id) { return stageRepo.findById(id).orElseThrow(); }
-    @Transactional public ProductionStage createStage(ProductionStage s) { return stageRepo.save(s); }
-    @Transactional public ProductionStage updateStage(Long id, ProductionStage upd) {
+    public List<ProductionStage> findStages(Long woDetailId) {
+        return stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(woDetailId);
+    }
+
+    public ProductionStage findStage(Long id) {
+        return stageRepo.findById(id).orElseThrow();
+    }
+
+    @Transactional
+    public ProductionStage createStage(ProductionStage s) {
+        return stageRepo.save(s);
+    }
+
+    @Transactional
+    public ProductionStage updateStage(Long id, ProductionStage upd) {
         ProductionStage e = stageRepo.findById(id).orElseThrow();
-        e.setWorkOrderDetail(upd.getWorkOrderDetail()); e.setStageType(upd.getStageType()); e.setStageSequence(upd.getStageSequence());
-        e.setMachine(upd.getMachine()); e.setAssignedTo(upd.getAssignedTo()); e.setAssignedLeader(upd.getAssignedLeader());
-        e.setBatchNumber(upd.getBatchNumber()); e.setPlannedOutput(upd.getPlannedOutput()); e.setActualOutput(upd.getActualOutput());
-        e.setStartAt(upd.getStartAt()); e.setCompleteAt(upd.getCompleteAt()); e.setStatus(upd.getStatus());
-        e.setOutsourced(upd.getOutsourced()); e.setOutsourceVendor(upd.getOutsourceVendor()); e.setNotes(upd.getNotes());
+        e.setWorkOrderDetail(upd.getWorkOrderDetail());
+        e.setStageType(upd.getStageType());
+        e.setStageSequence(upd.getStageSequence());
+        e.setMachine(upd.getMachine());
+        e.setAssignedTo(upd.getAssignedTo());
+        e.setAssignedLeader(upd.getAssignedLeader());
+        e.setBatchNumber(upd.getBatchNumber());
+        e.setPlannedOutput(upd.getPlannedOutput());
+        e.setActualOutput(upd.getActualOutput());
+        e.setStartAt(upd.getStartAt());
+        e.setCompleteAt(upd.getCompleteAt());
+        e.setStatus(upd.getStatus());
+        e.setOutsourced(upd.getOutsourced());
+        e.setOutsourceVendor(upd.getOutsourceVendor());
+        e.setNotes(upd.getNotes());
         return e;
     }
-    public void deleteStage(Long id) { stageRepo.deleteById(id); }
+
+    public void deleteStage(Long id) {
+        stageRepo.deleteById(id);
+    }
 
     // ===== GIAI ĐOẠN 4: PRODUCTION ORDER CREATION & APPROVAL =====
-    
+
     // ===== GIAI ĐOẠN 4: PRODUCTION ORDER CREATION & APPROVAL (NEW WORKFLOW) =====
-    
+
     /**
      * @deprecated Use ProductionPlanService.createPlanFromContract() instead
-     * This method is kept for backward compatibility but will redirect to new workflow
+     *             This method is kept for backward compatibility but will redirect
+     *             to new workflow
      */
     @Deprecated
     @Transactional
-    public ProductionOrder createFromContract(Long contractId, Long planningUserId, 
-                                           LocalDate plannedStartDate, LocalDate plannedEndDate, String notes) {
+    public ProductionOrder createFromContract(Long contractId, Long planningUserId,
+            LocalDate plannedStartDate, LocalDate plannedEndDate, String notes) {
         // Redirect to new Production Plan workflow
         throw new UnsupportedOperationException(
-            "Direct Production Order creation from contract is deprecated. " +
-            "Please use Production Plan workflow: " +
-            "1. Create Production Plan via ProductionPlanService.createPlanFromContract() " +
-            "2. Submit for approval " +
-            "3. Approve to automatically create Production Order"
-        );
+                "Direct Production Order creation from contract is deprecated. " +
+                        "Please use Production Plan workflow: " +
+                        "1. Create Production Plan via ProductionPlanService.createPlanFromContract() " +
+                        "2. Submit for approval " +
+                        "3. Approve to automatically create Production Order");
     }
-    
+
     /**
      * New method: Create Production Order from approved Production Plan
-     * This method is called automatically by ProductionPlanService when plan is approved
+     * This method is called automatically by ProductionPlanService when plan is
+     * approved
      */
     @Transactional
     public ProductionOrder createFromApprovedPlan(Long planId) {
@@ -173,62 +296,62 @@ public class ProductionService {
         // For now, delegate to ProductionPlanService
         return productionPlanService.createProductionOrderFromApprovedPlan(planId);
     }
-    
+
     @Transactional
     public ProductionOrder approveProductionOrder(Long poId, Long directorId, String notes) {
         ProductionOrder po = poRepo.findById(poId)
-            .orElseThrow(() -> new RuntimeException("Production Order not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Production Order not found"));
+
         User director = userRepository.findById(directorId)
-            .orElseThrow(() -> new RuntimeException("Director not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Director not found"));
+
         po.setStatus("APPROVED");
         po.setApprovedBy(director);
         po.setApprovedAt(Instant.now());
-        
+
         ProductionOrder savedPO = poRepo.save(po);
-        
+
         // Send notification to Production Team
         notificationService.notifyProductionOrderApproved(savedPO);
-        
+
         return savedPO;
     }
-    
+
     @Transactional
     public ProductionOrder rejectProductionOrder(Long poId, Long directorId, String rejectionNotes) {
         ProductionOrder po = poRepo.findById(poId)
-            .orElseThrow(() -> new RuntimeException("Production Order not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Production Order not found"));
+
         User director = userRepository.findById(directorId)
-            .orElseThrow(() -> new RuntimeException("Director not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Director not found"));
+
         po.setStatus("REJECTED");
         po.setApprovedBy(director);
         po.setApprovedAt(Instant.now());
         po.setNotes(rejectionNotes);
-        
+
         ProductionOrder savedPO = poRepo.save(po);
-        
+
         // Send notification to Planning Department
         notificationService.notifyProductionOrderRejected(savedPO);
-        
+
         return savedPO;
     }
-    
+
     public List<ProductionOrder> getProductionOrdersPendingApproval() {
         return poRepo.findByStatus("PENDING_APPROVAL");
     }
-    
+
     public List<ProductionOrder> getDirectorPendingProductionOrders() {
         return poRepo.findByStatus("PENDING_APPROVAL");
     }
-    
+
     // ===== PRODUCTION PLAN INTEGRATION METHODS =====
-    
+
     public List<tmmsystem.dto.production_plan.ProductionPlanDto> getProductionPlansForContract(Long contractId) {
         return productionPlanService.findPlansByContract(contractId);
     }
-    
+
     public List<tmmsystem.dto.production_plan.ProductionPlanDto> getProductionPlansPendingApproval() {
         return productionPlanService.findPendingApprovalPlans();
     }
@@ -260,14 +383,21 @@ public class ProductionService {
         for (WorkOrderDetail d : details) {
             List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(d.getId());
             for (ProductionStage s : stages) {
-                if (s.getQrToken() == null || s.getQrToken().isBlank()) { s.setQrToken(generateQrToken()); }
-                if (firstStageWithLeader == null && s.getStageSequence()==1 && s.getAssignedLeader()!=null){ firstStageWithLeader = s; }
+                if (s.getQrToken() == null || s.getQrToken().isBlank()) {
+                    s.setQrToken(generateQrToken());
+                }
+                if (firstStageWithLeader == null && s.getStageSequence() == 1 && s.getAssignedLeader() != null) {
+                    firstStageWithLeader = s;
+                    s.setStatus("WAITING"); // Set first stage to WAITING
+                }
             }
             stageRepo.saveAll(stages);
         }
         notificationService.notifyWorkOrderApproved(saved);
-        if (firstStageWithLeader!=null){
-            notificationService.notifyUser(firstStageWithLeader.getAssignedLeader(), "WORK_ORDER", "SUCCESS", "WO đã duyệt", "Công đoạn đầu ("+firstStageWithLeader.getStageType()+") sẵn sàng bắt đầu", "WORK_ORDER", saved.getId());
+        if (firstStageWithLeader != null) {
+            notificationService.notifyUser(firstStageWithLeader.getAssignedLeader(), "WORK_ORDER", "SUCCESS",
+                    "WO đã duyệt", "Công đoạn đầu (" + firstStageWithLeader.getStageType() + ") sẵn sàng bắt đầu",
+                    "WORK_ORDER", saved.getId());
         }
         return saved;
     }
@@ -293,14 +423,16 @@ public class ProductionService {
     public ProductionStage redoStage(Long stageId) {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         s.setStatus("PENDING");
-        s.setStartAt(null); s.setCompleteAt(null);
-        s.setQcLastResult(null); s.setQcLastCheckedAt(null);
+        s.setStartAt(null);
+        s.setCompleteAt(null);
+        s.setQcLastResult(null);
+        s.setQcLastCheckedAt(null);
         return stageRepo.save(s);
     }
 
     // Filter lists for roles
     public List<ProductionStage> findStagesForLeader(Long leaderUserId) {
-        return stageRepo.findByAssignedLeaderIdAndStatusIn(leaderUserId, java.util.List.of("PENDING","IN_PROGRESS"));
+        return stageRepo.findByAssignedLeaderIdAndStatusIn(leaderUserId, java.util.List.of("PENDING", "IN_PROGRESS"));
     }
 
     public List<ProductionStage> findStagesForKcs(String status) {
@@ -321,16 +453,24 @@ public class ProductionService {
         // Determine next stage in same WorkOrderDetail
         WorkOrderDetail wod = s.getWorkOrderDetail();
         List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(wod.getId());
-        ProductionStage next = stages.stream().filter(x-> x.getStageSequence()!=null && s.getStageSequence()!=null && x.getStageSequence()== s.getStageSequence()+1).findFirst().orElse(null);
+        ProductionStage next = stages.stream().filter(x -> x.getStageSequence() != null && s.getStageSequence() != null
+                && x.getStageSequence() == s.getStageSequence() + 1).findFirst().orElse(null);
         if (next != null) {
+            next.setStatus("WAITING"); // Ready for work
+            stageRepo.save(next);
+
             if ("DYEING".equalsIgnoreCase(next.getStageType())) {
                 // Notify PM to coordinate vendor if outsourced
-                notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị Dyeing", "Công đoạn Weaving PASS. Cần điều phối Dyeing.", "PRODUCTION_STAGE", next.getId());
-            } else if (next.getAssignedLeader()!=null){
-                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS", "Công đoạn trước PASS", "Bạn có thể bắt đầu công đoạn "+next.getStageType()+"", "PRODUCTION_STAGE", next.getId());
+                notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị Dyeing",
+                        "Công đoạn Weaving PASS. Cần điều phối Dyeing.", "PRODUCTION_STAGE", next.getId());
+            } else if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn trước PASS", "Bạn có thể bắt đầu công đoạn " + next.getStageType() + "",
+                        "PRODUCTION_STAGE", next.getId());
             } else {
                 // Fallback notify all production staff
-                notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn kế tiếp sẵn sàng", "Công đoạn "+next.getStageType()+" sẵn sàng bắt đầu.", "PRODUCTION_STAGE", next.getId());
+                notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn kế tiếp sẵn sàng",
+                        "Công đoạn " + next.getStageType() + " sẵn sàng bắt đầu.", "PRODUCTION_STAGE", next.getId());
             }
         }
         if ("PACKAGING".equalsIgnoreCase(s.getStageType())) {
@@ -338,70 +478,109 @@ public class ProductionService {
             WorkOrderDetail wodOfStage = s.getWorkOrderDetail();
             ProductionOrder po = wodOfStage.getProductionOrderDetail().getProductionOrder();
             List<WorkOrderDetail> allWod = wodRepo.findAll().stream()
-                    .filter(w -> w.getProductionOrderDetail()!=null && w.getProductionOrderDetail().getProductionOrder()!=null
+                    .filter(w -> w.getProductionOrderDetail() != null
+                            && w.getProductionOrderDetail().getProductionOrder() != null
                             && w.getProductionOrderDetail().getProductionOrder().getId().equals(po.getId()))
                     .toList();
             boolean allOk = true;
             for (WorkOrderDetail w : allWod) {
                 List<ProductionStage> stgs = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(w.getId());
-                if (stgs.isEmpty()) { allOk=false; break; }
-                for (ProductionStage st : stgs) { if (!"PASS".equalsIgnoreCase(st.getQcLastResult())) { allOk=false; break; } }
-                if (!allOk) break;
-                ProductionStage pkg = stgs.stream().filter(st->"PACKAGING".equalsIgnoreCase(st.getStageType())).findFirst().orElse(null);
-                if (pkg==null || pkg.getCompleteAt()==null) { allOk=false; break; }
+                if (stgs.isEmpty()) {
+                    allOk = false;
+                    break;
+                }
+                for (ProductionStage st : stgs) {
+                    if (!"PASS".equalsIgnoreCase(st.getQcLastResult())) {
+                        allOk = false;
+                        break;
+                    }
+                }
+                if (!allOk)
+                    break;
+                ProductionStage pkg = stgs.stream().filter(st -> "PACKAGING".equalsIgnoreCase(st.getStageType()))
+                        .findFirst().orElse(null);
+                if (pkg == null || pkg.getCompleteAt() == null) {
+                    allOk = false;
+                    break;
+                }
             }
             if (allOk) {
                 po.setStatus("ORDER_COMPLETED");
                 poRepo.save(po);
                 notificationService.notifyOrderCompleted(po);
                 // Notify inventory staff
-                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Đã sẵn sàng nhập kho", "PO #"+po.getPoNumber()+" hoàn tất Packaging PASS.", "PRODUCTION_ORDER", po.getId());
+                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Đã sẵn sàng nhập kho",
+                        "PO #" + po.getPoNumber() + " hoàn tất Packaging PASS.", "PRODUCTION_ORDER", po.getId());
             }
         }
     }
+
     // Dyeing hook on start/complete
     @Transactional
-    public ProductionStage startStage(Long stageId, Long leaderUserId, String evidencePhotoUrl, BigDecimal qtyCompleted){
+    public ProductionStage startStage(Long stageId, Long leaderUserId, String evidencePhotoUrl,
+            BigDecimal qtyCompleted) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
-        if (s.getStartAt()==null) s.setStartAt(Instant.now());
+        if (s.getStartAt() == null)
+            s.setStartAt(Instant.now());
         s.setStatus("IN_PROGRESS");
         stageRepo.save(s);
-        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
-        tr.setAction("START"); tr.setEvidencePhotoUrl(evidencePhotoUrl); tr.setQuantityCompleted(qtyCompleted); stageTrackingRepository.save(tr);
-        if ("DYEING".equalsIgnoreCase(s.getStageType()) && Boolean.TRUE.equals(s.getOutsourced())){
+        StageTracking tr = new StageTracking();
+        tr.setProductionStage(s);
+        tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+        tr.setAction("START");
+        tr.setEvidencePhotoUrl(evidencePhotoUrl);
+        tr.setQuantityCompleted(qtyCompleted);
+        stageTrackingRepository.save(tr);
+        if ("DYEING".equalsIgnoreCase(s.getStageType()) && Boolean.TRUE.equals(s.getOutsourced())) {
             // create outsourcing task if not exists for this stage
-            if (outsourcingTaskRepository.findByProductionStageId(s.getId()).isEmpty()){
+            if (outsourcingTaskRepository.findByProductionStageId(s.getId()).isEmpty()) {
                 OutsourcingTask ot = new OutsourcingTask();
-                ot.setProductionStage(s); ot.setVendorName(s.getOutsourceVendor()); ot.setSentAt(Instant.now());
+                ot.setProductionStage(s);
+                ot.setVendorName(s.getOutsourceVendor());
+                ot.setSentAt(Instant.now());
                 ot.setStatus("SENT");
                 outsourcingTaskRepository.save(ot);
             }
         }
         return s;
     }
-    private void createDefaultStage(WorkOrderDetail wod, String type, int sequence, boolean outsourced){
+
+    private void createDefaultStage(WorkOrderDetail wod, String type, int sequence, boolean outsourced) {
         ProductionStage s = new ProductionStage();
-        s.setWorkOrderDetail(wod); s.setStageType(type); s.setStageSequence(sequence); s.setStatus("PENDING"); s.setOutsourced(outsourced);
+        s.setWorkOrderDetail(wod);
+        s.setStageType(type);
+        s.setStageSequence(sequence);
+        s.setStatus("PENDING");
+        s.setOutsourced(outsourced);
         stageRepo.save(s);
     }
-    /** Create a standard Work Order with 6 default stages for each ProductionOrderDetail under the PO */
+
+    /**
+     * Create a standard Work Order with 6 default stages for each
+     * ProductionOrderDetail under the PO
+     */
     @Transactional
-    public WorkOrder createStandardWorkOrder(Long poId, Long createdById){
+    public WorkOrder createStandardWorkOrder(Long poId, Long createdById) {
         ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
         WorkOrder wo = new WorkOrder();
         wo.setProductionOrder(po);
-        wo.setWoNumber("WO-"+System.currentTimeMillis());
+        wo.setWoNumber("WO-" + System.currentTimeMillis());
         wo.setStatus("DRAFT");
         wo.setSendStatus("NOT_SENT");
         wo.setProduction(true);
-        if (createdById!=null){ userRepository.findById(createdById).ifPresent(wo::setCreatedBy); }
+        if (createdById != null) {
+            userRepository.findById(createdById).ifPresent(wo::setCreatedBy);
+        }
         WorkOrder saved = woRepo.save(wo);
         List<ProductionOrderDetail> pods = podRepo.findByProductionOrderId(poId);
-        int seq=1;
-        for (ProductionOrderDetail pod : pods){
+        int seq = 1;
+        for (ProductionOrderDetail pod : pods) {
             WorkOrderDetail wod = new WorkOrderDetail();
-            wod.setWorkOrder(saved); wod.setProductionOrderDetail(pod); wod.setStageSequence(seq++); wod.setWorkStatus("PENDING");
+            wod.setWorkOrder(saved);
+            wod.setProductionOrderDetail(pod);
+            wod.setStageSequence(seq++);
+            wod.setWorkStatus("PENDING");
             wod = wodRepo.save(wod);
             createDefaultStage(wod, "WARPING", 1, false);
             createDefaultStage(wod, "WEAVING", 2, false);
@@ -412,90 +591,157 @@ public class ProductionService {
         }
         return saved;
     }
+
     @Transactional
-    public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes){
+    public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes) {
         ensureLeader(stageId, leaderUserId);
-        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("PAUSED"); stageRepo.save(s);
-        StagePauseLog pl = new StagePauseLog(); pl.setProductionStage(s); pl.setPausedBy(userRepository.findById(leaderUserId).orElseThrow());
-        pl.setPauseReason(pauseReason); pl.setPauseNotes(pauseNotes); pl.setPausedAt(Instant.now()); stagePauseLogRepository.save(pl);
-        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(pl.getPausedBy()); tr.setAction("PAUSE"); stageTrackingRepository.save(tr);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        s.setStatus("PAUSED");
+        stageRepo.save(s);
+        StagePauseLog pl = new StagePauseLog();
+        pl.setProductionStage(s);
+        pl.setPausedBy(userRepository.findById(leaderUserId).orElseThrow());
+        pl.setPauseReason(pauseReason);
+        pl.setPauseNotes(pauseNotes);
+        pl.setPausedAt(Instant.now());
+        stagePauseLogRepository.save(pl);
+        StageTracking tr = new StageTracking();
+        tr.setProductionStage(s);
+        tr.setOperator(pl.getPausedBy());
+        tr.setAction("PAUSE");
+        stageTrackingRepository.save(tr);
         return s;
     }
+
     @Transactional
-    public ProductionStage resumeStage(Long stageId, Long leaderUserId){
+    public ProductionStage resumeStage(Long stageId, Long leaderUserId) {
         ensureLeader(stageId, leaderUserId);
-        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("IN_PROGRESS"); stageRepo.save(s);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        s.setStatus("IN_PROGRESS");
+        stageRepo.save(s);
         // close last open pause
         List<StagePauseLog> pauses = stagePauseLogRepository.findByProductionStageIdOrderByPausedAtDesc(s.getId());
-        for (StagePauseLog p : pauses){ if (p.getResumedAt()==null){ p.setResumedAt(Instant.now()); if (p.getPausedAt()!=null){ long mins = java.time.Duration.between(p.getPausedAt(), p.getResumedAt()).toMinutes(); p.setDurationMinutes((int)mins);} stagePauseLogRepository.save(p); break; } }
-        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow()); tr.setAction("RESUME"); stageTrackingRepository.save(tr);
-        return s;
-    }
-    @Transactional
-    public ProductionStage completeStage(Long stageId, Long leaderUserId, String evidencePhotoUrl, BigDecimal qtyCompleted){
-        ensureLeader(stageId, leaderUserId);
-        ProductionStage s = stageRepo.findById(stageId).orElseThrow(); s.setStatus("COMPLETED"); s.setCompleteAt(Instant.now()); stageRepo.save(s);
-        StageTracking tr = new StageTracking(); tr.setProductionStage(s); tr.setOperator(userRepository.findById(leaderUserId).orElseThrow()); tr.setAction("COMPLETE"); tr.setEvidencePhotoUrl(evidencePhotoUrl); tr.setQuantityCompleted(qtyCompleted); stageTrackingRepository.save(tr);
-        // Notify QC assignee or all QC staff
-        if (s.getQcAssignee()!=null){
-            notificationService.notifyUser(s.getQcAssignee(), "QC", "INFO", "Chờ kiểm tra QC", "Công đoạn "+s.getStageType()+" đã hoàn tất, cần kiểm tra.", "PRODUCTION_STAGE", s.getId());
-        } else {
-            notificationService.notifyRole("QC_STAFF", "QC", "INFO", "Chờ kiểm tra QC", "Công đoạn "+s.getStageType()+" đã hoàn tất, cần kiểm tra.", "PRODUCTION_STAGE", s.getId());
+        for (StagePauseLog p : pauses) {
+            if (p.getResumedAt() == null) {
+                p.setResumedAt(Instant.now());
+                if (p.getPausedAt() != null) {
+                    long mins = java.time.Duration.between(p.getPausedAt(), p.getResumedAt()).toMinutes();
+                    p.setDurationMinutes((int) mins);
+                }
+                stagePauseLogRepository.save(p);
+                break;
+            }
         }
+        StageTracking tr = new StageTracking();
+        tr.setProductionStage(s);
+        tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+        tr.setAction("RESUME");
+        stageTrackingRepository.save(tr);
         return s;
     }
-    // ==== ASSIGNMENT METHODS ====
-    // Delegates (placed early to satisfy resolution order if tool incomplete indexing)
+
     @Transactional
-    public ProductionOrder assignTechnician(Long poId, Long technicianUserId){
+    public ProductionStage leaderUpdateProgress(Long stageId, Long leaderUserId, BigDecimal progressPercent) {
+        ensureLeader(stageId, leaderUserId);
+        ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+
+        if (progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0) {
+            s.setProgressPercent(100);
+            s.setStatus("WAITING_QC");
+            s.setCompleteAt(Instant.now());
+
+            // Notify QC
+            if (s.getQcAssignee() != null) {
+                notificationService.notifyUser(s.getQcAssignee(), "QC", "INFO", "Chờ kiểm tra QC",
+                        "Công đoạn " + s.getStageType() + " đã hoàn thành 100%, chờ kiểm tra.", "PRODUCTION_STAGE",
+                        s.getId());
+            } else {
+                notificationService.notifyRole("QC_STAFF", "QC", "INFO", "Chờ kiểm tra QC",
+                        "Công đoạn " + s.getStageType() + " đã hoàn thành 100%, chờ kiểm tra.", "PRODUCTION_STAGE",
+                        s.getId());
+            }
+        } else {
+            s.setProgressPercent(progressPercent.intValue());
+            s.setStatus("IN_PROGRESS");
+        }
+
+        return stageRepo.save(s);
+    }
+
+    @Transactional
+    public ProductionStage completeStage(Long stageId, Long leaderUserId, String evidencePhotoUrl,
+            BigDecimal qtyCompleted) {
+        // Deprecated or alias to updateProgress(100)
+        return leaderUpdateProgress(stageId, leaderUserId, BigDecimal.valueOf(100));
+    }
+
+    // ==== ASSIGNMENT METHODS ====
+    // Delegates (placed early to satisfy resolution order if tool incomplete
+    // indexing)
+    @Transactional
+    public ProductionOrder assignTechnician(Long poId, Long technicianUserId) {
         return internalAssignTechnician(poId, technicianUserId);
     }
+
     @Transactional
-    public ProductionStage assignStageLeader(Long stageId, Long leaderUserId){
+    public ProductionStage assignStageLeader(Long stageId, Long leaderUserId) {
         return internalAssignStageLeader(stageId, leaderUserId);
     }
+
     @Transactional
-    public ProductionStage assignStageQc(Long stageId, Long qcUserId){
+    public ProductionStage assignStageQc(Long stageId, Long qcUserId) {
         return internalAssignStageQc(stageId, qcUserId);
     }
-    // Internal implementations (original ones retained below or we refactor). If they exist below rename them accordingly.
+
+    // Internal implementations (original ones retained below or we refactor). If
+    // they exist below rename them accordingly.
     @Transactional
-    public ProductionOrder internalAssignTechnician(Long poId, Long technicianUserId){
+    public ProductionOrder internalAssignTechnician(Long poId, Long technicianUserId) {
         ProductionOrder po = poRepo.findById(poId).orElseThrow();
         User tech = userRepository.findById(technicianUserId).orElseThrow();
-        po.setAssignedTechnician(tech); po.setAssignedAt(Instant.now());
+        po.setAssignedTechnician(tech);
+        po.setAssignedAt(Instant.now());
         ProductionOrder saved = poRepo.save(po);
-        notificationService.notifyUser(tech, "PRODUCTION", "INFO", "PO được phân công", "Lệnh sản xuất #"+po.getPoNumber()+" đã được phân công cho bạn", "PRODUCTION_ORDER", po.getId());
+        notificationService.notifyUser(tech, "PRODUCTION", "INFO", "PO được phân công",
+                "Lệnh sản xuất #" + po.getPoNumber() + " đã được phân công cho bạn", "PRODUCTION_ORDER", po.getId());
         return saved;
     }
+
     @Transactional
-    public ProductionStage internalAssignStageLeader(Long stageId, Long leaderUserId){
+    public ProductionStage internalAssignStageLeader(Long stageId, Long leaderUserId) {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         User leader = userRepository.findById(leaderUserId).orElseThrow();
         s.setAssignedLeader(leader);
         ProductionStage saved = stageRepo.save(s);
-        notificationService.notifyUser(leader, "PRODUCTION", "INFO", "Phân công công đoạn", "Bạn được phân công công đoạn "+s.getStageType(), "PRODUCTION_STAGE", s.getId());
+        notificationService.notifyUser(leader, "PRODUCTION", "INFO", "Phân công công đoạn",
+                "Bạn được phân công công đoạn " + s.getStageType(), "PRODUCTION_STAGE", s.getId());
         return saved;
     }
+
     @Transactional
-    public ProductionStage internalAssignStageQc(Long stageId, Long qcUserId){
+    public ProductionStage internalAssignStageQc(Long stageId, Long qcUserId) {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         User qc = userRepository.findById(qcUserId).orElseThrow();
         s.setQcAssignee(qc);
         ProductionStage saved = stageRepo.save(s);
-        notificationService.notifyUser(qc, "QC", "INFO", "Phân công QC", "Bạn được phân công kiểm tra công đoạn "+s.getStageType(), "PRODUCTION_STAGE", s.getId());
+        notificationService.notifyUser(qc, "QC", "INFO", "Phân công QC",
+                "Bạn được phân công kiểm tra công đoạn " + s.getStageType(), "PRODUCTION_STAGE", s.getId());
         return saved;
     }
+
     @Transactional
-    public java.util.List<ProductionStage> bulkAssignStageLeaders(Long woId, java.util.Map<String, Long> map){
+    public java.util.List<ProductionStage> bulkAssignStageLeaders(Long woId, java.util.Map<String, Long> map) {
         WorkOrder wo = woRepo.findById(woId).orElseThrow();
         java.util.List<WorkOrderDetail> details = wodRepo.findByWorkOrderId(wo.getId());
         java.util.List<ProductionStage> affected = new java.util.ArrayList<>();
-        for (WorkOrderDetail d: details){
-            java.util.List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(d.getId());
-            for (ProductionStage s: stages){
+        for (WorkOrderDetail d : details) {
+            java.util.List<ProductionStage> stages = stageRepo
+                    .findByWorkOrderDetailIdOrderByStageSequenceAsc(d.getId());
+            for (ProductionStage s : stages) {
                 Long uid = map.get(s.getStageType());
-                if (uid!=null){ userRepository.findById(uid).ifPresent(s::setAssignedLeader); }
+                if (uid != null) {
+                    userRepository.findById(uid).ifPresent(s::setAssignedLeader);
+                }
             }
             affected.addAll(stageRepo.saveAll(stages));
         }
@@ -503,9 +749,9 @@ public class ProductionService {
     }
     // ==== END ASSIGNMENT METHODS ====
 
-    private void ensureLeader(Long stageId, Long leaderUserId){
+    private void ensureLeader(Long stageId, Long leaderUserId) {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
-        if (s.getAssignedLeader()==null || !s.getAssignedLeader().getId().equals(leaderUserId)){
+        if (s.getAssignedLeader() == null || !s.getAssignedLeader().getId().equals(leaderUserId)) {
             throw new RuntimeException("Access denied: not assigned leader");
         }
     }

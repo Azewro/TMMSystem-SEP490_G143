@@ -1,7 +1,8 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -9,16 +10,17 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
-@Entity @Table(name = "production_order",
-        uniqueConstraints = { @UniqueConstraint(columnNames = {"po_number"}) },
-        indexes = {
-                @Index(name = "idx_po_contract", columnList = "contract_id"),
-                @Index(name = "idx_po_status_priority", columnList = "status, priority")
-        }
-)
-@Getter @Setter
+@Entity
+@Table(name = "production_order", uniqueConstraints = { @UniqueConstraint(columnNames = { "po_number" }) }, indexes = {
+        @Index(name = "idx_po_contract", columnList = "contract_id"),
+        @Index(name = "idx_po_status_priority", columnList = "status, priority"),
+        @Index(name = "idx_po_execution_status", columnList = "execution_status")
+})
+@Getter
+@Setter
 public class ProductionOrder {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @CreationTimestamp
@@ -35,6 +37,9 @@ public class ProductionOrder {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contract_id")
     private Contract contract; // nullable for internal orders
+
+    @Column(name = "contract_ids", columnDefinition = "json")
+    private String contractIds; // JSON array of contract IDs e.g. [1, 2, 3]
 
     @Column(name = "total_quantity", precision = 10, scale = 2, nullable = false)
     private BigDecimal totalQuantity;
@@ -71,4 +76,8 @@ public class ProductionOrder {
 
     @Column(name = "assigned_at")
     private Instant assignedAt;
+
+    @Column(name = "execution_status", length = 40)
+    private String executionStatus; // NEW: WAITING_PRODUCTION, IN_PROGRESS, WAITING_MATERIAL_APPROVAL,
+                                    // WAITING_REWORK, IN_REWORK, COMPLETED
 }

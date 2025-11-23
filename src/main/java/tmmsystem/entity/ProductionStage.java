@@ -1,24 +1,27 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Entity @Table(name = "production_stage",
-        indexes = {
-                @Index(name = "idx_stage_wodetail_sequence", columnList = "work_order_detail_id, stage_sequence", unique = true),
-                @Index(name = "idx_stage_status_type", columnList = "status, stage_type"),
-                @Index(name = "idx_stage_leader_status", columnList = "assigned_leader_id, status"),
-                @Index(name = "idx_stage_machine_status", columnList = "machine_id, status")
-        }
-)
-@Getter @Setter
+@Entity
+@Table(name = "production_stage", indexes = {
+        @Index(name = "idx_stage_wodetail_sequence", columnList = "work_order_detail_id, stage_sequence", unique = true),
+        @Index(name = "idx_stage_status_type", columnList = "status, stage_type"),
+        @Index(name = "idx_stage_leader_status", columnList = "assigned_leader_id, status"),
+        @Index(name = "idx_stage_machine_status", columnList = "machine_id, status"),
+        @Index(name = "idx_stage_exec_status", columnList = "execution_status")
+})
+@Getter
+@Setter
 public class ProductionStage {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -99,4 +102,18 @@ public class ProductionStage {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "qc_assignee_id")
     private User qcAssignee; // Người QC phụ trách (tuỳ chọn)
+
+    @Column(name = "execution_status", length = 30)
+    private String executionStatus; // NEW: WAITING, IN_PROGRESS, WAITING_QC, QC_IN_PROGRESS, QC_PASSED, QC_FAILED,
+                                    // WAITING_REWORK, REWORK_IN_PROGRESS, COMPLETED
+
+    @Column(name = "progress_percent")
+    private Integer progressPercent; // NEW: 0-100 lưu % tiến độ hiện tại
+
+    @Column(name = "is_rework")
+    private Boolean isRework = false; // NEW: đánh dấu giai đoạn đang ở phiên sửa lỗi
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "original_stage_id")
+    private ProductionStage originalStage; // NEW: nếu là rework clone từ stage trước (tùy chọn sử dụng)
 }
