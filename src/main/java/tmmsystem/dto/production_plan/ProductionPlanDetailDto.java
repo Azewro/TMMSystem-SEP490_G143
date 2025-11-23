@@ -12,10 +12,12 @@ import java.util.List;
 public class ProductionPlanDetailDto {
     private Long id;
     private Long planId;
+    private String lotCode;
     private Long productId;
     private String productCode;
     private String productName;
     private String productDescription;
+    private String sizeSnapshot;
     private BigDecimal plannedQuantity;
     private LocalDate requiredDeliveryDate;
     private LocalDate proposedStartDate;
@@ -27,7 +29,7 @@ public class ProductionPlanDetailDto {
     private Integer leadTimeDays;
     private String notes;
     private List<ProductionPlanStageDto> stages;
-    
+
     // Calculated fields
     private Integer totalStages;
     private BigDecimal totalDurationDays;

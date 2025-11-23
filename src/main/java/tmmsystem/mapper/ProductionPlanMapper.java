@@ -4,13 +4,24 @@ import org.springframework.stereotype.Component;
 import tmmsystem.dto.production_plan.*;
 import tmmsystem.entity.*;
 import tmmsystem.dto.ProductionLotContractDto;
+import tmmsystem.repository.ProductionPlanStageRepository;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 public class ProductionPlanMapper {
-    
+
+    private final ProductionPlanStageRepository stageRepo;
+
+    public ProductionPlanMapper(ProductionPlanStageRepository stageRepo) {
+        this.stageRepo = stageRepo;
+    }
+
     public ProductionPlanDto toDto(ProductionPlan plan) {
-        if (plan == null) return null;
-        
+        if (plan == null)
+            return null;
+
         ProductionPlanDto dto = new ProductionPlanDto();
         dto.setId(plan.getId());
         dto.setContractId(plan.getContract() != null ? plan.getContract().getId() : null);
@@ -27,23 +38,48 @@ public class ProductionPlanMapper {
         dto.setUpdatedAt(plan.getUpdatedAt());
         dto.setProposedStartDate(plan.getProposedStartDate());
         dto.setProposedEndDate(plan.getProposedEndDate());
-        
+
+        // Lot information
+        if (plan.getLot() != null) {
+            dto.setLot(toDto(plan.getLot()));
+        }
+
+        // Details with stages
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
+        if (!stages.isEmpty()) {
+            ProductionPlanDetailDto detail = new ProductionPlanDetailDto();
+            detail.setId(plan.getId());
+            detail.setPlanId(plan.getId());
+            detail.setLotCode(plan.getLot() != null ? plan.getLot().getLotCode() : null);
+            detail.setProductName(plan.getLot() != null && plan.getLot().getProduct() != null
+                    ? plan.getLot().getProduct().getName()
+                    : null);
+            detail.setSizeSnapshot(plan.getLot() != null ? plan.getLot().getSizeSnapshot() : null);
+            detail.setPlannedQuantity(plan.getLot() != null ? plan.getLot().getTotalQuantity() : null);
+            detail.setProposedStartDate(plan.getProposedStartDate());
+            detail.setProposedEndDate(plan.getProposedEndDate());
+            detail.setStages(stages.stream().map(this::toDto).collect(Collectors.toList()));
+            dto.setDetails(List.of(detail));
+        }
+
         // Contract information
         if (plan.getContract() != null) {
-            dto.setCustomerName(plan.getContract().getCustomer() != null ? 
-                plan.getContract().getCustomer().getCompanyName() : null);
-            dto.setCustomerCode(plan.getContract().getCustomer() != null ? 
-                plan.getContract().getCustomer().getTaxCode() : null);
+            dto.setCustomerName(
+                    plan.getContract().getCustomer() != null ? plan.getContract().getCustomer().getCompanyName()
+                            : null);
+            dto.setCustomerCode(
+                    plan.getContract().getCustomer() != null ? plan.getContract().getCustomer().getTaxCode() : null);
             dto.setContractCreatedAt(plan.getContract().getCreatedAt());
             dto.setContractApprovedAt(plan.getContract().getDirectorApprovedAt());
         }
-        
+
         return dto;
     }
-    
+
     public ProductionPlanStageDto toDto(ProductionPlanStage stage) {
-        if (stage == null) return null;
-        
+        if (stage == null)
+            return null;
+
         ProductionPlanStageDto dto = new ProductionPlanStageDto();
         dto.setId(stage.getId());
         dto.setPlanDetailId(stage.getPlan() != null ? stage.getPlan().getId() : null);
@@ -64,29 +100,30 @@ public class ProductionPlanMapper {
         dto.setTransferBatchQuantity(stage.getTransferBatchQuantity());
         dto.setCapacityPerHour(stage.getCapacityPerHour());
         dto.setNotes(stage.getNotes());
-        
+
         // Calculate duration
         if (stage.getPlannedStartTime() != null && stage.getPlannedEndTime() != null) {
             dto.setDurationMinutes(java.time.Duration.between(
-                stage.getPlannedStartTime(), stage.getPlannedEndTime()).toMinutes());
+                    stage.getPlannedStartTime(), stage.getPlannedEndTime()).toMinutes());
         }
-        
+
         // Calculate estimated output
         if (stage.getCapacityPerHour() != null && dto.getDurationMinutes() != null) {
             dto.setEstimatedOutput(stage.getCapacityPerHour()
-                .multiply(java.math.BigDecimal.valueOf(dto.getDurationMinutes()))
-                .divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
+                    .multiply(java.math.BigDecimal.valueOf(dto.getDurationMinutes()))
+                    .divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
         }
-        
+
         return dto;
     }
 
-    public tmmsystem.dto.ProductionLotDto toDto(ProductionLot lot){
-        if (lot==null) return null;
+    public tmmsystem.dto.ProductionLotDto toDto(ProductionLot lot) {
+        if (lot == null)
+            return null;
         var dto = new tmmsystem.dto.ProductionLotDto();
         dto.setId(lot.getId());
         dto.setLotCode(lot.getLotCode());
-        if (lot.getProduct()!=null){
+        if (lot.getProduct() != null) {
             dto.setProductId(lot.getProduct().getId());
             dto.setProductCode(lot.getProduct().getCode());
             dto.setProductName(lot.getProduct().getName());
@@ -101,12 +138,12 @@ public class ProductionPlanMapper {
         java.util.List<String> orderNos = new java.util.ArrayList<>();
         java.util.List<ProductionLotContractDto> merged = new java.util.ArrayList<>();
         java.util.Map<Long, ProductionLotContractDto> contractMap = new java.util.HashMap<>();
-        if (lot.getLotOrders()!=null){
-            for (var lo : lot.getLotOrders()){
-                if (lo.getContract()!=null){
+        if (lot.getLotOrders() != null) {
+            for (var lo : lot.getLotOrders()) {
+                if (lo.getContract() != null) {
                     orderNos.add(lo.getContract().getContractNumber());
                     var existing = contractMap.get(lo.getContract().getId());
-                    if (existing==null){
+                    if (existing == null) {
                         existing = new ProductionLotContractDto();
                         existing.setContractId(lo.getContract().getId());
                         existing.setContractNumber(lo.getContract().getContractNumber());
@@ -116,7 +153,7 @@ public class ProductionPlanMapper {
                         contractMap.put(lo.getContract().getId(), existing);
                     }
                     // cộng dồn allocatedQuantity
-                    if (lo.getAllocatedQuantity()!=null){
+                    if (lo.getAllocatedQuantity() != null) {
                         existing.setAllocatedQuantity(existing.getAllocatedQuantity().add(lo.getAllocatedQuantity()));
                     }
                 }
@@ -130,10 +167,11 @@ public class ProductionPlanMapper {
         dto.setTotalContractsCount(merged.size());
         return dto;
     }
-    
+
     private String getStageTypeDisplayName(String stageType) {
-        if (stageType == null) return null;
-        
+        if (stageType == null)
+            return null;
+
         return switch (stageType.toUpperCase()) {
             case "WARPING" -> "Mắc";
             case "WEAVING" -> "Dệt";

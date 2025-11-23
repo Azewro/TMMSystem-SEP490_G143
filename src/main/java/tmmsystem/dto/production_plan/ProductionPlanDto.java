@@ -26,7 +26,8 @@ public class ProductionPlanDto {
     private List<ProductionPlanDetailDto> details;
     private LocalDate proposedStartDate;
     private LocalDate proposedEndDate;
-    
+    private tmmsystem.dto.ProductionLotDto lot;
+
     // Contract information
     private String customerName;
     private String customerCode;
