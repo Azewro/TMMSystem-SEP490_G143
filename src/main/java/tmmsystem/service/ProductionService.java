@@ -14,9 +14,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -39,6 +42,7 @@ public class ProductionService {
     private final StageTrackingRepository stageTrackingRepository;
     private final StagePauseLogRepository stagePauseLogRepository;
     private final OutsourcingTaskRepository outsourcingTaskRepository;
+    private final MachineAssignmentRepository machineAssignmentRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -54,7 +58,8 @@ public class ProductionService {
             ProductionPlanService productionPlanService,
             StageTrackingRepository stageTrackingRepository,
             StagePauseLogRepository stagePauseLogRepository,
-            OutsourcingTaskRepository outsourcingTaskRepository) {
+            OutsourcingTaskRepository outsourcingTaskRepository,
+            MachineAssignmentRepository machineAssignmentRepository) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -70,6 +75,7 @@ public class ProductionService {
         this.stageTrackingRepository = stageTrackingRepository;
         this.stagePauseLogRepository = stagePauseLogRepository;
         this.outsourcingTaskRepository = outsourcingTaskRepository;
+        this.machineAssignmentRepository = machineAssignmentRepository;
     }
 
     // Production Order
@@ -599,19 +605,24 @@ public class ProductionService {
         return saved;
     }
 
+    public record WorkOrderStageResult(WorkOrder workOrder, Map<Long, List<ProductionStage>> stageMap) {
+    }
+
     /**
      * Create WorkOrder + ProductionStages directly from planning stages (auto release flow)
      */
     @Transactional
-    public WorkOrder createWorkOrderFromPlanStages(Long poId, List<ProductionPlanStage> planStages, Long createdById) {
+    public WorkOrderStageResult createWorkOrderFromPlanStages(Long poId, List<ProductionPlanStage> planStages, Long createdById) {
         if (planStages == null || planStages.isEmpty()) {
-            return createStandardWorkOrder(poId, createdById);
+            WorkOrder wo = createStandardWorkOrder(poId, createdById);
+            return new WorkOrderStageResult(wo, Map.of());
         }
         ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
         List<ProductionPlanStage> orderedStages = planStages.stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(stage -> stage.getSequenceNo() == null ? Integer.MAX_VALUE : stage.getSequenceNo()))
                 .toList();
+        Map<Long, List<ProductionStage>> stageMapping = new HashMap<>();
         WorkOrder wo = new WorkOrder();
         wo.setProductionOrder(po);
         wo.setWoNumber("WO-" + System.currentTimeMillis());
@@ -660,10 +671,11 @@ public class ProductionService {
                 stage.setExecutionStatus(isFirstStage ? "WAITING" : "PENDING");
                 stage.setProgressPercent(0);
                 ProductionStage savedStage = stageRepo.save(stage);
+                stageMapping.computeIfAbsent(planStage.getId(), key -> new ArrayList<>()).add(savedStage);
                 notifyStageAssignments(savedStage, po.getPoNumber(), productName);
             }
         }
-        return saved;
+        return new WorkOrderStageResult(saved, stageMapping);
     }
 
     @Transactional
@@ -723,6 +735,7 @@ public class ProductionService {
             s.setProgressPercent(100);
             s.setStatus("WAITING_QC");
             s.setCompleteAt(Instant.now());
+            releaseMachineReservations(s);
 
             // Notify QC
             if (s.getQcAssignee() != null) {
@@ -828,6 +841,21 @@ public class ProductionService {
         if (s.getAssignedLeader() == null || !s.getAssignedLeader().getId().equals(leaderUserId)) {
             throw new RuntimeException("Access denied: not assigned leader");
         }
+    }
+
+    private void releaseMachineReservations(ProductionStage stage) {
+        List<MachineAssignment> assignments = machineAssignmentRepository.findByProductionStageId(stage.getId());
+        if (assignments == null || assignments.isEmpty()) {
+            return;
+        }
+        Instant now = Instant.now();
+        for (MachineAssignment assignment : assignments) {
+            if (!"RELEASED".equalsIgnoreCase(assignment.getReservationStatus())) {
+                assignment.setReservationStatus("RELEASED");
+                assignment.setReleasedAt(now);
+            }
+        }
+        machineAssignmentRepository.saveAll(assignments);
     }
 
     private BigDecimal calculateDurationHours(LocalDateTime start, LocalDateTime end) {

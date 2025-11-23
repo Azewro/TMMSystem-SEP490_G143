@@ -20,7 +20,7 @@ public class MachineAssignment {
     @JoinColumn(name = "machine_id")
     private Machine machine;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "production_stage_id")
     private ProductionStage productionStage;
 

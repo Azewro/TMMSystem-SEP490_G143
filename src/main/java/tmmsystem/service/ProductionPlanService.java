@@ -293,16 +293,16 @@ public class ProductionPlanService {
             saved.getLot().setStatus("PLAN_APPROVED");
             lotRepo.save(saved.getLot());
         }
-        reservePlanStages(saved);
         ProductionOrder po = createProductionOrderFromPlan(saved);
 
         // Auto-create Work Order mirrored from planning stages (fallback to default if missing)
-        productionService.createWorkOrderFromPlanStages(po.getId(), planStages,
+        var workOrderResult = productionService.createWorkOrderFromPlanStages(po.getId(), planStages,
                 saved.getApprovedBy() != null ? saved.getApprovedBy().getId() : null);
         if (!planStages.isEmpty()) {
             planStages.forEach(stage -> stage.setStageStatus("RELEASED"));
             stageRepo.saveAll(planStages);
         }
+        reservePlanStages(saved, workOrderResult.stageMap());
         notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO",
                 "Nhận kế hoạch sản xuất đã duyệt",
                 "PO #" + po.getPoNumber() + " đã được kích hoạt từ kế hoạch " + saved.getPlanCode()
@@ -593,7 +593,7 @@ public class ProductionPlanService {
         return mapper.toDto(updatedPlan);
     }
 
-    private void reservePlanStages(ProductionPlan plan) {
+    private void reservePlanStages(ProductionPlan plan, Map<Long, List<ProductionStage>> stageMapping) {
         if (plan == null)
             return;
         releasePlanReservations(plan.getId());
@@ -603,14 +603,35 @@ public class ProductionPlanService {
                     || stage.getPlannedEndTime() == null) {
                 continue;
             }
-            MachineAssignment assignment = new MachineAssignment();
-            assignment.setMachine(stage.getAssignedMachine());
-            assignment.setPlanStage(stage);
-            assignment.setReservationType("PLAN");
-            assignment.setReservationStatus("RESERVED");
-            assignment.setAssignedAt(toInstant(stage.getPlannedStartTime()));
-            assignment.setReleasedAt(toInstant(stage.getPlannedEndTime()));
-            machineAssignmentRepository.save(assignment);
+            List<ProductionStage> mappedStages = stageMapping != null ? stageMapping.get(stage.getId()) : null;
+            if (mappedStages == null || mappedStages.isEmpty()) {
+                MachineAssignment assignment = new MachineAssignment();
+                assignment.setMachine(stage.getAssignedMachine());
+                assignment.setPlanStage(stage);
+                assignment.setReservationType("PLAN");
+                assignment.setReservationStatus("RESERVED");
+                assignment.setAssignedAt(toInstant(stage.getPlannedStartTime()));
+                assignment.setReleasedAt(toInstant(stage.getPlannedEndTime()));
+                machineAssignmentRepository.save(assignment);
+                continue;
+            }
+            for (ProductionStage productionStage : mappedStages) {
+                MachineAssignment assignment = new MachineAssignment();
+                assignment.setMachine(stage.getAssignedMachine());
+                assignment.setPlanStage(stage);
+                assignment.setProductionStage(productionStage);
+                assignment.setReservationType("PRODUCTION");
+                assignment.setReservationStatus("RESERVED");
+                Instant assignedAt = productionStage.getPlannedStartAt() != null
+                        ? productionStage.getPlannedStartAt()
+                        : toInstant(stage.getPlannedStartTime());
+                Instant releasedAt = productionStage.getPlannedEndAt() != null
+                        ? productionStage.getPlannedEndAt()
+                        : toInstant(stage.getPlannedEndTime());
+                assignment.setAssignedAt(assignedAt);
+                assignment.setReleasedAt(releasedAt);
+                machineAssignmentRepository.save(assignment);
+            }
         }
     }
 
