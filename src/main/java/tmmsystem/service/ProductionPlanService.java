@@ -264,8 +264,9 @@ public class ProductionPlanService {
     @Transactional
     public ProductionPlanDto submitForApproval(Long planId, SubmitForApprovalRequest request) {
         ProductionPlan plan = planRepo.findById(planId).orElseThrow();
-        if (plan.getStatus() != ProductionPlan.PlanStatus.DRAFT)
-            throw new RuntimeException("Only draft plans can be submitted");
+        if (plan.getStatus() != ProductionPlan.PlanStatus.DRAFT &&
+                plan.getStatus() != ProductionPlan.PlanStatus.REJECTED)
+            throw new RuntimeException("Only draft or rejected plans can be submitted");
         plan.setStatus(ProductionPlan.PlanStatus.PENDING_APPROVAL);
         plan.setApprovalNotes(request.getNotes());
         ProductionPlan saved = planRepo.save(plan);
