@@ -3,14 +3,21 @@ package tmmsystem.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
+import tmmsystem.entity.ProductionPlanStage;
 import tmmsystem.repository.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class ProductionService {
@@ -592,6 +599,73 @@ public class ProductionService {
         return saved;
     }
 
+    /**
+     * Create WorkOrder + ProductionStages directly from planning stages (auto release flow)
+     */
+    @Transactional
+    public WorkOrder createWorkOrderFromPlanStages(Long poId, List<ProductionPlanStage> planStages, Long createdById) {
+        if (planStages == null || planStages.isEmpty()) {
+            return createStandardWorkOrder(poId, createdById);
+        }
+        ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
+        List<ProductionPlanStage> orderedStages = planStages.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(stage -> stage.getSequenceNo() == null ? Integer.MAX_VALUE : stage.getSequenceNo()))
+                .toList();
+        WorkOrder wo = new WorkOrder();
+        wo.setProductionOrder(po);
+        wo.setWoNumber("WO-" + System.currentTimeMillis());
+        wo.setStatus("DRAFT");
+        wo.setSendStatus("NOT_SENT");
+        wo.setProduction(true);
+        if (createdById != null) {
+            userRepository.findById(createdById).ifPresent(wo::setCreatedBy);
+        }
+        WorkOrder saved = woRepo.save(wo);
+        List<ProductionOrderDetail> pods = podRepo.findByProductionOrderId(poId);
+        int seq = 1;
+        Integer firstSequence = orderedStages.stream()
+                .map(ProductionPlanStage::getSequenceNo)
+                .filter(Objects::nonNull)
+                .min(Integer::compareTo)
+                .orElse(null);
+        for (ProductionOrderDetail pod : pods) {
+            WorkOrderDetail wod = new WorkOrderDetail();
+            wod.setWorkOrder(saved);
+            wod.setProductionOrderDetail(pod);
+            wod.setStageSequence(seq++);
+            if (!orderedStages.isEmpty()) {
+                wod.setPlannedStartAt(toInstant(orderedStages.get(0).getPlannedStartTime()));
+                wod.setPlannedEndAt(toInstant(orderedStages.get(orderedStages.size() - 1).getPlannedEndTime()));
+            }
+            wod.setWorkStatus("PENDING");
+            wod = wodRepo.save(wod);
+
+            String productName = safeProductName(pod);
+            for (ProductionPlanStage planStage : orderedStages) {
+                ProductionStage stage = new ProductionStage();
+                stage.setWorkOrderDetail(wod);
+                stage.setStageType(planStage.getStageType());
+                stage.setStageSequence(planStage.getSequenceNo());
+                stage.setMachine(planStage.getAssignedMachine());
+                stage.setAssignedLeader(planStage.getInChargeUser());
+                stage.setQcAssignee(planStage.getQcUser());
+                stage.setPlannedStartAt(toInstant(planStage.getPlannedStartTime()));
+                stage.setPlannedEndAt(toInstant(planStage.getPlannedEndTime()));
+                stage.setPlannedDurationHours(calculateDurationHours(planStage.getPlannedStartTime(),
+                        planStage.getPlannedEndTime()));
+                stage.setOutsourced("DYEING".equalsIgnoreCase(planStage.getStageType()));
+                boolean isFirstStage = firstSequence != null && firstSequence.equals(planStage.getSequenceNo());
+                stage.setStatus(isFirstStage ? "WAITING" : "PENDING");
+                stage.setExecutionStatus(isFirstStage ? "WAITING" : "PENDING");
+                stage.setProgressPercent(0);
+                ProductionStage savedStage = stageRepo.save(stage);
+                notifyStageAssignments(savedStage, po.getPoNumber(), productName);
+            }
+        }
+        return saved;
+    }
+
     @Transactional
     public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes) {
         ensureLeader(stageId, leaderUserId);
@@ -754,5 +828,42 @@ public class ProductionService {
         if (s.getAssignedLeader() == null || !s.getAssignedLeader().getId().equals(leaderUserId)) {
             throw new RuntimeException("Access denied: not assigned leader");
         }
+    }
+
+    private BigDecimal calculateDurationHours(LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null) {
+            return null;
+        }
+        long minutes = Duration.between(start, end).toMinutes();
+        return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+    }
+
+    private Instant toInstant(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.atZone(ZoneId.systemDefault()).toInstant();
+    }
+
+    private void notifyStageAssignments(ProductionStage stage, String poNumber, String productName) {
+        if (stage.getAssignedLeader() != null) {
+            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO", "Công đoạn mới được giao",
+                    "PO #" + poNumber + " - " + productName + ": công đoạn " + stage.getStageType()
+                            + " đã sẵn sàng chuẩn bị.",
+                    "PRODUCTION_STAGE", stage.getId());
+        }
+        if (stage.getQcAssignee() != null) {
+            notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO", "Chuẩn bị kiểm tra KCS",
+                    "PO #" + poNumber + " - " + productName + ": công đoạn " + stage.getStageType()
+                            + " sẽ cần QC sau khi hoàn tất.",
+                    "PRODUCTION_STAGE", stage.getId());
+        }
+    }
+
+    private String safeProductName(ProductionOrderDetail pod) {
+        if (pod == null || pod.getProduct() == null || pod.getProduct().getName() == null) {
+            return "Sản phẩm";
+        }
+        return pod.getProduct().getName();
     }
 }

@@ -288,6 +288,7 @@ public class ProductionPlanService {
         plan.setApprovedAt(Instant.now());
         plan.setApprovalNotes(request.getApprovalNotes());
         ProductionPlan saved = planRepo.save(plan);
+        List<ProductionPlanStage> planStages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
         if (saved.getLot() != null) {
             saved.getLot().setStatus("PLAN_APPROVED");
             lotRepo.save(saved.getLot());
@@ -295,8 +296,27 @@ public class ProductionPlanService {
         reservePlanStages(saved);
         ProductionOrder po = createProductionOrderFromPlan(saved);
 
-        // Auto-create Work Order with 6 default stages
-        productionService.createStandardWorkOrder(po.getId(), saved.getApprovedBy().getId());
+        // Auto-create Work Order mirrored from planning stages (fallback to default if missing)
+        productionService.createWorkOrderFromPlanStages(po.getId(), planStages,
+                saved.getApprovedBy() != null ? saved.getApprovedBy().getId() : null);
+        if (!planStages.isEmpty()) {
+            planStages.forEach(stage -> stage.setStageStatus("RELEASED"));
+            stageRepo.saveAll(planStages);
+        }
+        notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO",
+                "Nhận kế hoạch sản xuất đã duyệt",
+                "PO #" + po.getPoNumber() + " đã được kích hoạt từ kế hoạch " + saved.getPlanCode()
+                        + ". Vui lòng điều phối thực hiện.",
+                "PRODUCTION_ORDER", po.getId());
+        notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "INFO",
+                "Chuẩn bị hướng dẫn kỹ thuật",
+                "PO #" + po.getPoNumber()
+                        + " đã chuyển sang sản xuất, cần rà soát sheet kỹ thuật và hỗ trợ tổ trưởng.",
+                "PRODUCTION_ORDER", po.getId());
+        notificationService.notifyRole("QC_STAFF", "QC", "INFO",
+                "Lịch kiểm tra mới từ kế hoạch " + saved.getPlanCode(),
+                "Các công đoạn sẽ lần lượt hoàn tất theo timeline vừa duyệt. Theo dõi bảng phân công để chuẩn bị.",
+                "PRODUCTION_PLAN", saved.getId());
 
         notificationService.notifyProductionPlanApproved(saved);
         return mapper.toDto(saved);
