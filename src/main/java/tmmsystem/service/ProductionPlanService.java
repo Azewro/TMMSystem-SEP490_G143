@@ -42,6 +42,7 @@ public class ProductionPlanService {
     private final PlanningTimelineCalculator timelineCalculator;
     private final SequentialCapacityCalculator sequentialCapacityCalculator;
     private final MachineAssignmentRepository machineAssignmentRepository;
+    private final ProductionService productionService;
 
     @Value("${planning.autoInitStages:true}")
     private boolean autoInitStages;
@@ -64,7 +65,8 @@ public class ProductionPlanService {
             ProductionLotOrderRepository lotOrderRepo,
             MachineAssignmentRepository machineAssignmentRepository,
             PlanningTimelineCalculator timelineCalculator,
-            SequentialCapacityCalculator sequentialCapacityCalculator) {
+            SequentialCapacityCalculator sequentialCapacityCalculator,
+            ProductionService productionService) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
@@ -84,6 +86,7 @@ public class ProductionPlanService {
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.timelineCalculator = timelineCalculator;
         this.sequentialCapacityCalculator = sequentialCapacityCalculator;
+        this.productionService = productionService;
     }
 
     // ===== LOT & PLAN VERSIONING =====
@@ -289,7 +292,11 @@ public class ProductionPlanService {
             lotRepo.save(saved.getLot());
         }
         reservePlanStages(saved);
-        createProductionOrderFromPlan(saved);
+        ProductionOrder po = createProductionOrderFromPlan(saved);
+
+        // Auto-create Work Order with 6 default stages
+        productionService.createStandardWorkOrder(po.getId(), saved.getApprovedBy().getId());
+
         notificationService.notifyProductionPlanApproved(saved);
         return mapper.toDto(saved);
     }
