@@ -11,7 +11,7 @@ import tmmsystem.dto.qc.*;
 import tmmsystem.entity.*;
 import tmmsystem.mapper.QcMapper;
 import tmmsystem.service.QcService;
-import tmmsystem.service.ProductionService;
+import tmmsystem.service.QcService;
 
 import java.util.List;
 import java.util.stream.Collectors;
