@@ -404,7 +404,7 @@ public class ProductionService {
                 }
                 if (firstStageWithLeader == null && s.getStageSequence() == 1 && s.getAssignedLeader() != null) {
                     firstStageWithLeader = s;
-                    s.setStatus("WAITING"); // Set first stage to WAITING
+                    syncStageStatus(s, "WAITING"); // Set first stage to WAITING
                 }
             }
             stageRepo.saveAll(stages);
@@ -438,7 +438,7 @@ public class ProductionService {
     @Transactional
     public ProductionStage redoStage(Long stageId) {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
-        s.setStatus("PENDING");
+        syncStageStatus(s, "PENDING");
         s.setStartAt(null);
         s.setCompleteAt(null);
         s.setQcLastResult(null);
@@ -465,68 +465,110 @@ public class ProductionService {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         s.setQcLastResult("PASS");
         s.setQcLastCheckedAt(Instant.now());
+        syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
+        
         // Determine next stage in same WorkOrderDetail
         WorkOrderDetail wod = s.getWorkOrderDetail();
         List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(wod.getId());
         ProductionStage next = stages.stream().filter(x -> x.getStageSequence() != null && s.getStageSequence() != null
                 && x.getStageSequence() == s.getStageSequence() + 1).findFirst().orElse(null);
+        
         if (next != null) {
-            next.setStatus("WAITING"); // Ready for work
+            // Set next stage to WAITING (chờ làm)
+            syncStageStatus(next, "WAITING");
             stageRepo.save(next);
 
-            if ("DYEING".equalsIgnoreCase(next.getStageType())) {
-                // Notify PM to coordinate vendor if outsourced
-                notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị Dyeing",
-                        "Công đoạn Weaving PASS. Cần điều phối Dyeing.", "PRODUCTION_STAGE", next.getId());
-            } else if (next.getAssignedLeader() != null) {
-                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                        "Công đoạn trước PASS", "Bạn có thể bắt đầu công đoạn " + next.getStageType() + "",
-                        "PRODUCTION_STAGE", next.getId());
-            } else {
-                // Fallback notify all production staff
-                notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn kế tiếp sẵn sàng",
-                        "Công đoạn " + next.getStageType() + " sẵn sàng bắt đầu.", "PRODUCTION_STAGE", next.getId());
-            }
-        }
-        if ("PACKAGING".equalsIgnoreCase(s.getStageType())) {
-            // existing packaged completion logic moved here
-            WorkOrderDetail wodOfStage = s.getWorkOrderDetail();
-            ProductionOrder po = wodOfStage.getProductionOrderDetail().getProductionOrder();
-            List<WorkOrderDetail> allWod = wodRepo.findAll().stream()
-                    .filter(w -> w.getProductionOrderDetail() != null
-                            && w.getProductionOrderDetail().getProductionOrder() != null
-                            && w.getProductionOrderDetail().getProductionOrder().getId().equals(po.getId()))
-                    .toList();
-            boolean allOk = true;
-            for (WorkOrderDetail w : allWod) {
-                List<ProductionStage> stgs = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(w.getId());
-                if (stgs.isEmpty()) {
-                    allOk = false;
-                    break;
+            String currentStageType = s.getStageType();
+            
+            // Workflow logic based on current stage
+            if ("WARPING".equalsIgnoreCase(currentStageType) || "CUONG_MAC".equalsIgnoreCase(currentStageType)) {
+                // Cuồng mắc PASS → notify Tổ Trưởng dệt
+                if (next.getAssignedLeader() != null) {
+                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Công đoạn cuồng mắc đạt",
+                            "Công đoạn cuồng mắc đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                            "PRODUCTION_STAGE", next.getId());
                 }
-                for (ProductionStage st : stgs) {
-                    if (!"PASS".equalsIgnoreCase(st.getQcLastResult())) {
+            } else if ("WEAVING".equalsIgnoreCase(currentStageType) || "DET".equalsIgnoreCase(currentStageType)) {
+                // Dệt PASS → notify Production Manager (for nhuộm)
+                if ("DYEING".equalsIgnoreCase(next.getStageType()) || "NHUOM".equalsIgnoreCase(next.getStageType())) {
+                    notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "SUCCESS",
+                            "Công đoạn dệt đạt",
+                            "Công đoạn dệt đã đạt QC. Công đoạn nhuộm sẵn sàng bắt đầu.",
+                            "PRODUCTION_STAGE", next.getId());
+                } else if (next.getAssignedLeader() != null) {
+                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Công đoạn dệt đạt",
+                            "Công đoạn dệt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                            "PRODUCTION_STAGE", next.getId());
+                }
+            } else if ("DYEING".equalsIgnoreCase(currentStageType) || "NHUOM".equalsIgnoreCase(currentStageType)) {
+                // Nhuộm PASS → notify Tổ Trưởng cắt
+                if (next.getAssignedLeader() != null) {
+                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Công đoạn nhuộm đạt",
+                            "Công đoạn nhuộm đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                            "PRODUCTION_STAGE", next.getId());
+                }
+            } else if ("CUTTING".equalsIgnoreCase(currentStageType) || "CAT".equalsIgnoreCase(currentStageType)) {
+                // Cắt PASS → notify Tổ Trưởng May
+                if (next.getAssignedLeader() != null) {
+                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Công đoạn cắt đạt",
+                            "Công đoạn cắt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                            "PRODUCTION_STAGE", next.getId());
+                }
+            } else if ("HEMMING".equalsIgnoreCase(currentStageType) || "MAY".equalsIgnoreCase(currentStageType)) {
+                // May PASS → notify Tổ Trưởng đóng gói
+                if (next.getAssignedLeader() != null) {
+                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Công đoạn may đạt",
+                            "Công đoạn may đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                            "PRODUCTION_STAGE", next.getId());
+                }
+            } else if ("PACKAGING".equalsIgnoreCase(currentStageType) || "DONG_GOI".equalsIgnoreCase(currentStageType)) {
+                // Đóng gói PASS → notify Kho
+                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS",
+                        "Công đoạn đóng gói đạt",
+                        "Công đoạn đóng gói đã đạt QC. Sản phẩm sẵn sàng nhập kho.",
+                        "PRODUCTION_STAGE", s.getId());
+                
+                // Check if all stages completed
+                WorkOrderDetail wodOfStage = s.getWorkOrderDetail();
+                ProductionOrder po = wodOfStage.getProductionOrderDetail().getProductionOrder();
+                List<WorkOrderDetail> allWod = wodRepo.findAll().stream()
+                        .filter(w -> w.getProductionOrderDetail() != null
+                                && w.getProductionOrderDetail().getProductionOrder() != null
+                                && w.getProductionOrderDetail().getProductionOrder().getId().equals(po.getId()))
+                        .toList();
+                boolean allOk = true;
+                for (WorkOrderDetail w : allWod) {
+                    List<ProductionStage> stgs = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(w.getId());
+                    if (stgs.isEmpty()) {
+                        allOk = false;
+                        break;
+                    }
+                    for (ProductionStage st : stgs) {
+                        if (!"PASS".equalsIgnoreCase(st.getQcLastResult())) {
+                            allOk = false;
+                            break;
+                        }
+                    }
+                    if (!allOk)
+                        break;
+                    ProductionStage pkg = stgs.stream().filter(st -> "PACKAGING".equalsIgnoreCase(st.getStageType()) || "DONG_GOI".equalsIgnoreCase(st.getStageType()))
+                            .findFirst().orElse(null);
+                    if (pkg == null || pkg.getCompleteAt() == null) {
                         allOk = false;
                         break;
                     }
                 }
-                if (!allOk)
-                    break;
-                ProductionStage pkg = stgs.stream().filter(st -> "PACKAGING".equalsIgnoreCase(st.getStageType()))
-                        .findFirst().orElse(null);
-                if (pkg == null || pkg.getCompleteAt() == null) {
-                    allOk = false;
-                    break;
+                if (allOk) {
+                    po.setStatus("ORDER_COMPLETED");
+                    poRepo.save(po);
+                    notificationService.notifyOrderCompleted(po);
                 }
-            }
-            if (allOk) {
-                po.setStatus("ORDER_COMPLETED");
-                poRepo.save(po);
-                notificationService.notifyOrderCompleted(po);
-                // Notify inventory staff
-                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Đã sẵn sàng nhập kho",
-                        "PO #" + po.getPoNumber() + " hoàn tất Packaging PASS.", "PRODUCTION_ORDER", po.getId());
             }
         }
     }
@@ -539,7 +581,7 @@ public class ProductionService {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         if (s.getStartAt() == null)
             s.setStartAt(Instant.now());
-        s.setStatus("IN_PROGRESS");
+        syncStageStatus(s, "IN_PROGRESS");
         stageRepo.save(s);
         StageTracking tr = new StageTracking();
         tr.setProductionStage(s);
@@ -567,7 +609,7 @@ public class ProductionService {
         s.setWorkOrderDetail(wod);
         s.setStageType(type);
         s.setStageSequence(sequence);
-        s.setStatus("PENDING");
+        syncStageStatus(s, "PENDING");
         s.setOutsourced(outsourced);
         stageRepo.save(s);
     }
@@ -671,8 +713,7 @@ public class ProductionService {
                         planStage.getPlannedEndTime()));
                 stage.setOutsourced("DYEING".equalsIgnoreCase(planStage.getStageType()));
                 boolean isFirstStage = firstSequence != null && firstSequence.equals(planStage.getSequenceNo());
-                stage.setStatus(isFirstStage ? "WAITING" : "PENDING");
-                stage.setExecutionStatus(isFirstStage ? "WAITING" : "PENDING");
+                syncStageStatus(stage, isFirstStage ? "WAITING" : "PENDING");
                 stage.setProgressPercent(0);
                 ProductionStage savedStage = stageRepo.save(stage);
                 stageMapping.computeIfAbsent(planStage.getId(), key -> new ArrayList<>()).add(savedStage);
@@ -686,7 +727,9 @@ public class ProductionService {
     public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+        // PAUSED không có trong executionStatus, giữ status riêng
         s.setStatus("PAUSED");
+        // executionStatus giữ nguyên để biết đang ở giai đoạn nào
         stageRepo.save(s);
         StagePauseLog pl = new StagePauseLog();
         pl.setProductionStage(s);
@@ -707,7 +750,8 @@ public class ProductionService {
     public ProductionStage resumeStage(Long stageId, Long leaderUserId) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
-        s.setStatus("IN_PROGRESS");
+        // Resume về trạng thái đang làm
+        syncStageStatus(s, "IN_PROGRESS");
         stageRepo.save(s);
         // close last open pause
         List<StagePauseLog> pauses = stagePauseLogRepository.findByProductionStageIdOrderByPausedAtDesc(s.getId());
@@ -737,7 +781,7 @@ public class ProductionService {
 
         if (progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0) {
             s.setProgressPercent(100);
-            s.setStatus("WAITING_QC");
+            syncStageStatus(s, "WAITING_QC");
             s.setCompleteAt(Instant.now());
             releaseMachineReservations(s);
 
@@ -753,7 +797,7 @@ public class ProductionService {
             }
         } else {
             s.setProgressPercent(progressPercent.intValue());
-            s.setStatus("IN_PROGRESS");
+            syncStageStatus(s, "IN_PROGRESS");
         }
 
         return stageRepo.save(s);
@@ -847,6 +891,65 @@ public class ProductionService {
         }
     }
 
+    /**
+     * Đồng bộ cả status và executionStatus
+     * executionStatus là trường chính, status được map từ executionStatus để tương thích
+     * Method này có thể được gọi từ các service khác (như QcService)
+     * 
+     * Mapping theo yêu cầu từ workflow:
+     * - "đợi" → PENDING
+     * - "chờ làm" → WAITING
+     * - "đang làm" → IN_PROGRESS
+     * - "chờ kiểm tra" → WAITING_QC
+     * - "đang kiểm tra" → QC_IN_PROGRESS (status riêng để phân biệt)
+     * - "đạt" → QC_PASSED (status riêng để phân biệt với hoàn thành)
+     * - "không đạt" → QC_FAILED
+     * - "chờ sửa" → WAITING_REWORK (status riêng để phân biệt)
+     * - "đang sửa" → REWORK_IN_PROGRESS (status riêng để phân biệt)
+     * - "hoàn thành" → COMPLETED
+     */
+    public void syncStageStatus(ProductionStage stage, String executionStatus) {
+        stage.setExecutionStatus(executionStatus);
+        
+        // Map executionStatus sang status để tương thích với code cũ
+        // Giữ nguyên executionStatus values để frontend có thể phân biệt rõ ràng
+        String mappedStatus;
+        switch (executionStatus) {
+            case "WAITING":
+                mappedStatus = "WAITING"; // "chờ làm"
+                break;
+            case "IN_PROGRESS":
+                mappedStatus = "IN_PROGRESS"; // "đang làm"
+                break;
+            case "WAITING_QC":
+                mappedStatus = "WAITING_QC"; // "chờ kiểm tra"
+                break;
+            case "QC_IN_PROGRESS":
+                mappedStatus = "QC_IN_PROGRESS"; // "đang kiểm tra" - phân biệt rõ với WAITING_QC
+                break;
+            case "QC_PASSED":
+                mappedStatus = "QC_PASSED"; // "đạt" - phân biệt với COMPLETED (hoàn thành)
+                break;
+            case "QC_FAILED":
+                mappedStatus = "QC_FAILED"; // "không đạt"
+                break;
+            case "WAITING_REWORK":
+                mappedStatus = "WAITING_REWORK"; // "chờ sửa" - phân biệt rõ với FAILED
+                break;
+            case "REWORK_IN_PROGRESS":
+                mappedStatus = "REWORK_IN_PROGRESS"; // "đang sửa" - phân biệt rõ với IN_PROGRESS
+                break;
+            case "COMPLETED":
+                mappedStatus = "COMPLETED"; // "hoàn thành"
+                break;
+            case "PENDING":
+            default:
+                mappedStatus = "PENDING"; // "đợi"
+                break;
+        }
+        stage.setStatus(mappedStatus);
+    }
+
     private void releaseMachineReservations(ProductionStage stage) {
         List<MachineAssignment> assignments = machineAssignmentRepository.findByProductionStageId(stage.getId());
         if (assignments == null || assignments.isEmpty()) {
@@ -919,5 +1022,136 @@ public class ProductionService {
             return null;
         }
         return machineRepository.findById(machine.getId()).orElse(null);
+    }
+
+    // ===== NEW WORKFLOW ENDPOINTS =====
+
+    /**
+     * Production Manager: Bắt đầu lệnh làm việc
+     * Sau khi PM ấn "Bắt đầu lệnh làm việc":
+     * - Gửi thông báo đến tất cả Tổ Trưởng và KCS
+     * - Stage đầu tiên: executionStatus = "WAITING" (chờ làm)
+     * - Các stage khác: executionStatus = "PENDING" (đợi)
+     */
+    @Transactional
+    public List<ProductionStage> startWorkOrder(Long orderId) {
+        ProductionOrder po = poRepo.findById(orderId).orElseThrow(() -> new RuntimeException("Production Order not found"));
+        
+        // Get all work orders for this production order
+        List<WorkOrder> workOrders = woRepo.findByProductionOrderId(orderId);
+        if (workOrders.isEmpty()) {
+            throw new RuntimeException("No Work Order found for Production Order " + orderId);
+        }
+
+        List<ProductionStage> allStages = new ArrayList<>();
+        java.util.Set<User> notifiedLeaders = new java.util.HashSet<>();
+        java.util.Set<User> notifiedQcs = new java.util.HashSet<>();
+
+        for (WorkOrder wo : workOrders) {
+            List<WorkOrderDetail> wodList = wodRepo.findByWorkOrderId(wo.getId());
+            for (WorkOrderDetail wod : wodList) {
+                List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(wod.getId());
+                
+                // Find first stage (lowest sequence number)
+                ProductionStage firstStage = stages.stream()
+                    .filter(s -> s.getStageSequence() != null)
+                    .min(Comparator.comparing(ProductionStage::getStageSequence))
+                    .orElse(null);
+
+                for (ProductionStage stage : stages) {
+                    if (stage.equals(firstStage)) {
+                        // First stage: WAITING (chờ làm)
+                        syncStageStatus(stage, "WAITING");
+                        
+                        // Notify assigned leader
+                        if (stage.getAssignedLeader() != null && !notifiedLeaders.contains(stage.getAssignedLeader())) {
+                            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
+                                "Công đoạn sẵn sàng bắt đầu",
+                                "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber() + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
+                                "PRODUCTION_STAGE", stage.getId());
+                            notifiedLeaders.add(stage.getAssignedLeader());
+                        }
+                    } else {
+                        // Other stages: PENDING (đợi)
+                        syncStageStatus(stage, "PENDING");
+                    }
+                    
+                    // Notify QC if assigned
+                    if (stage.getQcAssignee() != null && !notifiedQcs.contains(stage.getQcAssignee())) {
+                        notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO",
+                            "Chuẩn bị kiểm tra",
+                            "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber() + " sẽ cần kiểm tra sau khi hoàn thành.",
+                            "PRODUCTION_STAGE", stage.getId());
+                        notifiedQcs.add(stage.getQcAssignee());
+                    }
+                    
+                    allStages.add(stage);
+                }
+            }
+        }
+
+        // Notify all QC staff if no specific QC assigned
+        List<User> qcStaff = userRepository.findByRoleName("QC_STAFF");
+        for (User qc : qcStaff) {
+            if (!notifiedQcs.contains(qc)) {
+                notificationService.notifyUser(qc, "QC", "INFO",
+                    "Lệnh sản xuất mới",
+                    "Lệnh sản xuất #" + po.getPoNumber() + " đã bắt đầu. Các công đoạn sẽ cần kiểm tra sau khi hoàn thành.",
+                    "PRODUCTION_ORDER", po.getId());
+            }
+        }
+
+        stageRepo.saveAll(allStages);
+        return allStages;
+    }
+
+    /**
+     * Lấy danh sách stages của Production Order để hiển thị kế hoạch
+     */
+    public List<ProductionStage> getOrderStages(Long orderId) {
+        return stageRepo.findStagesByOrderId(orderId);
+    }
+
+    /**
+     * Lấy danh sách orders cho Production Manager
+     */
+    public List<ProductionOrder> getManagerOrders() {
+        // Get all production orders that have work orders
+        return poRepo.findAll().stream()
+            .filter(po -> !woRepo.findByProductionOrderId(po.getId()).isEmpty())
+            .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Lấy danh sách orders cho Team Leader
+     */
+    public List<ProductionOrder> getLeaderOrders(Long leaderUserId) {
+        // Get orders that have stages assigned to this leader
+        List<ProductionStage> leaderStages = stageRepo.findByAssignedLeaderIdAndExecutionStatusIn(
+            leaderUserId, 
+            java.util.List.of("WAITING", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS")
+        );
+        
+        java.util.Set<Long> orderIds = leaderStages.stream()
+            .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+            .collect(java.util.stream.Collectors.toSet());
+        
+        return poRepo.findAllById(orderIds);
+    }
+
+    /**
+     * Lấy danh sách orders cho KCS
+     */
+    public List<ProductionOrder> getQaOrders() {
+        // Get orders that have stages waiting for QC or in QC
+        List<ProductionStage> qcStages = stageRepo.findByExecutionStatusIn(
+            java.util.List.of("WAITING_QC", "QC_IN_PROGRESS")
+        );
+        
+        java.util.Set<Long> orderIds = qcStages.stream()
+            .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+            .collect(java.util.stream.Collectors.toSet());
+        
+        return poRepo.findAllById(orderIds);
     }
 }

@@ -27,6 +27,7 @@ public class ExecutionOrchestrationService {
     private final UserRepository userRepo;
     private final NotificationService notificationService;
     private final MaterialRequisitionRepository materialReqRepo;
+    private final ProductionService productionService;
 
     public ExecutionOrchestrationService(ProductionOrderRepository orderRepo,
             ProductionStageRepository stageRepo,
@@ -34,7 +35,8 @@ public class ExecutionOrchestrationService {
             QcSessionRepository sessionRepo,
             UserRepository userRepo,
             NotificationService notificationService,
-            MaterialRequisitionRepository materialReqRepo) {
+            MaterialRequisitionRepository materialReqRepo,
+            ProductionService productionService) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -42,6 +44,7 @@ public class ExecutionOrchestrationService {
         this.userRepo = userRepo;
         this.notificationService = notificationService;
         this.materialReqRepo = materialReqRepo;
+        this.productionService = productionService;
     }
 
     // Helper lấy tất cả stage thuộc orderId (dựa trên quan hệ WorkOrderDetail ->
@@ -132,8 +135,11 @@ public class ExecutionOrchestrationService {
         if (!"WAITING_QC".equals(stage.getExecutionStatus()))
             throw new RuntimeException("Không ở trạng thái chờ QC");
         User qc = userRepo.findById(qcUserId).orElseThrow();
-        stage.setExecutionStatus("QC_IN_PROGRESS");
+        
+        // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
+        productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
         stageRepo.save(stage);
+        
         QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
         if (existing != null)
             return existing;

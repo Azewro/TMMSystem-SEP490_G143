@@ -182,16 +182,95 @@ public class QcService {
         stage.setQcLastCheckedAt(java.time.Instant.now());
 
         if ("PASS".equalsIgnoreCase(result)) {
-            stage.setStatus("QC_PASSED");
+            // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
+            productionService.syncStageStatus(stage, "QC_PASSED");
             stageRepo.save(stage);
             productionService.markStageQcPass(stageId);
         } else {
-            stage.setStatus("QC_FAILED");
+            // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
+            productionService.syncStageStatus(stage, "QC_FAILED");
             stageRepo.save(stage);
             // Notify Technical
             notificationService.notifyRole("TECHNICAL_STAFF", "QC", "WARNING", "QC Failed",
                     "Công đoạn " + stage.getStageType() + " không đạt QC. Cần xử lý.", "PRODUCTION_STAGE",
                     stage.getId());
         }
+    }
+
+    /**
+     * KCS: Gửi kết quả kiểm tra với các tiêu chí và ảnh lỗi
+     * Nếu đạt: gửi thông báo đến Tổ Trưởng tiếp theo (hoặc PM cho công đoạn nhuộm)
+     * Nếu không đạt: gửi thông báo đến kỹ thuật
+     */
+    @Transactional
+    public QcInspection submitInspectionWithCriteria(Long stageId, Long inspectorId, String overallResult,
+            String defectLevel, String defectDescription, java.util.List<tmmsystem.dto.qc.QcInspectionDto> criteriaResults) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        
+        // Create inspection records for each criterion
+        for (tmmsystem.dto.qc.QcInspectionDto criterionDto : criteriaResults) {
+            QcInspection inspection = new QcInspection();
+            inspection.setProductionStage(stage);
+            if (criterionDto.getQcCheckpointId() != null) {
+                QcCheckpoint cp = new QcCheckpoint();
+                cp.setId(criterionDto.getQcCheckpointId());
+                inspection.setQcCheckpoint(cp);
+            }
+            User inspector = new User();
+            inspector.setId(inspectorId);
+            inspection.setInspector(inspector);
+            inspection.setResult(criterionDto.getResult());
+            inspection.setNotes(criterionDto.getNotes());
+            QcInspection savedInspection = inspectionRepo.save(inspection);
+            
+            // Create defect if FAIL
+            if ("FAIL".equalsIgnoreCase(criterionDto.getResult())) {
+                QcDefect defect = new QcDefect();
+                defect.setQcInspection(savedInspection);
+                defect.setDefectType(criterionDto.getNotes()); // Use notes as defect type
+                defect.setDefectDescription(defectDescription);
+                defect.setSeverity(defectLevel);
+                defectRepo.save(defect);
+            }
+        }
+        
+        // Submit overall result - this will trigger notifications
+        submitInspectionResult(stageId, overallResult, defectDescription, inspectorId);
+        
+        return inspectionRepo.findByProductionStageId(stageId).stream()
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("Inspection not created"));
+    }
+
+    /**
+     * KCS: Bắt đầu kiểm tra
+     * Chuyển trạng thái từ WAITING_QC sang QC_IN_PROGRESS
+     */
+    @Transactional
+    public ProductionStage startInspection(Long stageId, Long inspectorId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        
+        if (!"WAITING_QC".equals(stage.getExecutionStatus())) {
+            throw new RuntimeException("Stage không ở trạng thái chờ kiểm tra. Trạng thái hiện tại: " + stage.getExecutionStatus());
+        }
+        
+        // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
+        productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
+        
+        // Gán inspector nếu chưa có
+        if (stage.getQcAssignee() == null) {
+            User inspector = new User();
+            inspector.setId(inspectorId);
+            stage.setQcAssignee(inspector);
+        }
+        
+        return stageRepo.save(stage);
+    }
+
+    /**
+     * Lấy danh sách stages chờ kiểm tra cho KCS
+     */
+    public java.util.List<ProductionStage> getStagesWaitingInspection() {
+        return stageRepo.findByExecutionStatus("WAITING_QC");
     }
 }

@@ -15,6 +15,7 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     List<ProductionStage> findByAssignedLeaderIdAndStatusIn(Long leaderId, List<String> statuses);
     List<ProductionStage> findByStatus(String status);
     List<ProductionStage> findByExecutionStatus(String executionStatus);
+    List<ProductionStage> findByExecutionStatusIn(List<String> executionStatuses);
     List<ProductionStage> findByQcAssigneeIdAndExecutionStatusIn(Long qcUserId, List<String> statuses);
     List<ProductionStage> findByAssignedLeaderIdAndExecutionStatusIn(Long leaderId, List<String> statuses);
 

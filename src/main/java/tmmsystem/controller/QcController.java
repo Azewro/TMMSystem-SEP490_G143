@@ -21,10 +21,12 @@ import java.util.stream.Collectors;
 public class QcController {
     private final QcService service;
     private final QcMapper mapper;
+    private final tmmsystem.mapper.ProductionMapper productionMapper;
 
-    public QcController(QcService service, QcMapper mapper) {
+    public QcController(QcService service, QcMapper mapper, tmmsystem.mapper.ProductionMapper productionMapper) {
         this.service = service;
         this.mapper = mapper;
+        this.productionMapper = productionMapper;
     }
 
     // Checkpoints
@@ -262,5 +264,36 @@ public class QcController {
     @DeleteMapping("/standards/{id}")
     public void deleteStandard(@PathVariable Long id) {
         service.deleteStandard(id);
+    }
+
+    @Operation(summary = "KCS: Gửi kết quả kiểm tra với các tiêu chí", description = "KCS gửi kết quả kiểm tra với các tiêu chí và ảnh lỗi. Nếu đạt thì notify Tổ Trưởng tiếp theo, nếu không đạt thì notify kỹ thuật")
+    @PostMapping("/stages/{stageId}/submit-inspection")
+    public QcInspectionDto submitStageInspection(
+            @PathVariable Long stageId,
+            @RequestParam Long inspectorId,
+            @RequestParam String overallResult,
+            @RequestParam(required = false) String defectLevel,
+            @RequestParam(required = false) String defectDescription,
+            @RequestBody java.util.List<QcInspectionDto> criteriaResults) {
+        QcInspection saved = service.submitInspectionWithCriteria(stageId, inspectorId, overallResult,
+                defectLevel, defectDescription, criteriaResults);
+        return mapper.toDto(saved);
+    }
+
+    @Operation(summary = "KCS: Bắt đầu kiểm tra", description = "KCS bấm nút 'Kiểm tra' để bắt đầu kiểm tra công đoạn. Chuyển trạng thái từ 'chờ kiểm tra' sang 'đang kiểm tra'")
+    @PostMapping("/stages/{stageId}/start-inspection")
+    public tmmsystem.dto.production.ProductionStageDto startInspection(
+            @PathVariable Long stageId,
+            @RequestParam Long inspectorId) {
+        ProductionStage stage = service.startInspection(stageId, inspectorId);
+        return productionMapper.toDto(stage);
+    }
+
+    @Operation(summary = "Lấy danh sách stages chờ kiểm tra cho KCS", description = "Dùng cho màn hình danh sách đơn hàng của KCS")
+    @GetMapping("/stages/waiting-inspection")
+    public java.util.List<tmmsystem.dto.production.ProductionStageDto> getStagesWaitingInspection() {
+        return service.getStagesWaitingInspection().stream()
+                .map(productionMapper::toDto)
+                .collect(java.util.stream.Collectors.toList());
     }
 }
