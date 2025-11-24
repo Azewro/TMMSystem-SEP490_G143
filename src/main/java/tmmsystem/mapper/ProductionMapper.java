@@ -108,7 +108,7 @@ public class ProductionMapper {
         ProductionStageDto dto = new ProductionStageDto();
         dto.setId(s.getId());
         dto.setProductionOrderId(s.getProductionOrder() != null ? s.getProductionOrder().getId() : null); // NEW
-        dto.setWorkOrderDetailId(s.getWorkOrderDetail() != null ? s.getWorkOrderDetail().getId() : null); // DEPRECATED
+        // REMOVED: dto.setWorkOrderDetailId() - field workOrderDetail đã bị xóa khỏi entity
         dto.setStageType(s.getStageType());
         dto.setStageSequence(s.getStageSequence());
         dto.setMachineId(s.getMachine() != null ? s.getMachine().getId() : null);

@@ -333,12 +333,7 @@ public class QcService {
                 try {
                     // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
                     ProductionOrder po = stage.getProductionOrder();
-                    // Fallback: Nếu chưa migrate, dùng WorkOrderDetail (backward compatibility)
-                    if (po == null && stage.getWorkOrderDetail() != null) {
-                        po = stage.getWorkOrderDetail()
-                            .getProductionOrderDetail()
-                            .getProductionOrder();
-                    }
+                    // REMOVED: Fallback qua WorkOrderDetail - field đã bị xóa
                     
                     // Lấy lotCode từ ProductionPlan -> ProductionLot
                     if (po != null && po.getContract() != null) {

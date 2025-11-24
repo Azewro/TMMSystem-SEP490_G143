@@ -207,7 +207,8 @@ public class ProductionService {
     @Transactional
     public ProductionStage updateStage(Long id, ProductionStage upd) {
         ProductionStage e = stageRepo.findById(id).orElseThrow();
-        e.setWorkOrderDetail(upd.getWorkOrderDetail());
+        // REMOVED: e.setWorkOrderDetail() - field đã bị xóa
+        e.setProductionOrder(upd.getProductionOrder()); // NEW: Set ProductionOrder
         e.setStageType(upd.getStageType());
         e.setStageSequence(upd.getStageSequence());
         e.setMachine(upd.getMachine());
@@ -499,10 +500,7 @@ public class ProductionService {
 
                 // Check if all stages completed
                 // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
-                ProductionOrder poForCheck = s.getProductionOrder() != null ? 
-                    s.getProductionOrder() : 
-                    (s.getWorkOrderDetail() != null && s.getWorkOrderDetail().getProductionOrderDetail() != null ?
-                        s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder() : null);
+                ProductionOrder poForCheck = s.getProductionOrder();
                 
                 if (poForCheck != null) {
                     final Long orderId = poForCheck.getId(); // Make effectively final for lambda
@@ -1048,6 +1046,10 @@ public class ProductionService {
     /**
      * Lấy danh sách orders cho Team Leader
      */
+    /**
+     * Lấy danh sách orders cho Team Leader
+     * NEW: Query trực tiếp theo ProductionOrder (không qua WorkOrderDetail)
+     */
     public List<ProductionOrder> getLeaderOrders(Long leaderUserId) {
         // Get orders that have stages assigned to this leader
         List<ProductionStage> leaderStages = stageRepo.findByAssignedLeaderIdAndExecutionStatusIn(
@@ -1055,7 +1057,8 @@ public class ProductionService {
                 java.util.List.of("WAITING", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
 
         java.util.Set<Long> orderIds = leaderStages.stream()
-                .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+                .map(s -> s.getProductionOrder() != null ? s.getProductionOrder().getId() : null)
+                .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
 
         return poRepo.findAllById(orderIds);
@@ -1063,6 +1066,7 @@ public class ProductionService {
 
     /**
      * Lấy danh sách orders cho KCS
+     * NEW: Query trực tiếp theo ProductionOrder (không qua WorkOrderDetail)
      */
     public List<ProductionOrder> getQaOrders() {
         // Get orders that have stages waiting for QC or in QC
@@ -1070,7 +1074,8 @@ public class ProductionService {
                 java.util.List.of("WAITING_QC", "QC_IN_PROGRESS"));
 
         java.util.Set<Long> orderIds = qcStages.stream()
-                .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+                .map(s -> s.getProductionOrder() != null ? s.getProductionOrder().getId() : null)
+                .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
 
         return poRepo.findAllById(orderIds);

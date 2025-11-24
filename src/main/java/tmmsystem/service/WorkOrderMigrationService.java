@@ -159,8 +159,10 @@ public class WorkOrderMigrationService {
         
         // Lấy tất cả ProductionStage có workOrderDetailId
         List<ProductionStage> allStages = stageRepo.findAll();
+        // REMOVED: Filter by workOrderDetail - field đã bị xóa
+        // Migration này chỉ chạy một lần, nếu đã migrate xong thì không cần chạy nữa
         List<ProductionStage> stagesToMigrate = allStages.stream()
-                .filter(s -> s.getWorkOrderDetail() != null && s.getProductionOrder() == null)
+                .filter(s -> s.getProductionOrder() == null)
                 .toList();
 
         System.out.println("Tìm thấy " + stagesToMigrate.size() + " stages cần migrate");
@@ -172,44 +174,19 @@ public class WorkOrderMigrationService {
         // Group stages by ProductionOrder để detect duplicates
         java.util.Map<Long, java.util.Map<Integer, Integer>> poSequenceCount = new java.util.HashMap<>();
 
+        // REMOVED: Migration logic qua WorkOrderDetail - field đã bị xóa khỏi database
+        // Nếu cần migrate lại, phải dùng cách khác (query trực tiếp từ database)
+        System.out.println("⚠️ Migration service không thể chạy vì work_order_detail_id đã bị xóa khỏi database");
+        System.out.println("Nếu cần migrate lại, phải dùng SQL query trực tiếp");
+        
+        // REMOVED: Toàn bộ logic migration - không thể chạy được vì work_order_detail_id đã bị xóa
+        // Nếu cần migrate lại, phải dùng SQL query trực tiếp từ database
+        System.out.println("⚠️ Không thể migrate vì work_order_detail_id đã bị xóa khỏi database");
+        System.out.println("Tất cả stages trong danh sách sẽ bị bỏ qua");
+        
         for (ProductionStage stage : stagesToMigrate) {
-            try {
-                WorkOrderDetail wod = stage.getWorkOrderDetail();
-                if (wod == null) {
-                    System.out.println("  ⚠️ Stage " + stage.getId() + " không có WorkOrderDetail, bỏ qua");
-                    errorCount++;
-                    continue;
-                }
-
-                // Lấy ProductionOrder từ WorkOrderDetail → WorkOrder → ProductionOrder
-                if (wod.getWorkOrder() == null || wod.getWorkOrder().getProductionOrder() == null) {
-                    System.out.println("  ⚠️ Stage " + stage.getId() + " không tìm thấy ProductionOrder qua WorkOrderDetail, bỏ qua");
-                    errorCount++;
-                    continue;
-                }
-
-                ProductionOrder po = wod.getWorkOrder().getProductionOrder();
-                Integer sequence = stage.getStageSequence();
-                
-                // Check for potential duplicates (informational only, không block migration)
-                if (sequence != null) {
-                    poSequenceCount.computeIfAbsent(po.getId(), k -> new java.util.HashMap<>())
-                            .merge(sequence, 1, Integer::sum);
-                }
-                
-                // Set ProductionOrder vào stage
-                stage.setProductionOrder(po);
-                
-                migratedCount++;
-                
-                if (migratedCount % 10 == 0) {
-                    System.out.println("  Đã migrate " + migratedCount + " stages...");
-                }
-            } catch (Exception e) {
-                System.err.println("  ❌ Lỗi khi migrate stage " + stage.getId() + ": " + e.getMessage());
-                e.printStackTrace();
-                errorCount++;
-            }
+            System.out.println("  ⚠️ Stage " + stage.getId() + " không có ProductionOrder, bỏ qua");
+            errorCount++;
         }
 
         // Report duplicates
@@ -271,9 +248,8 @@ public class WorkOrderMigrationService {
                 .filter(s -> s.getProductionOrder() == null || s.getProductionOrder().getId() == null)
                 .toList();
 
-        List<ProductionStage> stagesStillLinkedToWOD = allStages.stream()
-                .filter(s -> s.getWorkOrderDetail() != null)
-                .toList();
+        // REMOVED: Không thể check workOrderDetail nữa vì field đã bị xóa
+        List<ProductionStage> stagesStillLinkedToWOD = java.util.Collections.emptyList();
 
         System.out.println("\n=== KẾT QUẢ VERIFY ===");
         System.out.println("Tổng số stages: " + allStages.size());
@@ -284,10 +260,7 @@ public class WorkOrderMigrationService {
         } else {
             System.out.println("⚠️ Còn " + stagesWithoutProductionOrder.size() + " stages chưa có ProductionOrder:");
             stagesWithoutProductionOrder.forEach(s -> 
-                System.out.println("  - Stage ID: " + s.getId() + 
-                    (s.getWorkOrderDetail() != null ? 
-                        ", WorkOrderDetail ID: " + s.getWorkOrderDetail().getId() : 
-                        ", không có WorkOrderDetail"))
+                System.out.println("  - Stage ID: " + s.getId() + ", không có ProductionOrder")
             );
         }
         

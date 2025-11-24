@@ -301,10 +301,12 @@ public class ProductionController {
     public ProductionStageDto updateStage(@PathVariable Long id,
             @RequestBody(description = "Payload cập nhật Stage", required = true, content = @Content(schema = @Schema(implementation = ProductionStageDto.class))) @org.springframework.web.bind.annotation.RequestBody ProductionStageDto body) {
         ProductionStage s = new ProductionStage();
-        if (body.getWorkOrderDetailId() != null) {
-            WorkOrderDetail d = new WorkOrderDetail();
-            d.setId(body.getWorkOrderDetailId());
-            s.setWorkOrderDetail(d);
+        // REMOVED: setWorkOrderDetail - field đã bị xóa
+        // NEW: Set ProductionOrder nếu có
+        if (body.getProductionOrderId() != null) {
+            ProductionOrder po = new ProductionOrder();
+            po.setId(body.getProductionOrderId());
+            s.setProductionOrder(po);
         }
         s.setStageType(body.getStageType());
         s.setStageSequence(body.getStageSequence());
