@@ -25,6 +25,12 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     @Query("select s from ProductionStage s join fetch s.productionOrder po where s.executionStatus in :statuses")
     List<ProductionStage> findByExecutionStatusIn(@Param("statuses") List<String> executionStatuses);
     List<ProductionStage> findByQcAssigneeIdAndExecutionStatusIn(Long qcUserId, List<String> statuses);
+    
+    // Query tất cả stages được assign cho QA (không filter theo status)
+    // Sử dụng JOIN FETCH để load productionOrder ngay lập tức, tránh LazyLoadingException
+    @Query("select s from ProductionStage s join fetch s.productionOrder po where s.qcAssignee.id = :qcUserId")
+    List<ProductionStage> findByQcAssigneeId(@Param("qcUserId") Long qcUserId);
+    
     List<ProductionStage> findByAssignedLeaderIdAndExecutionStatusIn(Long leaderId, List<String> statuses);
 
     // Query tất cả stages được assign cho leader (không filter theo status)

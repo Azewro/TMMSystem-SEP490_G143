@@ -465,8 +465,8 @@ public class ProductionController {
     // QA/KCS APIs
     @Operation(summary = "Lấy danh sách orders cho QA/KCS", description = "Dùng cho màn hình danh sách đơn hàng của QA/KCS")
     @GetMapping("/qa/orders")
-    public java.util.List<ProductionOrderDto> getQaOrders() {
-        return service.getQaOrders().stream()
+    public java.util.List<ProductionOrderDto> getQaOrders(@RequestParam Long qcUserId) {
+        return service.getQaOrders(qcUserId).stream()
                 .map(po -> service.enrichProductionOrderDto(po))
                 .collect(java.util.stream.Collectors.toList());
     }
