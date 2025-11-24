@@ -331,12 +331,17 @@ public class QcService {
                 
                 // Lấy lotCode và product info từ ProductionOrder
                 try {
-                    ProductionOrder po = stage.getWorkOrderDetail()
-                        .getProductionOrderDetail()
-                        .getProductionOrder();
+                    // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
+                    ProductionOrder po = stage.getProductionOrder();
+                    // Fallback: Nếu chưa migrate, dùng WorkOrderDetail (backward compatibility)
+                    if (po == null && stage.getWorkOrderDetail() != null) {
+                        po = stage.getWorkOrderDetail()
+                            .getProductionOrderDetail()
+                            .getProductionOrder();
+                    }
                     
                     // Lấy lotCode từ ProductionPlan -> ProductionLot
-                    if (po.getContract() != null) {
+                    if (po != null && po.getContract() != null) {
                         List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository.findByContractId(po.getContract().getId());
                         tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
                             .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))

@@ -275,10 +275,33 @@ public class ExecutionOrchestrationService {
     }
 
     private void openNextStage(ProductionStage current) {
-        if (current.getWorkOrderDetail() == null)
+        // NEW: Query trực tiếp theo ProductionOrder (không qua WorkOrderDetail)
+        ProductionOrder po = current.getProductionOrder();
+        if (po == null) {
+            // Fallback: Nếu chưa migrate, dùng WorkOrderDetail (backward compatibility)
+            if (current.getWorkOrderDetail() == null) return;
+            List<ProductionStage> stages = stageRepo
+                    .findByWorkOrderDetailIdOrderByStageSequenceAsc(current.getWorkOrderDetail().getId());
+            ProductionStage next = stages.stream()
+                    .filter(s -> s.getStageSequence() != null && current.getStageSequence() != null
+                            && s.getStageSequence() == current.getStageSequence() + 1)
+                    .findFirst().orElse(null);
+            if (next == null) {
+                ProductionOrder order = resolveOrder(current);
+                if (order != null) {
+                    order.setExecutionStatus("COMPLETED");
+                    orderRepo.save(order);
+                }
+                return;
+            }
+            // Use ProductionService to sync stage status
+            productionService.syncStageStatus(next, "WAITING");
+            stageRepo.save(next);
             return;
+        }
+        
         List<ProductionStage> stages = stageRepo
-                .findByWorkOrderDetailIdOrderByStageSequenceAsc(current.getWorkOrderDetail().getId());
+                .findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
         ProductionStage next = stages.stream()
                 .filter(s -> s.getStageSequence() != null && current.getStageSequence() != null
                         && s.getStageSequence() == current.getStageSequence() + 1)
@@ -293,7 +316,8 @@ public class ExecutionOrchestrationService {
             }
             return;
         }
-        next.setExecutionStatus("READY");
+        // Use ProductionService to sync stage status
+        productionService.syncStageStatus(next, "WAITING");
         stageRepo.save(next);
         if ("DYEING".equalsIgnoreCase(next.getStageType())) {
             notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị nhuộm",

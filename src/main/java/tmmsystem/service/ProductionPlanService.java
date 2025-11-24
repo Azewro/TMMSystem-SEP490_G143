@@ -295,14 +295,13 @@ public class ProductionPlanService {
         }
         ProductionOrder po = createProductionOrderFromPlan(saved);
 
-        // Auto-create Work Order mirrored from planning stages (fallback to default if missing)
-        var workOrderResult = productionService.createWorkOrderFromPlanStages(po.getId(), planStages,
-                saved.getApprovedBy() != null ? saved.getApprovedBy().getId() : null);
+        // Auto-create ProductionStages directly from planning stages (NEW: không qua WorkOrder)
+        Map<Long, List<ProductionStage>> stageMapping = productionService.createStagesFromPlan(po.getId(), planStages);
         if (!planStages.isEmpty()) {
             planStages.forEach(stage -> stage.setStageStatus("RELEASED"));
             stageRepo.saveAll(planStages);
         }
-        reservePlanStages(saved, workOrderResult.stageMap());
+        reservePlanStages(saved, stageMapping);
         notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO",
                 "Nhận kế hoạch sản xuất đã duyệt",
                 "PO #" + po.getPoNumber() + " đã được kích hoạt từ kế hoạch " + saved.getPlanCode()

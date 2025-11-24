@@ -238,128 +238,14 @@ public class ProductionController {
         service.deleteTechSheet(id);
     }
 
-    // Work Orders
-    @GetMapping("/orders/{poId}/work-orders")
-    public List<WorkOrderDto> listWOs(@PathVariable Long poId) {
-        return service.findWOs(poId).stream().map(mapper::toDto).collect(Collectors.toList());
-    }
+    // REMOVED: Tất cả endpoints liên quan WorkOrder và WorkOrderDetail - không còn dùng nữa
+    // Stages giờ được query trực tiếp theo ProductionOrder
 
-    @GetMapping("/work-orders/{id}")
-    public WorkOrderDto getWO(@PathVariable Long id) {
-        return mapper.toDto(service.findWO(id));
-    }
-
-    @Operation(summary = "Tạo Work Order")
-    @PostMapping("/work-orders")
-    public WorkOrderDto createWO(
-            @RequestBody(description = "Payload tạo WO", required = true, content = @Content(schema = @Schema(implementation = WorkOrderDto.class))) @org.springframework.web.bind.annotation.RequestBody WorkOrderDto body) {
-        WorkOrder w = new WorkOrder();
-        if (body.getProductionOrderId() != null) {
-            ProductionOrder po = new ProductionOrder();
-            po.setId(body.getProductionOrderId());
-            w.setProductionOrder(po);
-        }
-        w.setWoNumber(body.getWoNumber());
-        w.setDeadline(body.getDeadline());
-        w.setStatus(body.getStatus());
-        w.setSendStatus(body.getSendStatus());
-        w.setProduction(body.getIsProduction());
-        return mapper.toDto(service.createWO(w));
-    }
-
-    @Operation(summary = "Cập nhật Work Order")
-    @PutMapping("/work-orders/{id}")
-    public WorkOrderDto updateWO(@PathVariable Long id,
-            @RequestBody(description = "Payload cập nhật WO", required = true, content = @Content(schema = @Schema(implementation = WorkOrderDto.class))) @org.springframework.web.bind.annotation.RequestBody WorkOrderDto body) {
-        WorkOrder w = new WorkOrder();
-        if (body.getProductionOrderId() != null) {
-            ProductionOrder po = new ProductionOrder();
-            po.setId(body.getProductionOrderId());
-            w.setProductionOrder(po);
-        }
-        w.setWoNumber(body.getWoNumber());
-        w.setDeadline(body.getDeadline());
-        w.setStatus(body.getStatus());
-        w.setSendStatus(body.getSendStatus());
-        w.setProduction(body.getIsProduction());
-        return mapper.toDto(service.updateWO(id, w));
-    }
-
-    @DeleteMapping("/work-orders/{id}")
-    public void deleteWO(@PathVariable Long id) {
-        service.deleteWO(id);
-    }
-
-    // Work Order Details
-    @GetMapping("/work-orders/{woId}/details")
-    public List<WorkOrderDetailDto> listWODetails(@PathVariable Long woId) {
-        return service.findWODetails(woId).stream().map(mapper::toDto).collect(Collectors.toList());
-    }
-
-    @GetMapping("/work-order-details/{id}")
-    public WorkOrderDetailDto getWODetail(@PathVariable Long id) {
-        return mapper.toDto(service.findWODetail(id));
-    }
-
-    @Operation(summary = "Thêm chi tiết WO")
-    @PostMapping("/work-order-details")
-    public WorkOrderDetailDto createWODetail(
-            @RequestBody(description = "Payload tạo chi tiết WO", required = true, content = @Content(schema = @Schema(implementation = WorkOrderDetailDto.class))) @org.springframework.web.bind.annotation.RequestBody WorkOrderDetailDto body) {
-        WorkOrderDetail d = new WorkOrderDetail();
-        if (body.getWorkOrderId() != null) {
-            WorkOrder w = new WorkOrder();
-            w.setId(body.getWorkOrderId());
-            d.setWorkOrder(w);
-        }
-        if (body.getProductionOrderDetailId() != null) {
-            ProductionOrderDetail pod = new ProductionOrderDetail();
-            pod.setId(body.getProductionOrderDetailId());
-            d.setProductionOrderDetail(pod);
-        }
-        d.setStageSequence(body.getStageSequence());
-        d.setPlannedStartAt(body.getPlannedStartAt());
-        d.setPlannedEndAt(body.getPlannedEndAt());
-        d.setStartAt(body.getStartAt());
-        d.setCompleteAt(body.getCompleteAt());
-        d.setWorkStatus(body.getWorkStatus());
-        d.setNotes(body.getNotes());
-        return mapper.toDto(service.createWODetail(d));
-    }
-
-    @Operation(summary = "Cập nhật chi tiết WO")
-    @PutMapping("/work-order-details/{id}")
-    public WorkOrderDetailDto updateWODetail(@PathVariable Long id,
-            @RequestBody(description = "Payload cập nhật chi tiết WO", required = true, content = @Content(schema = @Schema(implementation = WorkOrderDetailDto.class))) @org.springframework.web.bind.annotation.RequestBody WorkOrderDetailDto body) {
-        WorkOrderDetail d = new WorkOrderDetail();
-        if (body.getWorkOrderId() != null) {
-            WorkOrder w = new WorkOrder();
-            w.setId(body.getWorkOrderId());
-            d.setWorkOrder(w);
-        }
-        if (body.getProductionOrderDetailId() != null) {
-            ProductionOrderDetail pod = new ProductionOrderDetail();
-            pod.setId(body.getProductionOrderDetailId());
-            d.setProductionOrderDetail(pod);
-        }
-        d.setStageSequence(body.getStageSequence());
-        d.setPlannedStartAt(body.getPlannedStartAt());
-        d.setPlannedEndAt(body.getPlannedEndAt());
-        d.setStartAt(body.getStartAt());
-        d.setCompleteAt(body.getCompleteAt());
-        d.setWorkStatus(body.getWorkStatus());
-        d.setNotes(body.getNotes());
-        return mapper.toDto(service.updateWODetail(id, d));
-    }
-
-    @DeleteMapping("/work-order-details/{id}")
-    public void deleteWODetail(@PathVariable Long id) {
-        service.deleteWODetail(id);
-    }
-
-    // Stages
-    @GetMapping("/work-order-details/{woDetailId}/stages")
-    public List<ProductionStageDto> listStages(@PathVariable Long woDetailId) {
-        return service.findStages(woDetailId).stream().map(mapper::toDto).collect(Collectors.toList());
+    // Stages - Query theo ProductionOrder
+    @Operation(summary = "Lấy danh sách stages của ProductionOrder")
+    @GetMapping("/orders/{orderId}/stages")
+    public List<ProductionStageDto> listStagesByOrder(@PathVariable Long orderId) {
+        return service.findStagesByOrderId(orderId).stream().map(mapper::toDto).collect(Collectors.toList());
     }
 
     @GetMapping("/stages/{id}")
@@ -372,10 +258,11 @@ public class ProductionController {
     public ProductionStageDto createStage(
             @RequestBody(description = "Payload tạo Stage", required = true, content = @Content(schema = @Schema(implementation = ProductionStageDto.class))) @org.springframework.web.bind.annotation.RequestBody ProductionStageDto body) {
         ProductionStage s = new ProductionStage();
-        if (body.getWorkOrderDetailId() != null) {
-            WorkOrderDetail d = new WorkOrderDetail();
-            d.setId(body.getWorkOrderDetailId());
-            s.setWorkOrderDetail(d);
+        // NEW: Link trực tiếp với ProductionOrder (không qua WorkOrderDetail)
+        if (body.getProductionOrderId() != null) {
+            ProductionOrder po = new ProductionOrder();
+            po.setId(body.getProductionOrderId());
+            s.setProductionOrder(po);
         }
         s.setStageType(body.getStageType());
         s.setStageSequence(body.getStageSequence());
@@ -621,23 +508,8 @@ public class ProductionController {
         return service.getProductionPlansPendingApproval();
     }
 
-    @Operation(summary = "Submit Work Order for approval")
-    @PostMapping("/work-orders/{id}/submit-approval")
-    public WorkOrderDto submitWoApproval(@PathVariable Long id) {
-        return mapper.toDto(service.submitWorkOrderApproval(id));
-    }
-
-    @Operation(summary = "Approve Work Order")
-    @PostMapping("/work-orders/{id}/approve")
-    public WorkOrderDto approveWo(@PathVariable Long id, @RequestParam Long pmId) {
-        return mapper.toDto(service.approveWorkOrder(id, pmId));
-    }
-
-    @Operation(summary = "Reject Work Order")
-    @PostMapping("/work-orders/{id}/reject")
-    public WorkOrderDto rejectWo(@PathVariable Long id, @RequestParam Long pmId, @RequestParam String reason) {
-        return mapper.toDto(service.rejectWorkOrder(id, pmId, reason));
-    }
+    // REMOVED: Work Order approval endpoints - không còn dùng nữa
+    // ProductionOrder được tạo trực tiếp từ ProductionPlan khi director approve
 
     @Operation(summary = "Resolve Stage by QR token", description = "KCS quét QR để lấy stage + checklist")
     @GetMapping("/stages/qr/{token}")
@@ -665,11 +537,8 @@ public class ProductionController {
                 .collect(java.util.stream.Collectors.toList());
     }
 
-    @Operation(summary = "Tạo Work Order chuẩn từ PO")
-    @PostMapping("/orders/{poId}/work-orders/create-standard")
-    public WorkOrderDto createStandardWo(@PathVariable Long poId, @RequestParam(required = false) Long createdById) {
-        return mapper.toDto(service.createStandardWorkOrder(poId, createdById));
-    }
+    // REMOVED: createStandardWorkOrder endpoint - không còn dùng nữa
+    // Stages được tạo trực tiếp từ ProductionPlan khi director approve
 
     @Operation(summary = "Leader bắt đầu công đoạn")
     @PostMapping("/stages/{id}/start")
@@ -726,11 +595,11 @@ public class ProductionController {
         return mapper.toDto(service.assignStageQc(id, kcsUserId));
     }
 
-    @Operation(summary = "Bulk phân công leader cho các stage của Work Order")
-    @PostMapping("/work-orders/{woId}/assign-leaders")
-    public java.util.List<ProductionStageDto> bulkAssignLeaders(@PathVariable Long woId,
+    @Operation(summary = "Bulk phân công leader cho các stage của ProductionOrder")
+    @PostMapping("/orders/{orderId}/assign-leaders")
+    public java.util.List<ProductionStageDto> bulkAssignLeaders(@PathVariable Long orderId,
             @RequestBody java.util.Map<String, Long> stageLeaderMap) {
-        return service.bulkAssignStageLeaders(woId, stageLeaderMap).stream().map(s -> mapper.toDto(s))
+        return service.bulkAssignStageLeaders(orderId, stageLeaderMap).stream().map(s -> mapper.toDto(s))
                 .collect(java.util.stream.Collectors.toList());
     }
 }

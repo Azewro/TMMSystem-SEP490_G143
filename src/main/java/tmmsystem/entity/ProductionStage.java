@@ -12,6 +12,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "production_stage", indexes = {
         @Index(name = "idx_stage_wodetail_sequence", columnList = "work_order_detail_id, stage_sequence", unique = true),
+        @Index(name = "idx_stage_po_sequence", columnList = "production_order_id, stage_sequence"), // Removed unique: một PO có thể có nhiều sets stages
         @Index(name = "idx_stage_status_type", columnList = "status, stage_type"),
         @Index(name = "idx_stage_leader_status", columnList = "assigned_leader_id, status"),
         @Index(name = "idx_stage_machine_status", columnList = "machine_id, status"),
@@ -24,9 +25,15 @@ public class ProductionStage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // OLD: Link với WorkOrderDetail (sẽ deprecated sau migration)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "work_order_detail_id")
-    private WorkOrderDetail workOrderDetail;
+    private WorkOrderDetail workOrderDetail; // nullable = true để migration
+
+    // NEW: Link trực tiếp với ProductionOrder
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "production_order_id")
+    private ProductionOrder productionOrder;
 
     @Column(name = "stage_type", length = 20, nullable = false)
     private String stageType; // WARPING, WEAVING, DYEING, CUTTING, HEMMING, PACKAGING

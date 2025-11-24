@@ -10,7 +10,8 @@ import java.time.Instant;
 @Setter
 public class ProductionStageDto {
     private Long id;
-    private Long workOrderDetailId;
+    private Long productionOrderId; // NEW: Link trực tiếp với ProductionOrder
+    private Long workOrderDetailId; // DEPRECATED: Giữ lại để backward compatibility, không dùng nữa
     private String stageType;
     private Integer stageSequence;
     private Long machineId;
