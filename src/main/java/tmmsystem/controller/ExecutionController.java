@@ -44,8 +44,11 @@ public class ExecutionController {
     @PostMapping("/qc-sessions/{sessionId}/submit")
     public QcSession submitQc(@PathVariable Long sessionId, @RequestParam String result,
             @RequestParam(required = false) String notes, @RequestParam Long qcUserId,
+            @RequestParam(required = false) String defectLevel,
+            @RequestParam(required = false) String defectDescription,
             @RequestBody(required = false) java.util.List<tmmsystem.dto.qc.QcInspectionDto> criteriaResults) {
-        return service.submitQcSession(sessionId, result, notes, qcUserId, criteriaResults);
+        return service.submitQcSession(sessionId, result, notes, qcUserId, defectLevel, defectDescription,
+                criteriaResults);
     }
 
     @PostMapping("/issues/{issueId}/rework-request")

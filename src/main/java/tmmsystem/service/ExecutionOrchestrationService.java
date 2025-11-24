@@ -170,7 +170,7 @@ public class ExecutionOrchestrationService {
 
     @Transactional
     public QcSession submitQcSession(Long sessionId, String overallResult, String notes, Long qcUserId,
-            List<QcInspectionDto> criteriaResults) {
+            String defectLevel, String defectDescription, List<QcInspectionDto> criteriaResults) {
         QcSession session = sessionRepo.findById(sessionId).orElseThrow();
         if (!"IN_PROGRESS".equals(session.getStatus()))
             throw new RuntimeException("Session không ở trạng thái IN_PROGRESS");
@@ -213,12 +213,26 @@ public class ExecutionOrchestrationService {
             QualityIssue issue = new QualityIssue();
             issue.setProductionStage(stageRef);
             issue.setProductionOrder(resolveOrder(stageRef));
-            issue.setSeverity("MINOR");
+            issue.setSeverity(defectLevel != null ? defectLevel : "MINOR");
             issue.setIssueType("REWORK");
-            issue.setDescription(notes);
+            issue.setDescription(defectDescription != null ? defectDescription : notes);
             issueRepo.save(issue);
-            notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "WARNING", "Lỗi QC",
-                    "Công đoạn " + stageRef.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
+
+            // Smart notification based on severity
+            if ("MINOR".equals(defectLevel)) {
+                // Notify assigned leader for minor defects
+                User leader = stageRef.getAssignedLeader();
+                if (leader != null) {
+                    notificationService.notifyUser(leader, "PRODUCTION", "WARNING", "Lỗi nhẹ cần xử lý",
+                            "Công đoạn " + stageRef.getStageType()
+                                    + " có lỗi nhẹ cần làm lại. Vui lòng kiểm tra và xử lý.",
+                            "QUALITY_ISSUE", issue.getId());
+                }
+            } else {
+                // Notify technical staff for major defects
+                notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "WARNING", "Lỗi QC",
+                        "Công đoạn " + stageRef.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
+            }
         }
         return session;
     }

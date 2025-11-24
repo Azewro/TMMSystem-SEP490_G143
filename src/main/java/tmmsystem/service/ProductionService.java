@@ -50,6 +50,7 @@ public class ProductionService {
     private final ProductionPlanRepository productionPlanRepository;
     private final ProductionLotRepository productionLotRepository;
     private final ProductionMapper productionMapper;
+    private final tmmsystem.repository.QualityIssueRepository issueRepo;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -70,7 +71,8 @@ public class ProductionService {
             MachineRepository machineRepository,
             ProductionPlanRepository productionPlanRepository,
             ProductionLotRepository productionLotRepository,
-            ProductionMapper productionMapper) {
+            ProductionMapper productionMapper,
+            tmmsystem.repository.QualityIssueRepository issueRepo) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -91,6 +93,7 @@ public class ProductionService {
         this.productionPlanRepository = productionPlanRepository;
         this.productionLotRepository = productionLotRepository;
         this.productionMapper = productionMapper;
+        this.issueRepo = issueRepo;
     }
 
     // Production Order
@@ -444,6 +447,61 @@ public class ProductionService {
 
     public ProductionStage findStageByQrToken(String token) {
         return stageRepo.findByQrToken(token).orElseThrow(() -> new RuntimeException("Invalid QR token"));
+    }
+
+    // Leader Defect Methods
+    public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(Long leaderUserId) {
+        // Get all MINOR defects assigned to this leader
+        return issueRepo.findAll().stream()
+                .filter(i -> "MINOR".equals(i.getSeverity()))
+                .filter(i -> {
+                    ProductionStage stage = i.getProductionStage();
+                    return stage != null &&
+                            stage.getAssignedLeader() != null &&
+                            stage.getAssignedLeader().getId().equals(leaderUserId);
+                })
+                .map(this::mapQualityIssueToDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    public tmmsystem.dto.qc.QualityIssueDto getDefectDetail(Long defectId) {
+        QualityIssue issue = issueRepo.findById(defectId)
+                .orElseThrow(() -> new RuntimeException("Defect not found"));
+        return mapQualityIssueToDto(issue);
+    }
+
+    public void startReworkFromDefect(Long defectId, Long userId) {
+        QualityIssue issue = issueRepo.findById(defectId)
+                .orElseThrow(() -> new RuntimeException("Defect not found"));
+        ProductionStage stage = issue.getProductionStage();
+        if (stage == null) {
+            throw new RuntimeException("Stage not found for this defect");
+        }
+        // Reset stage to allow rework
+        stage.setExecutionStatus("WAITING_REWORK");
+        stage.setProgressPercent(0);
+        stageRepo.save(stage);
+        // Update issue status
+        issue.setStatus("IN_PROGRESS");
+        issueRepo.save(issue);
+    }
+
+    private tmmsystem.dto.qc.QualityIssueDto mapQualityIssueToDto(QualityIssue issue) {
+        tmmsystem.dto.qc.QualityIssueDto dto = new tmmsystem.dto.qc.QualityIssueDto();
+        dto.setId(issue.getId());
+        dto.setSeverity(issue.getSeverity());
+        dto.setIssueType(issue.getIssueType());
+        dto.setDescription(issue.getDescription());
+        dto.setStatus(issue.getStatus());
+        if (issue.getProductionStage() != null) {
+            dto.setStageId(issue.getProductionStage().getId());
+            dto.setStageType(issue.getProductionStage().getStageType());
+        }
+        if (issue.getProductionOrder() != null) {
+            dto.setOrderId(issue.getProductionOrder().getId());
+            dto.setPoNumber(issue.getProductionOrder().getPoNumber());
+        }
+        return dto;
     }
 
     // Redo stage (fail nhẹ)

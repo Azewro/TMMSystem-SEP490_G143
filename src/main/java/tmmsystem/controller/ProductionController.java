@@ -11,8 +11,10 @@ import tmmsystem.dto.production.*;
 import tmmsystem.entity.*;
 import tmmsystem.mapper.ProductionMapper;
 import tmmsystem.service.ProductionService;
+import org.springframework.http.ResponseEntity;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -46,6 +48,23 @@ public class ProductionController {
         return service.findAllPO().stream()
                 .map(po -> service.enrichProductionOrderDto(po))
                 .collect(Collectors.toList());
+    }
+
+    // Leader Defect APIs
+    @GetMapping("/leader/defects")
+    public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(@RequestParam Long leaderUserId) {
+        return service.getLeaderDefects(leaderUserId);
+    }
+
+    @GetMapping("/defects/{id}")
+    public tmmsystem.dto.qc.QualityIssueDto getDefectDetail(@PathVariable Long id) {
+        return service.getDefectDetail(id);
+    }
+
+    @PostMapping("/defects/{id}/start-rework")
+    public ResponseEntity<?> startReworkFromDefect(@PathVariable Long id, @RequestParam Long userId) {
+        service.startReworkFromDefect(id, userId);
+        return ResponseEntity.ok(Map.of("message", "Đã bắt đầu làm lại công đoạn"));
     }
 
     @Operation(summary = "PM: Bắt đầu lệnh làm việc (gửi thông báo đến Leaders và QC)")
