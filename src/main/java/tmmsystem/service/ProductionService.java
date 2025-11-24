@@ -1087,16 +1087,29 @@ public class ProductionService {
     /**
      * Lấy danh sách orders cho KCS
      * NEW: Query trực tiếp theo ProductionOrder (không qua WorkOrderDetail)
+     * Query tất cả stages có status WAITING_QC hoặc QC_IN_PROGRESS
+     * (không filter theo qcAssigneeId vì QA có thể kiểm tra bất kỳ stage nào đang chờ kiểm tra)
      */
     public List<ProductionOrder> getQaOrders() {
         // Get orders that have stages waiting for QC or in QC
+        // Sử dụng JOIN FETCH để load productionOrder ngay lập tức, tránh LazyLoadingException
         List<ProductionStage> qcStages = stageRepo.findByExecutionStatusIn(
                 java.util.List.of("WAITING_QC", "QC_IN_PROGRESS"));
 
+        // Extract unique ProductionOrder IDs từ stages (productionOrder đã được fetch join)
         java.util.Set<Long> orderIds = qcStages.stream()
-                .map(s -> s.getProductionOrder() != null ? s.getProductionOrder().getId() : null)
+                .map(s -> {
+                    if (s.getProductionOrder() != null) {
+                        return s.getProductionOrder().getId();
+                    }
+                    return null;
+                })
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
+
+        if (orderIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
 
         return poRepo.findAllById(orderIds);
     }
