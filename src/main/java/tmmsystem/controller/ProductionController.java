@@ -36,7 +36,25 @@ public class ProductionController {
 
     @GetMapping("/orders/{id}")
     public ProductionOrderDto getPO(@PathVariable Long id) {
-        return mapper.toDto(service.findPO(id));
+        ProductionOrder po = service.findPO(id);
+        return service.enrichProductionOrderDto(po);
+    }
+
+    @Operation(summary = "PM: Lấy danh sách đơn hàng")
+    @GetMapping("/manager/orders")
+    public List<ProductionOrderDto> getManagerOrders() {
+        return service.findAllPO().stream()
+                .map(po -> service.enrichProductionOrderDto(po))
+                .collect(Collectors.toList());
+    }
+
+    @Operation(summary = "PM: Bắt đầu lệnh làm việc (gửi thông báo đến Leaders và QC)")
+    @PostMapping("/orders/{orderId}/start-work-order")
+    public java.util.Map<String, Object> startWorkOrder(@PathVariable Long orderId) {
+        List<ProductionStage> stages = service.startWorkOrder(orderId);
+        return java.util.Map.of(
+                "message", "Đã gửi thông báo đến tất cả Tổ Trưởng và KCS",
+                "stageCount", stages.size());
     }
 
     @Operation(summary = "Tạo Production Order")
@@ -495,6 +513,54 @@ public class ProductionController {
         return service.getDirectorPendingProductionOrders().stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
+    }
+
+    // Leader APIs
+    @Operation(summary = "Lấy danh sách orders cho Team Leader", description = "Dùng cho màn hình danh sách đơn hàng của Team Leader")
+    @GetMapping("/leader/orders")
+    public java.util.List<ProductionOrderDto> getLeaderOrders(@RequestParam Long leaderUserId) {
+        return service.getLeaderOrders(leaderUserId).stream()
+                .map(po -> service.enrichProductionOrderDto(po))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Operation(summary = "Lấy chi tiết order với stage của Leader", description = "Dùng cho màn hình chi tiết đơn hàng của Team Leader")
+    @GetMapping("/leader/orders/{orderId}")
+    public ProductionOrderDto getLeaderOrderDetail(@PathVariable Long orderId, @RequestParam Long leaderUserId) {
+        ProductionOrder po = service.findPO(orderId);
+        ProductionOrderDto dto = service.enrichProductionOrderDto(po);
+
+        // Lấy stage của leader này cho order này
+        List<ProductionStage> leaderStages = service.getLeaderStagesForOrder(orderId, leaderUserId);
+        if (!leaderStages.isEmpty()) {
+            ProductionStage leaderStage = leaderStages.get(0);
+            ProductionStageDto stageDto = mapper.toDto(leaderStage);
+            java.math.BigDecimal totalHours = service.calculateTotalHoursForStage(leaderStage.getId());
+            stageDto.setTotalHours(totalHours);
+            // Set stage (singular) cho frontend
+            dto.setStages(java.util.List.of(stageDto));
+        }
+
+        return dto;
+    }
+
+    @Operation(summary = "Lấy chi tiết stage với progress history cho Leader", description = "Dùng cho màn hình cập nhật tiến độ của Team Leader")
+    @GetMapping("/leader/stages/{stageId}")
+    public ProductionStageDto getLeaderStageDetail(@PathVariable Long stageId) {
+        ProductionStage stage = service.findStage(stageId);
+        ProductionStageDto dto = mapper.toDto(stage);
+        java.math.BigDecimal totalHours = service.calculateTotalHoursForStage(stageId);
+        dto.setTotalHours(totalHours);
+        return dto;
+    }
+
+    // QA/KCS APIs
+    @Operation(summary = "Lấy danh sách orders cho QA/KCS", description = "Dùng cho màn hình danh sách đơn hàng của QA/KCS")
+    @GetMapping("/qa/orders")
+    public java.util.List<ProductionOrderDto> getQaOrders() {
+        return service.getQaOrders().stream()
+                .map(po -> service.enrichProductionOrderDto(po))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     @Operation(summary = "Duyệt lệnh sản xuất", description = "Director duyệt lệnh sản xuất")

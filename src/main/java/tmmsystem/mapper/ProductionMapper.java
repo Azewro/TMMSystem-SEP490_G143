@@ -3,6 +3,7 @@ package tmmsystem.mapper;
 import org.springframework.stereotype.Component;
 import tmmsystem.dto.production.*;
 import tmmsystem.entity.*;
+import java.time.Instant;
 
 @Component
 public class ProductionMapper {
@@ -133,6 +134,136 @@ public class ProductionMapper {
         dto.setExecutionStatus(s.getExecutionStatus());
         dto.setProgressPercent(s.getProgressPercent());
         dto.setIsRework(s.getIsRework());
+        
+        // Enrich fields for frontend
+        dto.setStageCode(s.getStageType()); // stageType là mã công đoạn
+        dto.setStageName(mapStageTypeToName(s.getStageType())); // Map mã sang tên
+        dto.setAssigneeName(getAssigneeName(s)); // Lấy tên người phụ trách
+        dto.setStatusLabel(mapStageStatusToLabel(s.getExecutionStatus(), s.getStatus())); // Map status sang label
+        
+        // Format start and end times for Leader
+        if (s.getStartAt() != null) {
+            dto.setStartTimeFormatted(formatInstant(s.getStartAt()));
+        }
+        if (s.getCompleteAt() != null) {
+            dto.setEndTimeFormatted(formatInstant(s.getCompleteAt()));
+        }
+        
         return dto;
+    }
+    
+    /**
+     * Format Instant to Vietnamese datetime string
+     */
+    private String formatInstant(Instant instant) {
+        if (instant == null) return null;
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(java.time.ZoneId.systemDefault())
+            .format(instant);
+    }
+    
+    /**
+     * Map stageType sang tên công đoạn để hiển thị
+     */
+    private String mapStageTypeToName(String stageType) {
+        if (stageType == null) return "Không xác định";
+        switch (stageType.toUpperCase()) {
+            case "WARPING":
+            case "CUONG_MAC":
+                return "Cuồng mắc";
+            case "WEAVING":
+            case "DET":
+                return "Dệt";
+            case "DYEING":
+            case "NHUOM":
+                return "Nhuộm";
+            case "CUTTING":
+            case "CAT":
+                return "Cắt";
+            case "HEMMING":
+            case "MAY":
+                return "May";
+            case "PACKAGING":
+            case "DONG_GOI":
+                return "Đóng gói";
+            default:
+                return stageType;
+        }
+    }
+    
+    /**
+     * Lấy tên người phụ trách
+     */
+    private String getAssigneeName(ProductionStage s) {
+        // Ưu tiên assignedLeader, nếu không có thì lấy assignedTo
+        if (s.getAssignedLeader() != null) {
+            return s.getAssignedLeader().getName() != null ? 
+                s.getAssignedLeader().getName() : 
+                (s.getAssignedLeader().getEmail() != null ? s.getAssignedLeader().getEmail() : "N/A");
+        }
+        if (s.getAssignedTo() != null) {
+            return s.getAssignedTo().getName() != null ? 
+                s.getAssignedTo().getName() : 
+                (s.getAssignedTo().getEmail() != null ? s.getAssignedTo().getEmail() : "N/A");
+        }
+        // Nếu là công đoạn nhuộm và outsourced, trả về "Production Manager"
+        if ("DYEING".equalsIgnoreCase(s.getStageType()) || "NHUOM".equalsIgnoreCase(s.getStageType())) {
+            if (Boolean.TRUE.equals(s.getOutsourced())) {
+                return "Production Manager";
+            }
+        }
+        return "Chưa phân công";
+    }
+    
+    /**
+     * Map executionStatus và status sang statusLabel để hiển thị
+     */
+    private String mapStageStatusToLabel(String executionStatus, String status) {
+        if (executionStatus != null) {
+            switch (executionStatus) {
+                case "PENDING":
+                    return "Đợi";
+                case "WAITING":
+                    return "Chờ làm";
+                case "IN_PROGRESS":
+                    return "Đang làm";
+                case "WAITING_QC":
+                    return "Chờ kiểm tra";
+                case "QC_IN_PROGRESS":
+                    return "Đang kiểm tra";
+                case "QC_PASSED":
+                    return "Đạt";
+                case "QC_FAILED":
+                    return "Không đạt";
+                case "WAITING_REWORK":
+                    return "Chờ sửa";
+                case "REWORK_IN_PROGRESS":
+                    return "Đang sửa";
+                case "COMPLETED":
+                    return "Hoàn thành";
+                default:
+                    break;
+            }
+        }
+        // Fallback về status nếu executionStatus không có
+        if (status != null) {
+            switch (status) {
+                case "PENDING":
+                    return "Đợi";
+                case "WAITING":
+                    return "Chờ làm";
+                case "IN_PROGRESS":
+                    return "Đang làm";
+                case "WAITING_QC":
+                    return "Chờ kiểm tra";
+                case "COMPLETED":
+                    return "Hoàn thành";
+                case "FAILED":
+                    return "Không đạt";
+                default:
+                    return status;
+            }
+        }
+        return "Không xác định";
     }
 }

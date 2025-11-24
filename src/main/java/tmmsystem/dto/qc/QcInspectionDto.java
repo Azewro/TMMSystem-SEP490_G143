@@ -1,10 +1,12 @@
 package tmmsystem.dto.qc;
 
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
-@Getter @Setter
+@Getter
+@Setter
 public class QcInspectionDto {
     private Long id;
     private Long productionStageId;
@@ -15,7 +17,6 @@ public class QcInspectionDto {
     private Integer failCount;
     private String result;
     private String notes;
+    private String photoUrl;
     private Instant inspectedAt;
 }
-
-

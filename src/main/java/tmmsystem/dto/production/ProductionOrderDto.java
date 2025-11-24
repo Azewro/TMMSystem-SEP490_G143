@@ -29,4 +29,16 @@ public class ProductionOrderDto {
     private List<ProductionOrderDetailDto> details;
     private Long assignedTechnicianId;
     private Instant assignedAt;
+    
+    // Enriched fields for frontend
+    private String lotCode; // Mã lô từ ProductionLot
+    private String productName; // Tên sản phẩm từ ProductionOrderDetail
+    private String size; // Kích thước từ Product.standardDimensions hoặc ProductionLot.sizeSnapshot
+    private String statusLabel; // Nhãn trạng thái để hiển thị
+    private List<ProductionStageDto> stages; // Danh sách các công đoạn
+    
+    // Aliases for frontend compatibility
+    private LocalDate expectedStartDate; // Alias cho plannedStartDate
+    private LocalDate expectedFinishDate; // Alias cho plannedEndDate
+    private LocalDate expectedDeliveryDate; // Alias cho plannedStartDate (dùng cho Leader)
 }

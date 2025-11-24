@@ -296,4 +296,11 @@ public class QcController {
                 .map(productionMapper::toDto)
                 .collect(java.util.stream.Collectors.toList());
     }
+
+    // Technical APIs
+    @Operation(summary = "Lấy danh sách defects cho Technical department", description = "Dùng cho màn hình danh sách lỗi của Technical")
+    @GetMapping("/technical/defects")
+    public java.util.List<tmmsystem.dto.qc.TechnicalDefectDto> getTechnicalDefects() {
+        return service.getTechnicalDefects();
+    }
 }

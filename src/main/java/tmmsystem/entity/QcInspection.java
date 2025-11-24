@@ -1,21 +1,23 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
-@Entity @Table(name = "qc_inspection",
-        indexes = {
-                @Index(name = "idx_qc_inspection_stage", columnList = "production_stage_id"),
-                @Index(name = "idx_qc_inspection_inspector_time", columnList = "inspector_id, inspected_at"),
-                @Index(name = "idx_qc_inspection_result", columnList = "result")
-        }
-)
-@Getter @Setter
+@Entity
+@Table(name = "qc_inspection", indexes = {
+        @Index(name = "idx_qc_inspection_stage", columnList = "production_stage_id"),
+        @Index(name = "idx_qc_inspection_inspector_time", columnList = "inspector_id, inspected_at"),
+        @Index(name = "idx_qc_inspection_result", columnList = "result")
+})
+@Getter
+@Setter
 public class QcInspection {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -45,9 +47,10 @@ public class QcInspection {
     @Column(columnDefinition = "text")
     private String notes;
 
+    @Column(name = "photo_url")
+    private String photoUrl;
+
     @CreationTimestamp
     @Column(name = "inspected_at", updatable = false)
     private Instant inspectedAt;
 }
-
-

@@ -37,4 +37,15 @@ public class ProductionStageDto {
     private String executionStatus;
     private Integer progressPercent;
     private Boolean isRework;
+    
+    // Enriched fields for frontend
+    private String stageName; // Tên công đoạn để hiển thị (Cuồng mắc, Dệt, Nhuộm, ...)
+    private String assigneeName; // Tên người phụ trách để hiển thị
+    private String statusLabel; // Nhãn trạng thái để hiển thị
+    private String stageCode; // Mã công đoạn (CUONG_MAC, DET, NHUOM, ...)
+    
+    // Additional fields for Leader progress tracking
+    private java.math.BigDecimal totalHours; // Tổng thời gian đã làm (tính từ StageTracking)
+    private String startTimeFormatted; // Thời gian bắt đầu định dạng (cho Leader)
+    private String endTimeFormatted; // Thời gian kết thúc định dạng (cho Leader)
 }

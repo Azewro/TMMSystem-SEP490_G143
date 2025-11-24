@@ -18,6 +18,12 @@ import tmmsystem.repository.UserRepository;
 import java.time.Instant;
 import java.util.List;
 
+import tmmsystem.dto.qc.QcInspectionDto;
+import tmmsystem.entity.QcCheckpoint;
+import tmmsystem.entity.QcInspection;
+import tmmsystem.repository.QcCheckpointRepository;
+import tmmsystem.repository.QcInspectionRepository;
+
 @Service
 public class ExecutionOrchestrationService {
     private final ProductionOrderRepository orderRepo;
@@ -28,6 +34,8 @@ public class ExecutionOrchestrationService {
     private final NotificationService notificationService;
     private final MaterialRequisitionRepository materialReqRepo;
     private final ProductionService productionService;
+    private final QcCheckpointRepository qcCheckpointRepository;
+    private final QcInspectionRepository qcInspectionRepository;
 
     public ExecutionOrchestrationService(ProductionOrderRepository orderRepo,
             ProductionStageRepository stageRepo,
@@ -36,7 +44,9 @@ public class ExecutionOrchestrationService {
             UserRepository userRepo,
             NotificationService notificationService,
             MaterialRequisitionRepository materialReqRepo,
-            ProductionService productionService) {
+            ProductionService productionService,
+            QcCheckpointRepository qcCheckpointRepository,
+            QcInspectionRepository qcInspectionRepository) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -45,6 +55,8 @@ public class ExecutionOrchestrationService {
         this.notificationService = notificationService;
         this.materialReqRepo = materialReqRepo;
         this.productionService = productionService;
+        this.qcCheckpointRepository = qcCheckpointRepository;
+        this.qcInspectionRepository = qcInspectionRepository;
     }
 
     // Helper lấy tất cả stage thuộc orderId (dựa trên quan hệ WorkOrderDetail ->
@@ -135,11 +147,11 @@ public class ExecutionOrchestrationService {
         if (!"WAITING_QC".equals(stage.getExecutionStatus()))
             throw new RuntimeException("Không ở trạng thái chờ QC");
         User qc = userRepo.findById(qcUserId).orElseThrow();
-        
+
         // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
         productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
         stageRepo.save(stage);
-        
+
         QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
         if (existing != null)
             return existing;
@@ -150,35 +162,63 @@ public class ExecutionOrchestrationService {
         return sessionRepo.save(session);
     }
 
+    @Transactional(readOnly = true)
+    public List<QcCheckpoint> getCheckpointsForStage(Long stageId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        return qcCheckpointRepository.findByStageTypeOrderByDisplayOrderAsc(stage.getStageType());
+    }
+
     @Transactional
-    public QcSession submitQcSession(Long sessionId, String overallResult, String notes, Long qcUserId) {
+    public QcSession submitQcSession(Long sessionId, String overallResult, String notes, Long qcUserId,
+            List<QcInspectionDto> criteriaResults) {
         QcSession session = sessionRepo.findById(sessionId).orElseThrow();
         if (!"IN_PROGRESS".equals(session.getStatus()))
             throw new RuntimeException("Session không ở trạng thái IN_PROGRESS");
         if (!"PASS".equalsIgnoreCase(overallResult) && !"FAIL".equalsIgnoreCase(overallResult))
             throw new RuntimeException("Kết quả không hợp lệ");
+
+        // Save detailed inspections
+        ProductionStage stage = session.getProductionStage();
+        User inspector = userRepo.findById(qcUserId).orElseThrow();
+
+        if (criteriaResults != null) {
+            for (QcInspectionDto dto : criteriaResults) {
+                QcInspection inspection = new QcInspection();
+                inspection.setProductionStage(stage);
+                if (dto.getQcCheckpointId() != null) {
+                    QcCheckpoint cp = qcCheckpointRepository.findById(dto.getQcCheckpointId()).orElse(null);
+                    inspection.setQcCheckpoint(cp);
+                }
+                inspection.setInspector(inspector);
+                inspection.setResult(dto.getResult());
+                inspection.setNotes(dto.getNotes());
+                inspection.setPhotoUrl(dto.getPhotoUrl());
+                qcInspectionRepository.save(inspection);
+            }
+        }
+
         session.setOverallResult(overallResult.toUpperCase());
         session.setNotes(notes);
         session.setStatus("SUBMITTED");
         session.setSubmittedAt(Instant.now());
         sessionRepo.save(session);
-        ProductionStage stage = session.getProductionStage();
+        ProductionStage stageRef = session.getProductionStage(); // Re-use stage reference
         if ("PASS".equalsIgnoreCase(overallResult)) {
-            stage.setExecutionStatus("QC_PASSED");
-            stageRepo.save(stage);
-            openNextStage(stage);
+            stageRef.setExecutionStatus("QC_PASSED");
+            stageRepo.save(stageRef);
+            openNextStage(stageRef);
         } else {
-            stage.setExecutionStatus("QC_FAILED");
-            stageRepo.save(stage);
+            stageRef.setExecutionStatus("QC_FAILED");
+            stageRepo.save(stageRef);
             QualityIssue issue = new QualityIssue();
-            issue.setProductionStage(stage);
-            issue.setProductionOrder(resolveOrder(stage));
+            issue.setProductionStage(stageRef);
+            issue.setProductionOrder(resolveOrder(stageRef));
             issue.setSeverity("MINOR");
             issue.setIssueType("REWORK");
             issue.setDescription(notes);
             issueRepo.save(issue);
             notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "WARNING", "Lỗi QC",
-                    "Công đoạn " + stage.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
+                    "Công đoạn " + stageRef.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
         }
         return session;
     }

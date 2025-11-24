@@ -5,6 +5,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
 import tmmsystem.entity.ProductionPlanStage;
 import tmmsystem.repository.*;
+import tmmsystem.dto.production.ProductionOrderDto;
+import tmmsystem.dto.production.ProductionStageDto;
+import tmmsystem.mapper.ProductionMapper;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -44,6 +47,9 @@ public class ProductionService {
     private final OutsourcingTaskRepository outsourcingTaskRepository;
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final MachineRepository machineRepository;
+    private final ProductionPlanRepository productionPlanRepository;
+    private final ProductionLotRepository productionLotRepository;
+    private final ProductionMapper productionMapper;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -61,7 +67,10 @@ public class ProductionService {
             StagePauseLogRepository stagePauseLogRepository,
             OutsourcingTaskRepository outsourcingTaskRepository,
             MachineAssignmentRepository machineAssignmentRepository,
-            MachineRepository machineRepository) {
+            MachineRepository machineRepository,
+            ProductionPlanRepository productionPlanRepository,
+            ProductionLotRepository productionLotRepository,
+            ProductionMapper productionMapper) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -79,6 +88,9 @@ public class ProductionService {
         this.outsourcingTaskRepository = outsourcingTaskRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.machineRepository = machineRepository;
+        this.productionPlanRepository = productionPlanRepository;
+        this.productionLotRepository = productionLotRepository;
+        this.productionMapper = productionMapper;
     }
 
     // Production Order
@@ -467,20 +479,20 @@ public class ProductionService {
         s.setQcLastCheckedAt(Instant.now());
         syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
-        
+
         // Determine next stage in same WorkOrderDetail
         WorkOrderDetail wod = s.getWorkOrderDetail();
         List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(wod.getId());
         ProductionStage next = stages.stream().filter(x -> x.getStageSequence() != null && s.getStageSequence() != null
                 && x.getStageSequence() == s.getStageSequence() + 1).findFirst().orElse(null);
-        
+
         if (next != null) {
             // Set next stage to WAITING (chờ làm)
             syncStageStatus(next, "WAITING");
             stageRepo.save(next);
 
             String currentStageType = s.getStageType();
-            
+
             // Workflow logic based on current stage
             if ("WARPING".equalsIgnoreCase(currentStageType) || "CUONG_MAC".equalsIgnoreCase(currentStageType)) {
                 // Cuồng mắc PASS → notify Tổ Trưởng dệt
@@ -527,13 +539,14 @@ public class ProductionService {
                             "Công đoạn may đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
                             "PRODUCTION_STAGE", next.getId());
                 }
-            } else if ("PACKAGING".equalsIgnoreCase(currentStageType) || "DONG_GOI".equalsIgnoreCase(currentStageType)) {
+            } else if ("PACKAGING".equalsIgnoreCase(currentStageType)
+                    || "DONG_GOI".equalsIgnoreCase(currentStageType)) {
                 // Đóng gói PASS → notify Kho
                 notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS",
                         "Công đoạn đóng gói đạt",
                         "Công đoạn đóng gói đã đạt QC. Sản phẩm sẵn sàng nhập kho.",
                         "PRODUCTION_STAGE", s.getId());
-                
+
                 // Check if all stages completed
                 WorkOrderDetail wodOfStage = s.getWorkOrderDetail();
                 ProductionOrder po = wodOfStage.getProductionOrderDetail().getProductionOrder();
@@ -557,7 +570,9 @@ public class ProductionService {
                     }
                     if (!allOk)
                         break;
-                    ProductionStage pkg = stgs.stream().filter(st -> "PACKAGING".equalsIgnoreCase(st.getStageType()) || "DONG_GOI".equalsIgnoreCase(st.getStageType()))
+                    ProductionStage pkg = stgs.stream()
+                            .filter(st -> "PACKAGING".equalsIgnoreCase(st.getStageType())
+                                    || "DONG_GOI".equalsIgnoreCase(st.getStageType()))
                             .findFirst().orElse(null);
                     if (pkg == null || pkg.getCompleteAt() == null) {
                         allOk = false;
@@ -654,10 +669,12 @@ public class ProductionService {
     }
 
     /**
-     * Create WorkOrder + ProductionStages directly from planning stages (auto release flow)
+     * Create WorkOrder + ProductionStages directly from planning stages (auto
+     * release flow)
      */
     @Transactional
-    public WorkOrderStageResult createWorkOrderFromPlanStages(Long poId, List<ProductionPlanStage> planStages, Long createdById) {
+    public WorkOrderStageResult createWorkOrderFromPlanStages(Long poId, List<ProductionPlanStage> planStages,
+            Long createdById) {
         if (planStages == null || planStages.isEmpty()) {
             WorkOrder wo = createStandardWorkOrder(poId, createdById);
             return new WorkOrderStageResult(wo, Map.of());
@@ -665,7 +682,8 @@ public class ProductionService {
         ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
         List<ProductionPlanStage> orderedStages = planStages.stream()
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(stage -> stage.getSequenceNo() == null ? Integer.MAX_VALUE : stage.getSequenceNo()))
+                .sorted(Comparator
+                        .comparing(stage -> stage.getSequenceNo() == null ? Integer.MAX_VALUE : stage.getSequenceNo()))
                 .toList();
         Map<Long, List<ProductionStage>> stageMapping = new HashMap<>();
         WorkOrder wo = new WorkOrder();
@@ -893,7 +911,8 @@ public class ProductionService {
 
     /**
      * Đồng bộ cả status và executionStatus
-     * executionStatus là trường chính, status được map từ executionStatus để tương thích
+     * executionStatus là trường chính, status được map từ executionStatus để tương
+     * thích
      * Method này có thể được gọi từ các service khác (như QcService)
      * 
      * Mapping theo yêu cầu từ workflow:
@@ -910,7 +929,7 @@ public class ProductionService {
      */
     public void syncStageStatus(ProductionStage stage, String executionStatus) {
         stage.setExecutionStatus(executionStatus);
-        
+
         // Map executionStatus sang status để tương thích với code cũ
         // Giữ nguyên executionStatus values để frontend có thể phân biệt rõ ràng
         String mappedStatus;
@@ -1035,8 +1054,9 @@ public class ProductionService {
      */
     @Transactional
     public List<ProductionStage> startWorkOrder(Long orderId) {
-        ProductionOrder po = poRepo.findById(orderId).orElseThrow(() -> new RuntimeException("Production Order not found"));
-        
+        ProductionOrder po = poRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Production Order not found"));
+
         // Get all work orders for this production order
         List<WorkOrder> workOrders = woRepo.findByProductionOrderId(orderId);
         if (workOrders.isEmpty()) {
@@ -1051,40 +1071,42 @@ public class ProductionService {
             List<WorkOrderDetail> wodList = wodRepo.findByWorkOrderId(wo.getId());
             for (WorkOrderDetail wod : wodList) {
                 List<ProductionStage> stages = stageRepo.findByWorkOrderDetailIdOrderByStageSequenceAsc(wod.getId());
-                
+
                 // Find first stage (lowest sequence number)
                 ProductionStage firstStage = stages.stream()
-                    .filter(s -> s.getStageSequence() != null)
-                    .min(Comparator.comparing(ProductionStage::getStageSequence))
-                    .orElse(null);
+                        .filter(s -> s.getStageSequence() != null)
+                        .min(Comparator.comparing(ProductionStage::getStageSequence))
+                        .orElse(null);
 
                 for (ProductionStage stage : stages) {
                     if (stage.equals(firstStage)) {
                         // First stage: WAITING (chờ làm)
                         syncStageStatus(stage, "WAITING");
-                        
+
                         // Notify assigned leader
                         if (stage.getAssignedLeader() != null && !notifiedLeaders.contains(stage.getAssignedLeader())) {
                             notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
-                                "Công đoạn sẵn sàng bắt đầu",
-                                "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber() + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
-                                "PRODUCTION_STAGE", stage.getId());
+                                    "Công đoạn sẵn sàng bắt đầu",
+                                    "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
+                                            + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
+                                    "PRODUCTION_STAGE", stage.getId());
                             notifiedLeaders.add(stage.getAssignedLeader());
                         }
                     } else {
                         // Other stages: PENDING (đợi)
                         syncStageStatus(stage, "PENDING");
                     }
-                    
+
                     // Notify QC if assigned
                     if (stage.getQcAssignee() != null && !notifiedQcs.contains(stage.getQcAssignee())) {
                         notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO",
-                            "Chuẩn bị kiểm tra",
-                            "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber() + " sẽ cần kiểm tra sau khi hoàn thành.",
-                            "PRODUCTION_STAGE", stage.getId());
+                                "Chuẩn bị kiểm tra",
+                                "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
+                                        + " sẽ cần kiểm tra sau khi hoàn thành.",
+                                "PRODUCTION_STAGE", stage.getId());
                         notifiedQcs.add(stage.getQcAssignee());
                     }
-                    
+
                     allStages.add(stage);
                 }
             }
@@ -1095,9 +1117,10 @@ public class ProductionService {
         for (User qc : qcStaff) {
             if (!notifiedQcs.contains(qc)) {
                 notificationService.notifyUser(qc, "QC", "INFO",
-                    "Lệnh sản xuất mới",
-                    "Lệnh sản xuất #" + po.getPoNumber() + " đã bắt đầu. Các công đoạn sẽ cần kiểm tra sau khi hoàn thành.",
-                    "PRODUCTION_ORDER", po.getId());
+                        "Lệnh sản xuất mới",
+                        "Lệnh sản xuất #" + po.getPoNumber()
+                                + " đã bắt đầu. Các công đoạn sẽ cần kiểm tra sau khi hoàn thành.",
+                        "PRODUCTION_ORDER", po.getId());
             }
         }
 
@@ -1118,8 +1141,8 @@ public class ProductionService {
     public List<ProductionOrder> getManagerOrders() {
         // Get all production orders that have work orders
         return poRepo.findAll().stream()
-            .filter(po -> !woRepo.findByProductionOrderId(po.getId()).isEmpty())
-            .collect(java.util.stream.Collectors.toList());
+                .filter(po -> !woRepo.findByProductionOrderId(po.getId()).isEmpty())
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /**
@@ -1128,14 +1151,13 @@ public class ProductionService {
     public List<ProductionOrder> getLeaderOrders(Long leaderUserId) {
         // Get orders that have stages assigned to this leader
         List<ProductionStage> leaderStages = stageRepo.findByAssignedLeaderIdAndExecutionStatusIn(
-            leaderUserId, 
-            java.util.List.of("WAITING", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS")
-        );
-        
+                leaderUserId,
+                java.util.List.of("WAITING", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
+
         java.util.Set<Long> orderIds = leaderStages.stream()
-            .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
-            .collect(java.util.stream.Collectors.toSet());
-        
+                .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+                .collect(java.util.stream.Collectors.toSet());
+
         return poRepo.findAllById(orderIds);
     }
 
@@ -1145,13 +1167,162 @@ public class ProductionService {
     public List<ProductionOrder> getQaOrders() {
         // Get orders that have stages waiting for QC or in QC
         List<ProductionStage> qcStages = stageRepo.findByExecutionStatusIn(
-            java.util.List.of("WAITING_QC", "QC_IN_PROGRESS")
-        );
-        
+                java.util.List.of("WAITING_QC", "QC_IN_PROGRESS"));
+
         java.util.Set<Long> orderIds = qcStages.stream()
-            .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
-            .collect(java.util.stream.Collectors.toSet());
-        
+                .map(s -> s.getWorkOrderDetail().getProductionOrderDetail().getProductionOrder().getId())
+                .collect(java.util.stream.Collectors.toSet());
+
         return poRepo.findAllById(orderIds);
+    }
+
+    /**
+     * Enrich ProductionOrderDto với các thông tin cần thiết cho frontend
+     * - lotCode từ ProductionLot (thông qua ProductionPlan)
+     * - productName từ ProductionOrderDetail
+     * - size từ Product.standardDimensions hoặc ProductionLot.sizeSnapshot
+     * - statusLabel từ status
+     * - stages từ WorkOrder -> ProductionStage
+     */
+    public ProductionOrderDto enrichProductionOrderDto(ProductionOrder po) {
+        ProductionOrderDto dto = productionMapper.toDto(po);
+
+        // Lấy lotCode từ ProductionPlan -> ProductionLot
+        if (po.getContract() != null) {
+            List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                    .findByContractId(po.getContract().getId());
+            tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+                    .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
+                    .findFirst()
+                    .orElse(null);
+            if (currentPlan != null && currentPlan.getLot() != null) {
+                dto.setLotCode(currentPlan.getLot().getLotCode());
+            }
+        }
+
+        // Lấy productName và size từ ProductionOrderDetail đầu tiên
+        List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(po.getId());
+        if (!details.isEmpty()) {
+            ProductionOrderDetail firstDetail = details.get(0);
+            if (firstDetail.getProduct() != null) {
+                dto.setProductName(firstDetail.getProduct().getName());
+                // Lấy size từ Product.standardDimensions hoặc ProductionLot.sizeSnapshot
+                String size = firstDetail.getProduct().getStandardDimensions();
+                if (size == null || size.isEmpty()) {
+                    // Fallback: lấy từ ProductionLot nếu có
+                    if (po.getContract() != null) {
+                        List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                                .findByContractId(po.getContract().getId());
+                        tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+                                .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
+                                .findFirst()
+                                .orElse(null);
+                        if (currentPlan != null && currentPlan.getLot() != null
+                                && currentPlan.getLot().getSizeSnapshot() != null) {
+                            size = currentPlan.getLot().getSizeSnapshot();
+                        }
+                    }
+                }
+                dto.setSize(size);
+            }
+        }
+
+        // Map status sang statusLabel
+        dto.setStatusLabel(mapStatusToLabel(po.getStatus()));
+
+        // Set aliases for frontend compatibility
+        dto.setExpectedStartDate(po.getPlannedStartDate());
+        dto.setExpectedFinishDate(po.getPlannedEndDate());
+        dto.setExpectedDeliveryDate(po.getPlannedStartDate()); // Leader dùng expectedDeliveryDate
+
+        // Lấy danh sách stages và enrich với totalHours
+        List<ProductionStage> stages = getOrderStages(po.getId());
+        List<ProductionStageDto> stageDtos = stages.stream().map(stage -> {
+            ProductionStageDto stageDto = productionMapper.toDto(stage);
+            // Tính totalHours từ StageTracking
+            java.math.BigDecimal totalHours = calculateTotalHoursForStage(stage.getId());
+            stageDto.setTotalHours(totalHours);
+            return stageDto;
+        }).collect(java.util.stream.Collectors.toList());
+        dto.setStages(stageDtos);
+
+        return dto;
+    }
+
+    /**
+     * Lấy stages của một leader cho một order cụ thể
+     */
+    public List<ProductionStage> getLeaderStagesForOrder(Long orderId, Long leaderUserId) {
+        List<ProductionStage> allStages = getOrderStages(orderId);
+        return allStages.stream()
+                .filter(s -> s.getAssignedLeader() != null && s.getAssignedLeader().getId().equals(leaderUserId))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Tính tổng thời gian làm việc cho một stage từ StageTracking
+     */
+    public java.math.BigDecimal calculateTotalHoursForStage(Long stageId) {
+        List<tmmsystem.entity.StageTracking> trackings = stageTrackingRepository
+                .findByProductionStageIdOrderByTimestampAsc(stageId);
+        if (trackings.isEmpty()) {
+            return java.math.BigDecimal.ZERO;
+        }
+
+        java.time.Duration totalDuration = java.time.Duration.ZERO;
+        java.time.Instant lastStartTime = null;
+
+        for (tmmsystem.entity.StageTracking tracking : trackings) {
+            String action = tracking.getAction();
+            if ("START".equals(action) || "RESUME".equals(action)) {
+                lastStartTime = tracking.getTimestamp();
+            } else if (("PAUSE".equals(action) || "COMPLETE".equals(action)) && lastStartTime != null) {
+                java.time.Duration duration = java.time.Duration.between(lastStartTime, tracking.getTimestamp());
+                totalDuration = totalDuration.plus(duration);
+                if ("COMPLETE".equals(action)) {
+                    lastStartTime = null;
+                }
+            }
+        }
+
+        // Nếu stage đang làm việc (chưa pause hoặc complete), tính đến hiện tại
+        if (lastStartTime != null) {
+            java.time.Duration duration = java.time.Duration.between(lastStartTime, java.time.Instant.now());
+            totalDuration = totalDuration.plus(duration);
+        }
+
+        // Convert Duration to hours (BigDecimal)
+        double hours = totalDuration.toMillis() / (1000.0 * 60.0 * 60.0);
+        return java.math.BigDecimal.valueOf(hours).setScale(1, java.math.RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Map status code sang status label để hiển thị
+     */
+    private String mapStatusToLabel(String status) {
+        if (status == null)
+            return "Không xác định";
+        switch (status) {
+            case "DRAFT":
+                return "Nháp";
+            case "PENDING_APPROVAL":
+                return "Chờ phê duyệt";
+            case "APPROVED":
+                return "Đã phê duyệt";
+            case "REJECTED":
+                return "Từ chối";
+            case "CHO_SAN_XUAT":
+            case "WAITING_PRODUCTION":
+                return "Chờ sản xuất";
+            case "DANG_SAN_XUAT":
+            case "IN_PROGRESS":
+                return "Đang sản xuất";
+            case "HOAN_THANH":
+            case "COMPLETED":
+            case "ORDER_COMPLETED":
+                return "Hoàn thành";
+            default:
+                return status;
+        }
     }
 }
