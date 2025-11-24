@@ -345,7 +345,9 @@ public class ProductionPlanService {
         ProductionOrder po = new ProductionOrder();
         po.setPoNumber("PO-" + System.currentTimeMillis());
         po.setContract(plan.getContract());
-        po.setStatus("PENDING_APPROVAL");
+        // Sau khi director approve plan, ProductionOrder có status "WAITING_PRODUCTION" (chờ sản xuất)
+        po.setStatus("WAITING_PRODUCTION");
+        po.setExecutionStatus("WAITING_PRODUCTION");
         po.setNotes("Auto-generated from Production Plan: " + plan.getPlanCode());
         po.setCreatedBy(plan.getCreatedBy());
         java.math.BigDecimal totalQty = plan.getLot() != null ? plan.getLot().getTotalQuantity()
