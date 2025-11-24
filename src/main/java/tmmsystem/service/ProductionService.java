@@ -1063,12 +1063,23 @@ public class ProductionService {
         // Query tất cả stages được assign cho leader này (không filter theo status)
         // Vì sau khi start work order, stage đầu tiên = WAITING, các stage khác = PENDING
         // Nếu chỉ query WAITING/IN_PROGRESS thì sẽ miss các stage PENDING
+        // Sử dụng JOIN FETCH trong repository để load productionOrder ngay lập tức
         List<ProductionStage> allLeaderStages = stageRepo.findByAssignedLeaderId(leaderUserId);
 
+        // Extract unique ProductionOrder IDs từ stages (productionOrder đã được fetch join)
         java.util.Set<Long> orderIds = allLeaderStages.stream()
-                .map(s -> s.getProductionOrder() != null ? s.getProductionOrder().getId() : null)
+                .map(s -> {
+                    if (s.getProductionOrder() != null) {
+                        return s.getProductionOrder().getId();
+                    }
+                    return null;
+                })
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
+
+        if (orderIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
 
         return poRepo.findAllById(orderIds);
     }

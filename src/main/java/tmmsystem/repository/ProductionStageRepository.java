@@ -2,6 +2,7 @@ package tmmsystem.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import tmmsystem.entity.ProductionStage;
 
@@ -19,12 +20,16 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     List<ProductionStage> findByAssignedLeaderIdAndStatusIn(Long leaderId, List<String> statuses);
     List<ProductionStage> findByStatus(String status);
     List<ProductionStage> findByExecutionStatus(String executionStatus);
-    List<ProductionStage> findByExecutionStatusIn(List<String> executionStatuses);
+    
+    // Query stages by execution status with JOIN FETCH to avoid LazyLoadingException
+    @Query("select s from ProductionStage s join fetch s.productionOrder po where s.executionStatus in :statuses")
+    List<ProductionStage> findByExecutionStatusIn(@Param("statuses") List<String> executionStatuses);
     List<ProductionStage> findByQcAssigneeIdAndExecutionStatusIn(Long qcUserId, List<String> statuses);
     List<ProductionStage> findByAssignedLeaderIdAndExecutionStatusIn(Long leaderId, List<String> statuses);
 
     // Query tất cả stages được assign cho leader (không filter theo status)
-    @Query("select s from ProductionStage s where s.assignedLeader.id = :leaderId and s.productionOrder is not null")
+    // Sử dụng JOIN FETCH để load productionOrder ngay lập tức, tránh LazyLoadingException
+    @Query("select s from ProductionStage s join fetch s.productionOrder po where s.assignedLeader.id = :leaderId")
     List<ProductionStage> findByAssignedLeaderId(Long leaderId);
 
     // NEW: Query trực tiếp theo ProductionOrder (thay thế query cũ)
