@@ -23,6 +23,10 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     List<ProductionStage> findByQcAssigneeIdAndExecutionStatusIn(Long qcUserId, List<String> statuses);
     List<ProductionStage> findByAssignedLeaderIdAndExecutionStatusIn(Long leaderId, List<String> statuses);
 
+    // Query tất cả stages được assign cho leader (không filter theo status)
+    @Query("select s from ProductionStage s where s.assignedLeader.id = :leaderId and s.productionOrder is not null")
+    List<ProductionStage> findByAssignedLeaderId(Long leaderId);
+
     // NEW: Query trực tiếp theo ProductionOrder (thay thế query cũ)
     @Query("select s from ProductionStage s where s.productionOrder.id = :orderId order by s.stageSequence asc")
     List<ProductionStage> findStagesByOrderId(Long orderId);

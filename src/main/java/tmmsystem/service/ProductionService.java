@@ -1018,6 +1018,12 @@ public class ProductionService {
         }
 
         stageRepo.saveAll(stages);
+        
+        // Cập nhật ProductionOrder status sang IN_PROGRESS
+        po.setStatus("IN_PROGRESS");
+        po.setExecutionStatus("IN_PROGRESS");
+        poRepo.save(po);
+        
         return stages;
     }
 
@@ -1049,14 +1055,17 @@ public class ProductionService {
     /**
      * Lấy danh sách orders cho Team Leader
      * NEW: Query trực tiếp theo ProductionOrder (không qua WorkOrderDetail)
+     * 
+     * Bao gồm tất cả stages được assign cho leader này, không phân biệt status
+     * (vì sau khi start work order, stage đầu tiên = WAITING, các stage khác = PENDING)
      */
     public List<ProductionOrder> getLeaderOrders(Long leaderUserId) {
-        // Get orders that have stages assigned to this leader
-        List<ProductionStage> leaderStages = stageRepo.findByAssignedLeaderIdAndExecutionStatusIn(
-                leaderUserId,
-                java.util.List.of("WAITING", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
+        // Query tất cả stages được assign cho leader này (không filter theo status)
+        // Vì sau khi start work order, stage đầu tiên = WAITING, các stage khác = PENDING
+        // Nếu chỉ query WAITING/IN_PROGRESS thì sẽ miss các stage PENDING
+        List<ProductionStage> allLeaderStages = stageRepo.findByAssignedLeaderId(leaderUserId);
 
-        java.util.Set<Long> orderIds = leaderStages.stream()
+        java.util.Set<Long> orderIds = allLeaderStages.stream()
                 .map(s -> s.getProductionOrder() != null ? s.getProductionOrder().getId() : null)
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
@@ -1132,14 +1141,6 @@ public class ProductionService {
             }
         }
 
-        // Map status sang statusLabel
-        dto.setStatusLabel(mapStatusToLabel(po.getStatus()));
-
-        // Set aliases for frontend compatibility
-        dto.setExpectedStartDate(po.getPlannedStartDate());
-        dto.setExpectedFinishDate(po.getPlannedEndDate());
-        dto.setExpectedDeliveryDate(po.getPlannedStartDate()); // Leader dùng expectedDeliveryDate
-
         // Lấy danh sách stages và enrich với totalHours
         List<ProductionStage> stages = getOrderStages(po.getId());
         List<ProductionStageDto> stageDtos = stages.stream().map(stage -> {
@@ -1150,6 +1151,16 @@ public class ProductionService {
             return stageDto;
         }).collect(java.util.stream.Collectors.toList());
         dto.setStages(stageDtos);
+
+        // Map status sang statusLabel - ưu tiên tính toán từ stages nếu có
+        // Theo yêu cầu: ProductionOrder status nên phản ánh trạng thái của các stages
+        String calculatedStatusLabel = calculateOrderStatusLabelFromStages(stages, po.getStatus());
+        dto.setStatusLabel(calculatedStatusLabel != null ? calculatedStatusLabel : mapStatusToLabel(po.getStatus()));
+
+        // Set aliases for frontend compatibility
+        dto.setExpectedStartDate(po.getPlannedStartDate());
+        dto.setExpectedFinishDate(po.getPlannedEndDate());
+        dto.setExpectedDeliveryDate(po.getPlannedStartDate()); // Leader dùng expectedDeliveryDate
 
         return dto;
     }
@@ -1204,6 +1215,169 @@ public class ProductionService {
     /**
      * Map status code sang status label để hiển thị
      */
+    /**
+     * Tính toán statusLabel cho ProductionOrder dựa trên trạng thái của các stages
+     * Theo yêu cầu: PM cần thấy trạng thái chi tiết như "chờ <công đoạn> làm", "<công đoạn> đang làm", etc.
+     */
+    private String calculateOrderStatusLabelFromStages(List<ProductionStage> stages, String defaultStatus) {
+        if (stages == null || stages.isEmpty()) {
+            return mapStatusToLabel(defaultStatus);
+        }
+
+        // Sắp xếp stages theo sequence
+        List<ProductionStage> sortedStages = stages.stream()
+                .filter(s -> s.getStageSequence() != null)
+                .sorted(java.util.Comparator.comparing(ProductionStage::getStageSequence))
+                .collect(java.util.stream.Collectors.toList());
+
+        if (sortedStages.isEmpty()) {
+            return mapStatusToLabel(defaultStatus);
+        }
+
+        // Tìm stage đang active (không phải COMPLETED, QC_PASSED với stage tiếp theo đã COMPLETED)
+        ProductionStage activeStage = null;
+        for (int i = 0; i < sortedStages.size(); i++) {
+            ProductionStage stage = sortedStages.get(i);
+            String execStatus = stage.getExecutionStatus();
+            if (execStatus == null) continue;
+            
+            // Nếu stage này chưa hoàn thành hoặc đang trong quá trình
+            if (!execStatus.equals("COMPLETED") && 
+                !(execStatus.equals("QC_PASSED") && i < sortedStages.size() - 1 && 
+                  sortedStages.get(i + 1).getExecutionStatus() != null &&
+                  !sortedStages.get(i + 1).getExecutionStatus().equals("PENDING"))) {
+                activeStage = stage;
+                break;
+            }
+        }
+
+        // Nếu không tìm thấy active stage, kiểm tra xem tất cả đã hoàn thành chưa
+        if (activeStage == null) {
+            boolean allCompleted = sortedStages.stream()
+                    .allMatch(s -> {
+                        String execStatus = s.getExecutionStatus();
+                        return execStatus != null && 
+                               (execStatus.equals("COMPLETED") || 
+                                execStatus.equals("QC_PASSED"));
+                    });
+            if (allCompleted) {
+                return "Hoàn thành";
+            }
+            // Nếu không phải tất cả đã hoàn thành, dùng stage đầu tiên
+            activeStage = sortedStages.get(0);
+        }
+
+        String stageTypeName = getStageTypeName(activeStage.getStageType());
+        String execStatus = activeStage.getExecutionStatus();
+
+        // Map executionStatus sang label theo yêu cầu
+        switch (execStatus) {
+            case "WAITING":
+            case "READY":
+                return "Chờ " + stageTypeName + " làm";
+            case "IN_PROGRESS":
+                return stageTypeName + " đang làm";
+            case "WAITING_QC":
+                return stageTypeName + " chờ kiểm tra";
+            case "QC_IN_PROGRESS":
+                return stageTypeName + " đang kiểm tra";
+            case "WAITING_REWORK":
+                return "Chờ " + stageTypeName + " sửa";
+            case "REWORK_IN_PROGRESS":
+                return stageTypeName + " đang sửa";
+            case "QC_PASSED":
+                // Nếu là stage cuối cùng và đạt QC thì "Hoàn thành"
+                int currentIndex = sortedStages.indexOf(activeStage);
+                if (currentIndex == sortedStages.size() - 1) {
+                    return "Hoàn thành";
+                }
+                // Nếu không phải stage cuối, tìm stage tiếp theo
+                ProductionStage nextStage = sortedStages.get(currentIndex + 1);
+                if (nextStage != null) {
+                    String nextStageName = getStageTypeName(nextStage.getStageType());
+                    String nextStatus = nextStage.getExecutionStatus();
+                    if (nextStatus != null && (nextStatus.equals("WAITING") || nextStatus.equals("READY") || nextStatus.equals("PENDING"))) {
+                        return "Chờ " + nextStageName + " làm";
+                    }
+                }
+                return "Hoàn thành";
+            case "QC_FAILED":
+                return stageTypeName + " không đạt";
+            case "PENDING":
+                return "Chờ sản xuất"; // Chưa bắt đầu
+            case "COMPLETED":
+                // Nếu là stage cuối cùng thì "Hoàn thành", nếu không thì tìm stage tiếp theo
+                int completedIndex = sortedStages.indexOf(activeStage);
+                if (completedIndex == sortedStages.size() - 1) {
+                    return "Hoàn thành";
+                }
+                // Tìm stage tiếp theo chưa hoàn thành
+                for (int i = completedIndex + 1; i < sortedStages.size(); i++) {
+                    ProductionStage next = sortedStages.get(i);
+                    String nextStatus = next.getExecutionStatus();
+                    if (nextStatus != null && !nextStatus.equals("COMPLETED") && !nextStatus.equals("QC_PASSED")) {
+                        String nextStageName = getStageTypeName(next.getStageType());
+                        if (nextStatus.equals("WAITING") || nextStatus.equals("READY")) {
+                            return "Chờ " + nextStageName + " làm";
+                        }
+                        return getStageTypeName(next.getStageType()) + " " + getStatusLabelFromExecutionStatus(nextStatus);
+                    }
+                }
+                return "Hoàn thành";
+            default:
+                return mapStatusToLabel(defaultStatus);
+        }
+    }
+
+    /**
+     * Helper method để map executionStatus sang label ngắn gọn
+     */
+    private String getStatusLabelFromExecutionStatus(String execStatus) {
+        if (execStatus == null) return "";
+        switch (execStatus) {
+            case "WAITING":
+            case "READY":
+                return "chờ làm";
+            case "IN_PROGRESS":
+                return "đang làm";
+            case "WAITING_QC":
+                return "chờ kiểm tra";
+            case "QC_IN_PROGRESS":
+                return "đang kiểm tra";
+            default:
+                return execStatus;
+        }
+    }
+
+    /**
+     * Map stage type code sang tên tiếng Việt
+     */
+    private String getStageTypeName(String stageType) {
+        if (stageType == null) return "";
+        switch (stageType.toUpperCase()) {
+            case "WARPING":
+            case "CUONG_MAC":
+                return "Cuồng mắc";
+            case "WEAVING":
+            case "DET":
+                return "Dệt";
+            case "DYEING":
+            case "NHUOM":
+                return "Nhuộm";
+            case "CUTTING":
+            case "CAT":
+                return "Cắt";
+            case "HEMMING":
+            case "MAY":
+                return "May";
+            case "PACKAGING":
+            case "DONG_GOI":
+                return "Đóng gói";
+            default:
+                return stageType;
+        }
+    }
+
     private String mapStatusToLabel(String status) {
         if (status == null)
             return "Không xác định";
