@@ -506,21 +506,21 @@ public class ProductionService {
                     final Long orderId = poForCheck.getId(); // Make effectively final for lambda
                     // NEW: Check all stages directly by ProductionOrder
                     List<ProductionStage> allStagesForOrder = stageRepo.findStagesByOrderId(orderId);
-                    boolean allOk = true;
+                boolean allOk = true;
                     
                     if (!allStagesForOrder.isEmpty()) {
                         // Check via ProductionOrder (new way)
                         for (ProductionStage stg : allStagesForOrder) {
                             if (!"COMPLETED".equals(stg.getExecutionStatus()) && 
                                 !"QC_PASSED".equals(stg.getExecutionStatus())) {
-                                allOk = false;
-                                break;
-                            }
+                        allOk = false;
+                        break;
+                    }
                         }
                     }
                     // REMOVED: Fallback check via WorkOrderDetail - không còn dùng nữa
                     
-                    if (allOk) {
+                if (allOk) {
                         poForCheck.setStatus("ORDER_COMPLETED");
                         poRepo.save(poForCheck);
                         notificationService.notifyOrderCompleted(poForCheck);
@@ -792,12 +792,12 @@ public class ProductionService {
         // Verify ProductionOrder exists
         poRepo.findById(orderId).orElseThrow(() -> new RuntimeException("Production Order not found"));
         java.util.List<ProductionStage> stages = stageRepo.findStagesByOrderId(orderId);
-        for (ProductionStage s : stages) {
-            Long uid = map.get(s.getStageType());
-            if (uid != null) {
-                userRepository.findById(uid).ifPresent(s::setAssignedLeader);
+            for (ProductionStage s : stages) {
+                Long uid = map.get(s.getStageType());
+                if (uid != null) {
+                    userRepository.findById(uid).ifPresent(s::setAssignedLeader);
+                }
             }
-        }
         return stageRepo.saveAll(stages);
     }
     // ==== END ASSIGNMENT METHODS ====
@@ -966,42 +966,42 @@ public class ProductionService {
             throw new RuntimeException("No Production Stages found for Production Order " + orderId);
         }
 
-        // Find first stage (lowest sequence number)
-        ProductionStage firstStage = stages.stream()
-                .filter(s -> s.getStageSequence() != null)
-                .min(Comparator.comparing(ProductionStage::getStageSequence))
-                .orElse(null);
+                // Find first stage (lowest sequence number)
+                ProductionStage firstStage = stages.stream()
+                        .filter(s -> s.getStageSequence() != null)
+                        .min(Comparator.comparing(ProductionStage::getStageSequence))
+                        .orElse(null);
 
         java.util.Set<User> notifiedLeaders = new java.util.HashSet<>();
         java.util.Set<User> notifiedQcs = new java.util.HashSet<>();
 
-        for (ProductionStage stage : stages) {
-            if (stage.equals(firstStage)) {
-                // First stage: WAITING (chờ làm)
-                syncStageStatus(stage, "WAITING");
+                for (ProductionStage stage : stages) {
+                    if (stage.equals(firstStage)) {
+                        // First stage: WAITING (chờ làm)
+                        syncStageStatus(stage, "WAITING");
 
-                // Notify assigned leader
-                if (stage.getAssignedLeader() != null && !notifiedLeaders.contains(stage.getAssignedLeader())) {
-                    notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
-                            "Công đoạn sẵn sàng bắt đầu",
-                            "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
-                                    + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
-                            "PRODUCTION_STAGE", stage.getId());
-                    notifiedLeaders.add(stage.getAssignedLeader());
-                }
-            } else {
-                // Other stages: PENDING (đợi)
-                syncStageStatus(stage, "PENDING");
-            }
+                        // Notify assigned leader
+                        if (stage.getAssignedLeader() != null && !notifiedLeaders.contains(stage.getAssignedLeader())) {
+                            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
+                                    "Công đoạn sẵn sàng bắt đầu",
+                                    "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
+                                            + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
+                                    "PRODUCTION_STAGE", stage.getId());
+                            notifiedLeaders.add(stage.getAssignedLeader());
+                        }
+                    } else {
+                        // Other stages: PENDING (đợi)
+                        syncStageStatus(stage, "PENDING");
+                    }
 
-            // Notify QC if assigned
-            if (stage.getQcAssignee() != null && !notifiedQcs.contains(stage.getQcAssignee())) {
-                notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO",
-                        "Chuẩn bị kiểm tra",
-                        "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
-                                + " sẽ cần kiểm tra sau khi hoàn thành.",
-                        "PRODUCTION_STAGE", stage.getId());
-                notifiedQcs.add(stage.getQcAssignee());
+                    // Notify QC if assigned
+                    if (stage.getQcAssignee() != null && !notifiedQcs.contains(stage.getQcAssignee())) {
+                        notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO",
+                                "Chuẩn bị kiểm tra",
+                                "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
+                                        + " sẽ cần kiểm tra sau khi hoàn thành.",
+                                "PRODUCTION_STAGE", stage.getId());
+                        notifiedQcs.add(stage.getQcAssignee());
             }
         }
 
