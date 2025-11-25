@@ -49,8 +49,12 @@ public class ExecutionController {
     }
 
     @PostMapping("/stages/{stageId}/qc/start")
-    public QcSession startQc(@PathVariable Long stageId, @RequestParam Long qcUserId) {
-        return orchestrationService.startQcSession(stageId, qcUserId);
+    public java.util.Map<String, Object> startQc(@PathVariable Long stageId, @RequestParam Long qcUserId) {
+        QcSession session = orchestrationService.startQcSession(stageId, qcUserId);
+        return java.util.Map.of(
+                "id", session.getId(),
+                "stageId", stageId,
+                "status", session.getStatus());
     }
 
     @GetMapping("/stages/{stageId}/checkpoints")
@@ -59,13 +63,18 @@ public class ExecutionController {
     }
 
     @PostMapping("/qc-sessions/{sessionId}/submit")
-    public QcSession submitQc(@PathVariable Long sessionId, @RequestParam String result,
+    public java.util.Map<String, Object> submitQc(@PathVariable Long sessionId, @RequestParam String result,
             @RequestParam(required = false) String notes, @RequestParam Long qcUserId,
             @RequestParam(required = false) String defectLevel,
             @RequestParam(required = false) String defectDescription,
             @RequestBody(required = false) java.util.List<tmmsystem.dto.qc.QcInspectionDto> criteriaResults) {
-        return orchestrationService.submitQcSession(sessionId, result, notes, qcUserId, defectLevel, defectDescription,
-                criteriaResults);
+        QcSession session = orchestrationService.submitQcSession(sessionId, result, notes, qcUserId, defectLevel,
+                defectDescription, criteriaResults);
+        return java.util.Map.of(
+                "id", session.getId(),
+                "status", session.getStatus(),
+                "overallResult", session.getOverallResult(),
+                "stageId", session.getProductionStage() != null ? session.getProductionStage().getId() : null);
     }
 
     @PostMapping("/issues/{issueId}/rework-request")
