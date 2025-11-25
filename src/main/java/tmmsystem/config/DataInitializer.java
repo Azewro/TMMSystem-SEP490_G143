@@ -29,8 +29,9 @@ public class DataInitializer implements CommandLineRunner {
             // Chỉ thực thi đổi mật khẩu cho tất cả User/Customer thành "Abcd1234"
             resetAllUserPasswords();
             resetAllCustomerPasswords();
-            seedQcCheckpoints();
+           
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
+            //  seedQcCheckpoints();
             // createSampleMachines();
             // createSampleCategoriesAndProducts();
             // createSampleMaterials();

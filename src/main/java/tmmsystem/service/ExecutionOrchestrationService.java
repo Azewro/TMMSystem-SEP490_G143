@@ -169,6 +169,9 @@ public class ExecutionOrchestrationService {
         stage.setProgressPercent(percent);
         if (percent == 100) {
             stage.setExecutionStatus("WAITING_QC");
+            if (stage.getCompleteAt() == null) {
+                stage.setCompleteAt(Instant.now());
+            }
             if (stage.getQcAssignee() != null) {
                 notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO", "Chờ kiểm tra",
                         "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
