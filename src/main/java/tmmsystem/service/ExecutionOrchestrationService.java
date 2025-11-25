@@ -19,6 +19,7 @@ import tmmsystem.repository.StageTrackingRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import tmmsystem.dto.qc.QcInspectionDto;
 import tmmsystem.entity.QcCheckpoint;
@@ -39,6 +40,19 @@ public class ExecutionOrchestrationService {
     private final StageTrackingRepository stageTrackingRepository;
     private final QcCheckpointRepository qcCheckpointRepository;
     private final QcInspectionRepository qcInspectionRepository;
+    private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
+            Map.entry("WARPING", "CUONG_MAC"),
+            Map.entry("CUONG_MAC", "WARPING"),
+            Map.entry("WEAVING", "DET"),
+            Map.entry("DET", "WEAVING"),
+            Map.entry("DYEING", "NHUOM"),
+            Map.entry("NHUOM", "DYEING"),
+            Map.entry("CUTTING", "CAT"),
+            Map.entry("CAT", "CUTTING"),
+            Map.entry("HEMMING", "MAY"),
+            Map.entry("MAY", "HEMMING"),
+            Map.entry("PACKAGING", "DONG_GOI"),
+            Map.entry("DONG_GOI", "PACKAGING"));
 
     public ExecutionOrchestrationService(ProductionOrderRepository orderRepo,
             ProductionStageRepository stageRepo,
@@ -179,13 +193,15 @@ public class ExecutionOrchestrationService {
     @Transactional
     public QcSession startQcSession(Long stageId, Long qcUserId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        if (!"WAITING_QC".equals(stage.getExecutionStatus()))
+        String execStatus = stage.getExecutionStatus();
+        if (!"WAITING_QC".equals(execStatus) && !"QC_IN_PROGRESS".equals(execStatus))
             throw new RuntimeException("Không ở trạng thái chờ QC");
         User qc = userRepo.findById(qcUserId).orElseThrow();
 
-        // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
-        productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
-        stageRepo.save(stage);
+        if (!"QC_IN_PROGRESS".equals(execStatus)) {
+            productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
+            stageRepo.save(stage);
+        }
 
         QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
         if (existing != null)
@@ -200,7 +216,15 @@ public class ExecutionOrchestrationService {
     @Transactional(readOnly = true)
     public List<QcCheckpoint> getCheckpointsForStage(Long stageId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        return qcCheckpointRepository.findByStageTypeOrderByDisplayOrderAsc(stage.getStageType());
+        List<QcCheckpoint> checkpoints = qcCheckpointRepository
+                .findByStageTypeOrderByDisplayOrderAsc(stage.getStageType());
+        if ((checkpoints == null || checkpoints.isEmpty()) && stage.getStageType() != null) {
+            String alias = STAGE_TYPE_ALIASES.get(stage.getStageType());
+            if (alias != null) {
+                checkpoints = qcCheckpointRepository.findByStageTypeOrderByDisplayOrderAsc(alias);
+            }
+        }
+        return checkpoints;
     }
 
     @Transactional
