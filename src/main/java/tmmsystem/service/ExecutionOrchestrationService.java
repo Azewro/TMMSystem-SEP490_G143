@@ -91,8 +91,12 @@ public class ExecutionOrchestrationService {
     @Transactional
     public ProductionStage startStage(Long stageId, Long userId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        if (!"READY".equals(stage.getExecutionStatus()))
-            return stage;
+        // Chấp nhận cả WAITING (chờ làm) và READY (sẵn sàng) và WAITING_REWORK (chờ sửa)
+        if (!"READY".equals(stage.getExecutionStatus()) 
+            && !"WAITING".equals(stage.getExecutionStatus())
+            && !"WAITING_REWORK".equals(stage.getExecutionStatus())) {
+            throw new RuntimeException("Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + stage.getExecutionStatus());
+        }
         validateStageStartPermission(stage, userId);
         stage.setStartAt(Instant.now());
         stage.setExecutionStatus("IN_PROGRESS");
