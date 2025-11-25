@@ -11,7 +11,10 @@ public class ExecutionMapper {
         StageTrackingDto dto = new StageTrackingDto();
         dto.setId(e.getId());
         dto.setProductionStageId(e.getProductionStage() != null ? e.getProductionStage().getId() : null);
-        dto.setOperatorId(e.getOperator() != null ? e.getOperator().getId() : null);
+        if (e.getOperator() != null) {
+            dto.setOperatorId(e.getOperator().getId());
+            dto.setOperatorName(e.getOperator().getName());
+        }
         dto.setAction(e.getAction());
         dto.setQuantityCompleted(e.getQuantityCompleted());
         dto.setNotes(e.getNotes());

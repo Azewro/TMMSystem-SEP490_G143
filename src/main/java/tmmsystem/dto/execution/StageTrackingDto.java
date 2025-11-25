@@ -10,6 +10,7 @@ public class StageTrackingDto {
     private Long id;
     private Long productionStageId;
     private Long operatorId;
+    private String operatorName;
     private String action;
     private BigDecimal quantityCompleted;
     private String notes;

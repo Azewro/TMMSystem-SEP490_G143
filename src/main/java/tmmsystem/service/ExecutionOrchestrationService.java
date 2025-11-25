@@ -7,6 +7,7 @@ import tmmsystem.entity.ProductionOrder;
 import tmmsystem.entity.ProductionStage;
 import tmmsystem.entity.QcSession;
 import tmmsystem.entity.QualityIssue;
+import tmmsystem.entity.StageTracking;
 import tmmsystem.entity.User;
 import tmmsystem.repository.MaterialRequisitionRepository;
 import tmmsystem.repository.ProductionOrderRepository;
@@ -14,6 +15,7 @@ import tmmsystem.repository.ProductionStageRepository;
 import tmmsystem.repository.QualityIssueRepository;
 import tmmsystem.repository.QcSessionRepository;
 import tmmsystem.repository.UserRepository;
+import tmmsystem.repository.StageTrackingRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -34,6 +36,7 @@ public class ExecutionOrchestrationService {
     private final NotificationService notificationService;
     private final MaterialRequisitionRepository materialReqRepo;
     private final ProductionService productionService;
+    private final StageTrackingRepository stageTrackingRepository;
     private final QcCheckpointRepository qcCheckpointRepository;
     private final QcInspectionRepository qcInspectionRepository;
 
@@ -45,6 +48,7 @@ public class ExecutionOrchestrationService {
             NotificationService notificationService,
             MaterialRequisitionRepository materialReqRepo,
             ProductionService productionService,
+            StageTrackingRepository stageTrackingRepository,
             QcCheckpointRepository qcCheckpointRepository,
             QcInspectionRepository qcInspectionRepository) {
         this.orderRepo = orderRepo;
@@ -55,6 +59,7 @@ public class ExecutionOrchestrationService {
         this.notificationService = notificationService;
         this.materialReqRepo = materialReqRepo;
         this.productionService = productionService;
+        this.stageTrackingRepository = stageTrackingRepository;
         this.qcCheckpointRepository = qcCheckpointRepository;
         this.qcInspectionRepository = qcInspectionRepository;
     }
@@ -103,15 +108,24 @@ public class ExecutionOrchestrationService {
             && !"WAITING_REWORK".equals(currentStatus)) {
             throw new RuntimeException("Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + currentStatus);
         }
-        validateStageStartPermission(stage, userId);
+        User operator = validateStageStartPermission(stage, userId);
         stage.setStartAt(Instant.now());
         stage.setExecutionStatus("IN_PROGRESS");
         if (stage.getProgressPercent() == null)
             stage.setProgressPercent(0);
-        return stageRepo.save(stage);
+        ProductionStage saved = stageRepo.save(stage);
+
+        StageTracking tracking = new StageTracking();
+        tracking.setProductionStage(saved);
+        tracking.setOperator(operator);
+        tracking.setAction("START");
+        tracking.setQuantityCompleted(java.math.BigDecimal.valueOf(saved.getProgressPercent()));
+        stageTrackingRepository.save(tracking);
+
+        return saved;
     }
 
-    private void validateStageStartPermission(ProductionStage stage, Long userId) {
+    private User validateStageStartPermission(ProductionStage stage, Long userId) {
         User u = userRepo.findById(userId).orElseThrow();
         boolean isPm = u.getRole() != null && "PRODUCTION_MANAGER".equalsIgnoreCase(u.getRole().getName());
         if ("DYEING".equalsIgnoreCase(stage.getStageType())) {
@@ -123,6 +137,7 @@ public class ExecutionOrchestrationService {
                 throw new RuntimeException("Không có quyền: không phải leader được phân công");
             }
         }
+        return u;
     }
 
     @Transactional
@@ -148,7 +163,17 @@ public class ExecutionOrchestrationService {
                         "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
             }
         }
-        return stageRepo.save(stage);
+        ProductionStage saved = stageRepo.save(stage);
+
+        User operator = userRepo.findById(userId).orElseThrow();
+        StageTracking tracking = new StageTracking();
+        tracking.setProductionStage(saved);
+        tracking.setOperator(operator);
+        tracking.setAction(percent == 100 ? "COMPLETE" : "UPDATE_PROGRESS");
+        tracking.setQuantityCompleted(java.math.BigDecimal.valueOf(percent));
+        stageTrackingRepository.save(tracking);
+
+        return saved;
     }
 
     @Transactional

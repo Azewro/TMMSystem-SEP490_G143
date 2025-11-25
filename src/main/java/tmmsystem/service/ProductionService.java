@@ -719,7 +719,16 @@ public class ProductionService {
             syncStageStatus(s, "IN_PROGRESS");
         }
 
-        return stageRepo.save(s);
+        ProductionStage saved = stageRepo.save(s);
+
+        StageTracking tr = new StageTracking();
+        tr.setProductionStage(saved);
+        tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+        tr.setAction(progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0 ? "COMPLETE" : "UPDATE_PROGRESS");
+        tr.setQuantityCompleted(progressPercent);
+        stageTrackingRepository.save(tr);
+
+        return saved;
     }
 
     @Transactional
