@@ -3,6 +3,8 @@ package tmmsystem.controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import tmmsystem.entity.*;
+import tmmsystem.dto.production.ProductionStageDto;
+import tmmsystem.mapper.ProductionMapper;
 import tmmsystem.service.ExecutionOrchestrationService;
 
 @RestController
@@ -10,9 +12,11 @@ import tmmsystem.service.ExecutionOrchestrationService;
 @Validated
 public class ExecutionController {
     private final ExecutionOrchestrationService service;
+    private final ProductionMapper mapper;
 
-    public ExecutionController(ExecutionOrchestrationService service) {
+    public ExecutionController(ExecutionOrchestrationService service, ProductionMapper mapper) {
         this.service = service;
+        this.mapper = mapper;
     }
 
     @PostMapping("/orders/{orderId}/start")
@@ -21,14 +25,16 @@ public class ExecutionController {
     }
 
     @PostMapping("/stages/{stageId}/start")
-    public ProductionStage startStage(@PathVariable Long stageId, @RequestParam Long userId) {
-        return service.startStage(stageId, userId);
+    public ProductionStageDto startStage(@PathVariable Long stageId, @RequestParam Long userId) {
+        ProductionStage stage = service.startStage(stageId, userId);
+        return mapper.toDto(stage);
     }
 
     @PutMapping("/stages/{stageId}/progress")
-    public ProductionStage updateProgress(@PathVariable Long stageId, @RequestParam Long userId,
+    public ProductionStageDto updateProgress(@PathVariable Long stageId, @RequestParam Long userId,
             @RequestParam Integer percent) {
-        return service.updateProgress(stageId, userId, percent);
+        ProductionStage stage = service.updateProgress(stageId, userId, percent);
+        return mapper.toDto(stage);
     }
 
     @PostMapping("/stages/{stageId}/qc/start")
@@ -52,13 +58,15 @@ public class ExecutionController {
     }
 
     @PostMapping("/issues/{issueId}/rework-request")
-    public ProductionStage requestRework(@PathVariable Long issueId, @RequestParam Long techUserId) {
-        return service.requestRework(issueId, techUserId);
+    public ProductionStageDto requestRework(@PathVariable Long issueId, @RequestParam Long techUserId) {
+        ProductionStage stage = service.requestRework(issueId, techUserId);
+        return mapper.toDto(stage);
     }
 
     @PostMapping("/stages/{stageId}/rework/start")
-    public ProductionStage startRework(@PathVariable Long stageId, @RequestParam Long leaderUserId) {
-        return service.startRework(stageId, leaderUserId);
+    public ProductionStageDto startRework(@PathVariable Long stageId, @RequestParam Long leaderUserId) {
+        ProductionStage stage = service.startRework(stageId, leaderUserId);
+        return mapper.toDto(stage);
     }
 
     @PostMapping("/issues/{issueId}/material-request")
@@ -74,23 +82,23 @@ public class ExecutionController {
     }
 
     @GetMapping("/leader/stages")
-    public java.util.List<ProductionStage> leaderStages(@RequestParam Long leaderUserId) {
-        return service.listStagesForLeader(leaderUserId);
+    public java.util.List<ProductionStageDto> leaderStages(@RequestParam Long leaderUserId) {
+        return service.listStagesForLeader(leaderUserId).stream().map(mapper::toDto).toList();
     }
 
     @GetMapping("/qc/stages")
-    public java.util.List<ProductionStage> qcStages(@RequestParam Long qcUserId) {
-        return service.listStagesForQc(qcUserId);
+    public java.util.List<ProductionStageDto> qcStages(@RequestParam Long qcUserId) {
+        return service.listStagesForQc(qcUserId).stream().map(mapper::toDto).toList();
     }
 
     @GetMapping("/technical/stages")
-    public java.util.List<ProductionStage> technicalStages() {
-        return service.listStagesForTechnical();
+    public java.util.List<ProductionStageDto> technicalStages() {
+        return service.listStagesForTechnical().stream().map(mapper::toDto).toList();
     }
 
     @GetMapping("/pm/orders/{orderId}/stages")
-    public java.util.List<ProductionStage> pmStages(@PathVariable Long orderId) {
-        return service.listStagesForPm(orderId);
+    public java.util.List<ProductionStageDto> pmStages(@PathVariable Long orderId) {
+        return service.listStagesForPm(orderId).stream().map(mapper::toDto).toList();
     }
 
     @GetMapping("/material-requisitions")
