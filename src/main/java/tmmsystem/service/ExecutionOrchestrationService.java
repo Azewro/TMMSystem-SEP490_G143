@@ -110,6 +110,7 @@ public class ExecutionOrchestrationService {
     @Transactional
     public ProductionStage startStage(Long stageId, Long userId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        ensureOrderStarted(stage);
         String currentStatus = stage.getExecutionStatus();
         // Nếu đã ở trạng thái IN_PROGRESS thì coi như đã bắt đầu - trả về stage mà không báo lỗi
         if ("IN_PROGRESS".equals(currentStatus)) {
@@ -157,6 +158,7 @@ public class ExecutionOrchestrationService {
     @Transactional
     public ProductionStage updateProgress(Long stageId, Long userId, Integer percent) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        ensureOrderStarted(stage);
         if (!"IN_PROGRESS".equals(stage.getExecutionStatus())
                 && !"REWORK_IN_PROGRESS".equals(stage.getExecutionStatus())) {
             throw new RuntimeException("Công đoạn không ở trạng thái đang làm");
@@ -196,6 +198,7 @@ public class ExecutionOrchestrationService {
     @Transactional
     public QcSession startQcSession(Long stageId, Long qcUserId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        ensureOrderStarted(stage);
         String execStatus = stage.getExecutionStatus();
         if (!"WAITING_QC".equals(execStatus) && !"QC_IN_PROGRESS".equals(execStatus))
             throw new RuntimeException("Không ở trạng thái chờ QC");
@@ -371,6 +374,22 @@ public class ExecutionOrchestrationService {
         } else {
             notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn tiếp theo",
                     "Công đoạn " + next.getStageType() + " sẵn sàng", "PRODUCTION_STAGE", next.getId());
+        }
+    }
+
+    private void ensureOrderStarted(ProductionStage stage) {
+        ProductionOrder order = stage.getProductionOrder();
+        if (order == null) {
+            throw new RuntimeException("Công đoạn chưa thuộc đơn sản xuất nào.");
+        }
+        String status = order.getExecutionStatus();
+        if (status == null || status.isBlank()) {
+            status = order.getStatus();
+        }
+        if ("WAITING_PRODUCTION".equalsIgnoreCase(status)
+                || "PENDING_APPROVAL".equalsIgnoreCase(status)
+                || "DRAFT".equalsIgnoreCase(status)) {
+            throw new RuntimeException("Quản lý sản xuất chưa bắt đầu lệnh làm việc cho đơn hàng này.");
         }
     }
 
