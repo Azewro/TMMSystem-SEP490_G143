@@ -10,8 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.Comparator;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -167,6 +167,43 @@ public class FileStorageService {
     }
 
     /**
+     * Upload QC inspection photo (image only)
+     */
+    public String uploadQcPhoto(MultipartFile file, Long stageId, Long qcUserId) throws IOException {
+        validateImageFile(file);
+
+        String stageFolder = stageId != null ? stageId.toString() : "general";
+        Path dir = Paths.get(storagePath, "qc", stageFolder);
+        Files.createDirectories(dir);
+
+        String extension = getFileExtension(file.getOriginalFilename());
+        String fileName = "qc_stage_" +
+                (stageId != null ? stageId : "unknown") + "_" +
+                (qcUserId != null ? qcUserId : "qa") + "_" +
+                System.currentTimeMillis() + "_" +
+                UUID.randomUUID().toString().replace("-", "") +
+                extension;
+
+        Path filePath = dir.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        log.info("QC photo uploaded successfully: {}", filePath);
+        return fileName;
+    }
+
+    /**
+     * Build public URL for stored file
+     */
+    public String buildPublicUrl(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return null;
+        }
+        String normalizedBase = baseUrl != null && baseUrl.endsWith("/")
+                ? baseUrl.substring(0, baseUrl.length() - 1)
+                : baseUrl;
+        return normalizedBase + "/api/files/" + fileName;
+    }
+
+    /**
      * Get quotation file URL
      */
     public String getQuotationFileUrl(Long quotationId) {
@@ -271,6 +308,23 @@ public class FileStorageService {
         boolean ok = (contentType != null && allowedTypes.contains(contentType)) || allowedExt.contains(ext);
         if (!ok) {
             throw new IllegalArgumentException("Only image/PDF/Word/Excel files are allowed");
+        }
+    }
+
+    private void validateImageFile(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty");
+        }
+        if (file.getSize() > 15 * 1024 * 1024) {
+            throw new IllegalArgumentException("File size exceeds 15MB limit");
+        }
+        String contentType = file.getContentType();
+        String ext = getFileExtension(file.getOriginalFilename()).toLowerCase();
+        Set<String> allowedTypes = Set.of("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp");
+        Set<String> allowedExt = Set.of(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp");
+        boolean ok = (contentType != null && allowedTypes.contains(contentType)) || allowedExt.contains(ext);
+        if (!ok) {
+            throw new IllegalArgumentException("Only image files are allowed");
         }
     }
     

@@ -199,8 +199,8 @@ public class ExecutionOrchestrationService {
         User qc = userRepo.findById(qcUserId).orElseThrow();
 
         if (!"QC_IN_PROGRESS".equals(execStatus)) {
-            productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
-            stageRepo.save(stage);
+        productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
+        stageRepo.save(stage);
         }
 
         QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);

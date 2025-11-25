@@ -7,6 +7,5 @@ import java.util.List;
 
 public interface QcCheckpointRepository extends JpaRepository<QcCheckpoint, Long> {
     List<QcCheckpoint> findByStageTypeOrderByDisplayOrderAsc(String stageType);
+    boolean existsByStageTypeAndCheckpointName(String stageType, String checkpointName);
 }
-
-
