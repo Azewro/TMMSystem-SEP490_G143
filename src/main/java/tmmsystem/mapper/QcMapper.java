@@ -33,6 +33,8 @@ public class QcMapper {
         dto.setFailCount(e.getFailCount());
         dto.setResult(e.getResult());
         dto.setNotes(e.getNotes());
+        dto.setPhotoUrl(e.getPhotoUrl());
+        dto.setCheckpointName(e.getQcCheckpoint() != null ? e.getQcCheckpoint().getCheckpointName() : null);
         dto.setInspectedAt(e.getInspectedAt());
         return dto;
     }

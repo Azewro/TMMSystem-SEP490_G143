@@ -107,6 +107,7 @@ public class QcController {
         e.setFailCount(body.getFailCount());
         e.setResult(body.getResult());
         e.setNotes(body.getNotes());
+        e.setPhotoUrl(body.getPhotoUrl());
         QcInspection saved = service.createInspection(e);
         // Trigger workflow based on result
         service.submitInspectionResult(saved.getProductionStage().getId(), saved.getResult(), saved.getNotes(),
@@ -137,6 +138,7 @@ public class QcController {
         e.setFailCount(body.getFailCount());
         e.setResult(body.getResult());
         e.setNotes(body.getNotes());
+        e.setPhotoUrl(body.getPhotoUrl());
         return mapper.toDto(service.updateInspection(id, e));
     }
 

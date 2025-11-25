@@ -227,6 +227,7 @@ public class QcService {
             inspection.setInspector(inspector);
             inspection.setResult(criterionDto.getResult());
             inspection.setNotes(criterionDto.getNotes());
+            inspection.setPhotoUrl(criterionDto.getPhotoUrl());
             QcInspection savedInspection = inspectionRepo.save(inspection);
             
             // Create defect if FAIL
@@ -348,14 +349,16 @@ public class QcService {
                     }
                     
                     // Lấy productName và size từ ProductionOrderDetail
-                    List<tmmsystem.entity.ProductionOrderDetail> details = 
-                        productionOrderDetailRepository.findByProductionOrderId(po.getId());
+                    List<tmmsystem.entity.ProductionOrderDetail> details = java.util.Collections.emptyList();
+                    if (po != null) {
+                        details = productionOrderDetailRepository.findByProductionOrderId(po.getId());
+                    }
                     if (!details.isEmpty() && details.get(0).getProduct() != null) {
                         dto.setProductName(details.get(0).getProduct().getName());
                         String size = details.get(0).getProduct().getStandardDimensions();
                         if (size == null || size.isEmpty()) {
                             // Fallback to ProductionLot.sizeSnapshot
-                            if (po.getContract() != null) {
+                            if (po != null && po.getContract() != null) {
                                 List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository.findByContractId(po.getContract().getId());
                                 tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
                                     .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))

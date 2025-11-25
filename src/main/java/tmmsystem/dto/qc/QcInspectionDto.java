@@ -18,5 +18,6 @@ public class QcInspectionDto {
     private String result;
     private String notes;
     private String photoUrl;
+    private String checkpointName;
     private Instant inspectedAt;
 }
