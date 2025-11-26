@@ -1206,6 +1206,13 @@ public class ProductionService {
             stages.sort(java.util.Comparator.comparing(ProductionStage::getStageSequence,
                     java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
             ProductionStage firstStage = stages.get(0);
+
+            // Lazy generation: If token is missing, generate and save it
+            if (firstStage.getQrToken() == null || firstStage.getQrToken().isEmpty()) {
+                firstStage.setQrToken(generateQrToken());
+                stageRepo.save(firstStage);
+            }
+
             dto.setQrToken(firstStage.getQrToken());
         }
 
