@@ -8,28 +8,71 @@ public class SequentialCapacityResult {
     private BigDecimal dyeingDays = BigDecimal.ZERO;
     private BigDecimal cuttingDays = BigDecimal.ZERO;
     private BigDecimal sewingDays = BigDecimal.ZERO;
+    private BigDecimal packagingDays = BigDecimal.ZERO;
     private BigDecimal totalDays = BigDecimal.ZERO;
     private String bottleneck = "WARPING";
 
-    public BigDecimal getWarpingDays() { return warpingDays; }
-    public void setWarpingDays(BigDecimal warpingDays) { this.warpingDays = warpingDays; }
+    public BigDecimal getWarpingDays() {
+        return warpingDays;
+    }
 
-    public BigDecimal getWeavingDays() { return weavingDays; }
-    public void setWeavingDays(BigDecimal weavingDays) { this.weavingDays = weavingDays; }
+    public void setWarpingDays(BigDecimal warpingDays) {
+        this.warpingDays = warpingDays;
+    }
 
-    public BigDecimal getDyeingDays() { return dyeingDays; }
-    public void setDyeingDays(BigDecimal dyeingDays) { this.dyeingDays = dyeingDays; }
+    public BigDecimal getWeavingDays() {
+        return weavingDays;
+    }
 
-    public BigDecimal getCuttingDays() { return cuttingDays; }
-    public void setCuttingDays(BigDecimal cuttingDays) { this.cuttingDays = cuttingDays; }
+    public void setWeavingDays(BigDecimal weavingDays) {
+        this.weavingDays = weavingDays;
+    }
 
-    public BigDecimal getSewingDays() { return sewingDays; }
-    public void setSewingDays(BigDecimal sewingDays) { this.sewingDays = sewingDays; }
+    public BigDecimal getDyeingDays() {
+        return dyeingDays;
+    }
 
-    public BigDecimal getTotalDays() { return totalDays; }
-    public void setTotalDays(BigDecimal totalDays) { this.totalDays = totalDays; }
+    public void setDyeingDays(BigDecimal dyeingDays) {
+        this.dyeingDays = dyeingDays;
+    }
 
-    public String getBottleneck() { return bottleneck; }
-    public void setBottleneck(String bottleneck) { this.bottleneck = bottleneck; }
+    public BigDecimal getCuttingDays() {
+        return cuttingDays;
+    }
+
+    public void setCuttingDays(BigDecimal cuttingDays) {
+        this.cuttingDays = cuttingDays;
+    }
+
+    public BigDecimal getSewingDays() {
+        return sewingDays;
+    }
+
+    public void setSewingDays(BigDecimal sewingDays) {
+        this.sewingDays = sewingDays;
+    }
+
+    public BigDecimal getPackagingDays() {
+        return packagingDays;
+    }
+
+    public void setPackagingDays(BigDecimal packagingDays) {
+        this.packagingDays = packagingDays;
+    }
+
+    public BigDecimal getTotalDays() {
+        return totalDays;
+    }
+
+    public void setTotalDays(BigDecimal totalDays) {
+        this.totalDays = totalDays;
+    }
+
+    public String getBottleneck() {
+        return bottleneck;
+    }
+
+    public void setBottleneck(String bottleneck) {
+        this.bottleneck = bottleneck;
+    }
 }
-

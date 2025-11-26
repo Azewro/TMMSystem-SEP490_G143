@@ -69,11 +69,15 @@ public class ProductionController {
 
     @Operation(summary = "PM: Bắt đầu lệnh làm việc (gửi thông báo đến Leaders và QC)")
     @PostMapping("/orders/{orderId}/start-work-order")
-    public java.util.Map<String, Object> startWorkOrder(@PathVariable Long orderId) {
+    public List<ProductionStageDto> startWorkOrder(@PathVariable Long orderId) {
         List<ProductionStage> stages = service.startWorkOrder(orderId);
-        return java.util.Map.of(
-                "message", "Đã gửi thông báo đến tất cả Tổ Trưởng và KCS",
-                "stageCount", stages.size());
+        return stages.stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    @Operation(summary = "Leader: Bắt đầu công đoạn (Rolling Production)")
+    @PostMapping("/stages/{id}/start-rolling")
+    public ProductionStageDto startStage(@PathVariable Long id, @RequestParam Long userId) {
+        return mapper.toDto(service.startStage(id, userId));
     }
 
     @Operation(summary = "Tạo Production Order")
@@ -238,7 +242,8 @@ public class ProductionController {
         service.deleteTechSheet(id);
     }
 
-    // REMOVED: Tất cả endpoints liên quan WorkOrder và WorkOrderDetail - không còn dùng nữa
+    // REMOVED: Tất cả endpoints liên quan WorkOrder và WorkOrderDetail - không còn
+    // dùng nữa
     // Stages giờ được query trực tiếp theo ProductionOrder
 
     // Stages - Query theo ProductionOrder

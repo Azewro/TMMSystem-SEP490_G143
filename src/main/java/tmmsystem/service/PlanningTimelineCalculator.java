@@ -11,7 +11,8 @@ import java.util.List;
 @Component
 public class PlanningTimelineCalculator {
 
-    public record StageTimeline(String stageType, LocalDateTime start, LocalDateTime end) {}
+    public record StageTimeline(String stageType, LocalDateTime start, LocalDateTime end) {
+    }
 
     @Value("${planning.timeline.startHour:8}")
     private int startHour;
@@ -31,27 +32,29 @@ public class PlanningTimelineCalculator {
     @Value("${planning.timeline.waitHours.cuttingHemming:2}")
     private int waitCuttingHemming;
 
-    @Value("${planning.timeline.waitHours.hemmingPackaging:3}")
+    @Value("${planning.timeline.waitHours.hemmingPackaging:2}") // 0.2 days * 8 hours = 1.6 hours -> round to 2
     private int waitHemmingPackaging;
 
-    public List<StageTimeline> buildTimeline(LocalDate startDate, tmmsystem.service.timeline.SequentialCapacityResult durations) {
+    public List<StageTimeline> buildTimeline(LocalDate startDate,
+            tmmsystem.service.timeline.SequentialCapacityResult durations) {
         return buildTimeline(startDate.atTime(startHour, 0), durations);
     }
 
-    public List<StageTimeline> buildTimeline(LocalDateTime start, tmmsystem.service.timeline.SequentialCapacityResult durations) {
+    public List<StageTimeline> buildTimeline(LocalDateTime start,
+            tmmsystem.service.timeline.SequentialCapacityResult durations) {
         List<StageTimeline> result = new ArrayList<>();
         LocalDateTime cursor = nextBusinessStart(start);
         LocalDateTime end;
-        double[] stageHours = new double[]{
+        double[] stageHours = new double[] {
                 durations.getWarpingDays().doubleValue() * dailyHours,
                 durations.getWeavingDays().doubleValue() * dailyHours,
                 durations.getDyeingDays().doubleValue() * dailyHours,
                 durations.getCuttingDays().doubleValue() * dailyHours,
                 durations.getSewingDays().doubleValue() * dailyHours,
-                dailyHours // packaging placeholder
+                durations.getPackagingDays().doubleValue() * dailyHours
         };
-        String[] types = new String[]{"WARPING","WEAVING","DYEING","CUTTING","HEMMING","PACKAGING"};
-        int[] waits = new int[]{
+        String[] types = new String[] { "WARPING", "WEAVING", "DYEING", "CUTTING", "HEMMING", "PACKAGING" };
+        int[] waits = new int[] {
                 waitWarpingWeaving,
                 waitWeavingDyeing,
                 waitDyeingCutting,
@@ -82,12 +85,14 @@ public class PlanningTimelineCalculator {
     }
 
     private LocalDateTime addWait(LocalDateTime current, int waitHours) {
-        if (waitHours <= 0) return current;
+        if (waitHours <= 0)
+            return current;
         return addWorkingHours(current, waitHours);
     }
 
     private LocalDateTime addWorkingHours(LocalDateTime start, double hours) {
-        if (hours <= 0) return start;
+        if (hours <= 0)
+            return start;
         long remainingMinutes = Math.max(1, Math.round(hours * 60));
         long dailyMinutes = dailyHours * 60L;
         LocalDateTime time = alignToWorkingWindow(start);
@@ -125,4 +130,3 @@ public class PlanningTimelineCalculator {
         return time;
     }
 }
-

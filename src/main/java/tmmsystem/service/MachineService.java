@@ -12,36 +12,45 @@ import org.springframework.data.domain.Pageable;
 @Service
 public class MachineService {
     private final MachineRepository repository;
+    private final tmmsystem.repository.ProductionStageRepository stageRepository;
 
-    public MachineService(MachineRepository repository) { this.repository = repository; }
+    public MachineService(MachineRepository repository,
+            tmmsystem.repository.ProductionStageRepository stageRepository) {
+        this.repository = repository;
+        this.stageRepository = stageRepository;
+    }
 
-    public List<Machine> findAll() { return repository.findAll(); }
-    public Page<Machine> findAll(Pageable pageable) { return repository.findAll(pageable); }
-    
+    public List<Machine> findAll() {
+        return repository.findAll();
+    }
+
+    public Page<Machine> findAll(Pageable pageable) {
+        return repository.findAll(pageable);
+    }
+
     public Page<Machine> findAll(Pageable pageable, String search, String type, String status) {
         if (search != null && !search.trim().isEmpty()) {
             String searchLower = search.trim().toLowerCase();
             return repository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                
+
                 // Search predicate
                 var searchPredicate = cb.or(
-                    cb.like(cb.lower(root.get("code")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("name")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("location")), "%" + searchLower + "%")
-                );
+                        cb.like(cb.lower(root.get("code")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("name")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("location")), "%" + searchLower + "%"));
                 predicates.add(searchPredicate);
-                
+
                 // Type filter
                 if (type != null && !type.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("type"), type));
                 }
-                
+
                 // Status filter
                 if (status != null && !status.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), status));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -49,15 +58,15 @@ public class MachineService {
             if (type != null || status != null) {
                 return repository.findAll((root, query, cb) -> {
                     var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                    
+
                     if (type != null && !type.trim().isEmpty()) {
                         predicates.add(cb.equal(root.get("type"), type));
                     }
-                    
+
                     if (status != null && !status.trim().isEmpty()) {
                         predicates.add(cb.equal(root.get("status"), status));
                     }
-                    
+
                     return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
                 }, pageable);
             } else {
@@ -65,11 +74,15 @@ public class MachineService {
             }
         }
     }
-    
-    public Machine findById(Long id) { return repository.findById(id).orElseThrow(); }
+
+    public Machine findById(Long id) {
+        return repository.findById(id).orElseThrow();
+    }
 
     @Transactional
-    public Machine create(Machine m) { return repository.save(m); }
+    public Machine create(Machine m) {
+        return repository.save(m);
+    }
 
     @Transactional
     public Machine update(Long id, Machine updated) {
@@ -84,7 +97,32 @@ public class MachineService {
         return existing;
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
+
+    /**
+     * Migration/Sync function:
+     * Resets all machines to AVAILABLE, then sets machines to IN_USE
+     * if there are any active stages of that type.
+     */
+    @Transactional
+    public void syncMachineStatuses() {
+        // 1. Reset all to AVAILABLE
+        repository.resetAllMachineStatuses();
+
+        // 2. Find all IN_PROGRESS stages
+        List<String> activeStatuses = List.of("IN_PROGRESS");
+        List<tmmsystem.entity.ProductionStage> activeStages = stageRepository.findByExecutionStatusIn(activeStatuses);
+
+        // 3. Collect active stage types
+        java.util.Set<String> activeTypes = activeStages.stream()
+                .map(tmmsystem.entity.ProductionStage::getStageType)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // 4. Update machines for active types
+        for (String type : activeTypes) {
+            repository.updateStatusByType(type, "IN_USE");
+        }
+    }
 }
-
-

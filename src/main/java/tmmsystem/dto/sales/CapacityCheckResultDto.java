@@ -12,7 +12,7 @@ import java.util.List;
 public class CapacityCheckResultDto {
     private MachineCapacityDto machineCapacity;
     private WarehouseCapacityDto warehouseCapacity;
-    
+
     @Getter
     @Setter
     public static class MachineCapacityDto {
@@ -24,27 +24,28 @@ public class CapacityCheckResultDto {
         private LocalDate productionEndDate;
         private List<DailyCapacityDto> dailyCapacities;
         private List<ConflictDto> conflicts;
-        
+
         // Thông tin chi tiết các công đoạn tuần tự
         private SequentialStageDto warpingStage;
         private SequentialStageDto weavingStage;
         private SequentialStageDto dyeingStage;
         private SequentialStageDto cuttingStage;
         private SequentialStageDto sewingStage;
+        private SequentialStageDto packagingStage;
         private BigDecimal totalWaitTime;
 
         // NEW
         private String status; // SUFFICIENT | INSUFFICIENT
         private String mergeSuggestion; // Gợi ý gộp đơn hoặc ngày có thể sản xuất
     }
-    
+
     @Getter
     @Setter
     public static class WarehouseCapacityDto {
         private boolean sufficient;
         private String message;
     }
-    
+
     @Getter
     @Setter
     public static class DailyCapacityDto {
@@ -56,7 +57,7 @@ public class CapacityCheckResultDto {
         private BigDecimal sewingRequired;
         private BigDecimal sewingAvailable;
     }
-    
+
     @Getter
     @Setter
     public static class ConflictDto {
@@ -67,7 +68,7 @@ public class CapacityCheckResultDto {
         private BigDecimal used;
         private String conflictMessage;
     }
-    
+
     @Getter
     @Setter
     public static class SequentialStageDto {

@@ -27,7 +27,7 @@ public class ProductionPlanService {
     private final ProductionPlanStageRepository stageRepo;
     private final ContractRepository contractRepo;
     private final UserRepository userRepo;
-    private final MachineRepository machineRepo;
+    // private final MachineRepository machineRepo; // REMOVED: Unused
     private final ProductRepository productRepo;
     private final ProductionOrderRepository poRepo;
     private final ProductionOrderDetailRepository podRepo;
@@ -72,7 +72,7 @@ public class ProductionPlanService {
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
         this.userRepo = userRepo;
-        this.machineRepo = machineRepo;
+        // this.machineRepo = machineRepo;
         this.productRepo = productRepo;
         this.poRepo = poRepo;
         this.podRepo = podRepo;
@@ -295,13 +295,17 @@ public class ProductionPlanService {
         }
         ProductionOrder po = createProductionOrderFromPlan(saved);
 
-        // Auto-create ProductionStages directly from planning stages (NEW: không qua WorkOrder)
-        Map<Long, List<ProductionStage>> stageMapping = productionService.createStagesFromPlan(po.getId(), planStages);
+        // Auto-create ProductionStages directly from planning stages (NEW: không qua
+        // WorkOrder)
+        // Map<Long, List<ProductionStage>> stageMapping =
+        // productionService.createStagesFromPlan(po.getId(), planStages); // REMOVED:
+        // Unused
         if (!planStages.isEmpty()) {
             planStages.forEach(stage -> stage.setStageStatus("RELEASED"));
             stageRepo.saveAll(planStages);
         }
-        reservePlanStages(saved, stageMapping);
+        // reservePlanStages(saved, stageMapping); // REMOVED: No machine reservation in
+        // planning
         notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO",
                 "Nhận kế hoạch sản xuất đã duyệt",
                 "PO #" + po.getPoNumber() + " đã được kích hoạt từ kế hoạch " + saved.getPlanCode()
@@ -345,7 +349,8 @@ public class ProductionPlanService {
         ProductionOrder po = new ProductionOrder();
         po.setPoNumber("PO-" + System.currentTimeMillis());
         po.setContract(plan.getContract());
-        // Sau khi director approve plan, ProductionOrder có status "WAITING_PRODUCTION" (chờ sản xuất)
+        // Sau khi director approve plan, ProductionOrder có status "WAITING_PRODUCTION"
+        // (chờ sản xuất)
         po.setStatus("WAITING_PRODUCTION");
         po.setExecutionStatus("WAITING_PRODUCTION");
         po.setNotes("Auto-generated from Production Plan: " + plan.getPlanCode());
@@ -416,26 +421,8 @@ public class ProductionPlanService {
 
     @Transactional
     public ProductionPlanStageDto autoAssignMachineToStage(Long stageId) {
-        ProductionPlanStage stage = stageRepo.findById(stageId).orElseThrow();
-        Product product = stage.getPlan().getLot() != null ? stage.getPlan().getLot().getProduct() : null;
-        java.math.BigDecimal qty = stage.getPlan().getLot() != null ? stage.getPlan().getLot().getTotalQuantity()
-                : java.math.BigDecimal.ZERO;
-        List<MachineSelectionService.MachineSuggestionDto> suggestions = machineSelectionService.getSuitableMachines(
-                stage.getStageType(), product != null ? product.getId() : null, qty, stage.getPlannedStartTime(),
-                stage.getPlannedEndTime());
-        if (suggestions.isEmpty())
-            throw new RuntimeException("No suitable machines found for stage: " + stage.getStageType());
-        MachineSelectionService.MachineSuggestionDto best = suggestions.get(0);
-        Machine machine = machineRepo.findById(best.getMachineId()).orElseThrow();
-        stage.setAssignedMachine(machine);
-        if (best.getSuggestedStartTime() != null)
-            stage.setPlannedStartTime(best.getSuggestedStartTime());
-        if (best.getSuggestedEndTime() != null)
-            stage.setPlannedEndTime(best.getSuggestedEndTime());
-        if (best.getEstimatedDurationHours() != null)
-            stage.setMinRequiredDurationMinutes(
-                    best.getEstimatedDurationHours().multiply(BigDecimal.valueOf(60)).intValue());
-        return mapper.toDto(stageRepo.save(stage));
+        // DEPRECATED: No machine assignment in planning
+        throw new UnsupportedOperationException("Machine assignment is no longer supported in planning phase");
     }
 
     /**
@@ -443,23 +430,8 @@ public class ProductionPlanService {
      * lượng)
      */
     public List<String> checkStageScheduleConflicts(Long stageId) {
-        ProductionPlanStage stage = stageRepo.findById(stageId)
-                .orElseThrow(() -> new RuntimeException("Production plan stage not found"));
-        if (stage.getAssignedMachine() == null) {
-            return List.of("No machine assigned to this stage");
-        }
-        Product product = stage.getPlan().getLot() != null ? stage.getPlan().getLot().getProduct() : null;
-        java.math.BigDecimal qty = stage.getPlan().getLot() != null ? stage.getPlan().getLot().getTotalQuantity()
-                : java.math.BigDecimal.ZERO;
-        List<MachineSelectionService.MachineSuggestionDto> suggestions = machineSelectionService.getSuitableMachines(
-                stage.getStageType(), product != null ? product.getId() : null, qty, stage.getPlannedStartTime(),
-                stage.getPlannedEndTime());
-        MachineSelectionService.MachineSuggestionDto current = suggestions.stream()
-                .filter(s -> s.getMachineId() != null && s.getMachineId().equals(stage.getAssignedMachine().getId()))
-                .findFirst().orElse(null);
-        if (current != null)
-            return current.getConflicts();
-        return List.of("Unable to check conflicts for assigned machine");
+        // DEPRECATED: No machine assignment in planning
+        return List.of();
     }
 
     // Helpers
@@ -528,8 +500,9 @@ public class ProductionPlanService {
         var stage = stageRepo.findById(stageId)
                 .orElseThrow(() -> new RuntimeException("Production plan stage not found"));
         if (req.getAssignedMachineId() != null) {
-            stage.setAssignedMachine(machineRepo.findById(req.getAssignedMachineId())
-                    .orElseThrow(() -> new RuntimeException("Machine not found")));
+            // IGNORE: Machine assignment not supported
+            // stage.setAssignedMachine(machineRepo.findById(req.getAssignedMachineId())
+            // .orElseThrow(() -> new RuntimeException("Machine not found")));
         }
         if (req.getInChargeUserId() != null) {
             stage.setInChargeUser(userRepo.findById(req.getInChargeUserId())
@@ -601,47 +574,10 @@ public class ProductionPlanService {
         return mapper.toDto(updatedPlan);
     }
 
-    private void reservePlanStages(ProductionPlan plan, Map<Long, List<ProductionStage>> stageMapping) {
-        if (plan == null)
-            return;
-        releasePlanReservations(plan.getId());
-        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
-        for (ProductionPlanStage stage : stages) {
-            if (stage.getAssignedMachine() == null || stage.getPlannedStartTime() == null
-                    || stage.getPlannedEndTime() == null) {
-                continue;
-            }
-            List<ProductionStage> mappedStages = stageMapping != null ? stageMapping.get(stage.getId()) : null;
-            if (mappedStages == null || mappedStages.isEmpty()) {
-                MachineAssignment assignment = new MachineAssignment();
-                assignment.setMachine(stage.getAssignedMachine());
-                assignment.setPlanStage(stage);
-                assignment.setReservationType("PLAN");
-                assignment.setReservationStatus("RESERVED");
-                assignment.setAssignedAt(toInstant(stage.getPlannedStartTime()));
-                assignment.setReleasedAt(toInstant(stage.getPlannedEndTime()));
-                machineAssignmentRepository.save(assignment);
-                continue;
-            }
-            for (ProductionStage productionStage : mappedStages) {
-                MachineAssignment assignment = new MachineAssignment();
-                assignment.setMachine(stage.getAssignedMachine());
-                assignment.setPlanStage(stage);
-                assignment.setProductionStage(productionStage);
-                assignment.setReservationType("PRODUCTION");
-                assignment.setReservationStatus("RESERVED");
-                Instant assignedAt = productionStage.getPlannedStartAt() != null
-                        ? productionStage.getPlannedStartAt()
-                        : toInstant(stage.getPlannedStartTime());
-                Instant releasedAt = productionStage.getPlannedEndAt() != null
-                        ? productionStage.getPlannedEndAt()
-                        : toInstant(stage.getPlannedEndTime());
-                assignment.setAssignedAt(assignedAt);
-                assignment.setReleasedAt(releasedAt);
-                machineAssignmentRepository.save(assignment);
-            }
-        }
-    }
+    // private void reservePlanStages(ProductionPlan plan, Map<Long,
+    // List<ProductionStage>> stageMapping) {
+    // // REMOVED: No machine reservation in planning
+    // }
 
     private void releasePlanReservations(Long planId) {
         if (planId == null)
@@ -649,11 +585,11 @@ public class ProductionPlanService {
         machineAssignmentRepository.deleteByPlanStagePlanId(planId);
     }
 
-    private Instant toInstant(LocalDateTime value) {
-        if (value == null)
-            return null;
-        return value.atZone(java.time.ZoneId.systemDefault()).toInstant();
-    }
+    // private Instant toInstant(LocalDateTime value) {
+    // if (value == null)
+    // return null;
+    // return value.atZone(java.time.ZoneId.systemDefault()).toInstant();
+    // }
 
     private void applyTimelineToPlan(ProductionPlan plan) {
         if (plan == null || plan.getLot() == null || plan.getLot().getProduct() == null) {

@@ -442,8 +442,9 @@ public class ProductionService {
                 && x.getStageSequence() == s.getStageSequence() + 1).findFirst().orElse(null);
 
         if (next != null) {
-            // Set next stage to WAITING (chờ làm)
-            syncStageStatus(next, "WAITING");
+            // Set next stage to READY_TO_PRODUCE (Rolling Production)
+            syncStageStatus(next, "READY_TO_PRODUCE");
+            next.setExecutionStatus("READY_TO_PRODUCE");
             stageRepo.save(next);
 
             String currentStageType = s.getStageType();
@@ -562,6 +563,24 @@ public class ProductionService {
                 outsourcingTaskRepository.save(ot);
             }
         }
+        // NEW: Automate machine status - Set ALL machines of this type to IN_USE
+        machineRepository.updateStatusByType(s.getStageType(), "IN_USE");
+
+        // NEW: Log Machine Assignment for Traceability
+        List<Machine> machines = machineRepository.findAll().stream()
+                .filter(m -> s.getStageType().equals(m.getType()))
+                .toList();
+
+        for (Machine m : machines) {
+            MachineAssignment ma = new MachineAssignment();
+            ma.setMachine(m);
+            ma.setProductionStage(s);
+            ma.setAssignedAt(Instant.now());
+            ma.setReservationStatus("ACTIVE");
+            ma.setReservationType("LOG");
+            machineAssignmentRepository.save(ma);
+        }
+
         return s;
     }
 
@@ -717,8 +736,21 @@ public class ProductionService {
         if (progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0) {
             s.setProgressPercent(100);
             syncStageStatus(s, "WAITING_QC");
+            s.setExecutionStatus("WAITING_QC"); // Explicitly set execution status
             s.setCompleteAt(Instant.now());
             releaseMachineReservations(s);
+
+            // NEW: Automate machine status - Set ALL machines of this type to AVAILABLE
+            machineRepository.updateStatusByType(s.getStageType(), "AVAILABLE");
+
+            // NEW: Release Machine Assignment Log
+            List<MachineAssignment> activeAssignments = machineAssignmentRepository
+                    .findByProductionStageIdAndReleasedAtIsNull(s.getId());
+            for (MachineAssignment ma : activeAssignments) {
+                ma.setReleasedAt(Instant.now());
+                ma.setReservationStatus("RELEASED");
+                machineAssignmentRepository.save(ma);
+            }
 
             // Notify QC
             if (s.getQcAssignee() != null) {
@@ -760,6 +792,116 @@ public class ProductionService {
     @Transactional
     public ProductionOrder assignTechnician(Long poId, Long technicianUserId) {
         return internalAssignTechnician(poId, technicianUserId);
+    }
+
+    // ==== ROLLING PRODUCTION WORKFLOW METHODS ====
+
+    @Transactional
+    public List<ProductionStage> startWorkOrder(Long orderId) {
+        ProductionOrder po = poRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Production Order not found"));
+
+        // 1. Capacity Check for WARPING (Công đoạn đầu tiên)
+        // Count active WARPING stages (IN_PROGRESS or READY_TO_PRODUCE)
+        long activeWarpingCount = stageRepo.countByStageTypeAndExecutionStatusIn(
+                "WARPING", List.of("IN_PROGRESS", "READY_TO_PRODUCE"));
+
+        // Get total WARPING machines
+        long totalWarpingMachines = machineRepository.findAll().stream()
+                .filter(m -> "WARPING".equals(m.getType()))
+                .count();
+
+        // If total machines is 0, we can't start.
+        if (totalWarpingMachines == 0) {
+            throw new RuntimeException("Không tìm thấy máy Cuồng mắc nào trong hệ thống.");
+        }
+
+        if (activeWarpingCount >= totalWarpingMachines) {
+            throw new RuntimeException("Không thể bắt đầu. Máy cuồng mắc đang đầy (" + activeWarpingCount + "/"
+                    + totalWarpingMachines + "). Vui lòng đợi đơn hàng trước hoàn thành.");
+        }
+
+        // 2. Update Order Status
+        po.setExecutionStatus("IN_PROGRESS");
+        po.setStatus("IN_PROGRESS");
+        poRepo.save(po);
+
+        // 3. Activate First Stage (WARPING)
+        List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(orderId);
+        if (stages.isEmpty()) {
+            throw new RuntimeException("Đơn hàng chưa có công đoạn nào.");
+        }
+
+        ProductionStage firstStage = stages.get(0);
+        // Ensure it is WARPING (or whatever the first stage is)
+        syncStageStatus(firstStage, "READY_TO_PRODUCE"); // Custom status mapping
+        firstStage.setExecutionStatus("READY_TO_PRODUCE");
+        stageRepo.save(firstStage);
+
+        // 4. Set other stages to PENDING (if not already)
+        for (int i = 1; i < stages.size(); i++) {
+            ProductionStage s = stages.get(i);
+            s.setExecutionStatus("PENDING"); // Changed from WAITING to PENDING to avoid confusion with legacy "Ready"
+                                             // status
+            s.setStatus("PENDING");
+            stageRepo.save(s);
+        }
+
+        // 5. Notify Warping Leader
+        if (firstStage.getAssignedLeader() != null) {
+            notificationService.notifyUser(firstStage.getAssignedLeader(), "PRODUCTION", "INFO",
+                    "Đơn hàng sẵn sàng",
+                    "Đơn hàng " + po.getPoNumber() + " đã sẵn sàng sản xuất công đoạn " + firstStage.getStageType(),
+                    "PRODUCTION_STAGE", firstStage.getId());
+        }
+
+        return stages;
+    }
+
+    @Transactional
+    public ProductionStage startStage(Long stageId, Long userId) {
+        ProductionStage s = stageRepo.findById(stageId)
+                .orElseThrow(() -> new RuntimeException("Stage not found"));
+
+        // Allow start if READY_TO_PRODUCE or WAITING (fallback)
+        if (!"READY_TO_PRODUCE".equals(s.getExecutionStatus()) && !"WAITING".equals(s.getExecutionStatus())) {
+            // Allow re-start if it was PAUSED?
+            if (!"PAUSED".equals(s.getStatus())) {
+                throw new RuntimeException("Công đoạn chưa sẵn sàng hoặc đã bắt đầu.");
+            }
+        }
+
+        s.setStartAt(Instant.now());
+        s.setExecutionStatus("IN_PROGRESS");
+        syncStageStatus(s, "IN_PROGRESS");
+
+        // Log tracking
+        StageTracking tr = new StageTracking();
+        tr.setProductionStage(s);
+        tr.setOperator(userRepository.findById(userId).orElse(null));
+        tr.setAction("START");
+        // Removed setCreatedAt as it is handled by @CreationTimestamp
+        stageTrackingRepository.save(tr);
+
+        // Machine Status Update & Assignment Log (Reused from existing logic)
+        machineRepository.updateStatusByType(s.getStageType(), "IN_USE");
+
+        // Create MachineAssignment
+        List<Machine> machines = machineRepository.findAll().stream()
+                .filter(m -> s.getStageType().equals(m.getType()))
+                .toList();
+
+        for (Machine m : machines) {
+            MachineAssignment ma = new MachineAssignment();
+            ma.setMachine(m);
+            ma.setProductionStage(s);
+            ma.setAssignedAt(Instant.now());
+            ma.setReservationStatus("ACTIVE");
+            ma.setReservationType("LOG");
+            machineAssignmentRepository.save(ma);
+        }
+
+        return stageRepo.save(s);
     }
 
     @Transactional
@@ -975,85 +1117,11 @@ public class ProductionService {
      * Sau khi PM ấn "Bắt đầu lệnh làm việc":
      * - Gửi thông báo đến tất cả Tổ Trưởng và KCS
      * - Stage đầu tiên: executionStatus = "WAITING" (chờ làm)
-     * - Các stage khác: executionStatus = "PENDING" (đợi)
      * 
-     * NEW: Query trực tiếp ProductionStage theo ProductionOrder (không qua
-     * WorkOrder)
-     */
-    @Transactional
-    public List<ProductionStage> startWorkOrder(Long orderId) {
-        ProductionOrder po = poRepo.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Production Order not found"));
-
-        // NEW: Query trực tiếp stages theo ProductionOrder
-        List<ProductionStage> stages = stageRepo.findStagesByOrderId(orderId);
-
-        if (stages.isEmpty()) {
-            throw new RuntimeException("No Production Stages found for Production Order " + orderId);
-        }
-
-        // Find first stage (lowest sequence number)
-        ProductionStage firstStage = stages.stream()
-                .filter(s -> s.getStageSequence() != null)
-                .min(Comparator.comparing(ProductionStage::getStageSequence))
-                .orElse(null);
-
-        java.util.Set<User> notifiedLeaders = new java.util.HashSet<>();
-        java.util.Set<User> notifiedQcs = new java.util.HashSet<>();
-
-        for (ProductionStage stage : stages) {
-            if (stage.equals(firstStage)) {
-                // First stage: WAITING (chờ làm)
-                syncStageStatus(stage, "WAITING");
-
-                // Notify assigned leader
-                if (stage.getAssignedLeader() != null && !notifiedLeaders.contains(stage.getAssignedLeader())) {
-                    notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
-                            "Công đoạn sẵn sàng bắt đầu",
-                            "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
-                                    + " đã sẵn sàng. Bạn có thể bắt đầu làm việc.",
-                            "PRODUCTION_STAGE", stage.getId());
-                    notifiedLeaders.add(stage.getAssignedLeader());
-                }
-            } else {
-                // Other stages: PENDING (đợi)
-                syncStageStatus(stage, "PENDING");
-            }
-
-            // Notify QC if assigned
-            if (stage.getQcAssignee() != null && !notifiedQcs.contains(stage.getQcAssignee())) {
-                notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO",
-                        "Chuẩn bị kiểm tra",
-                        "Công đoạn " + stage.getStageType() + " của lệnh sản xuất #" + po.getPoNumber()
-                                + " sẽ cần kiểm tra sau khi hoàn thành.",
-                        "PRODUCTION_STAGE", stage.getId());
-                notifiedQcs.add(stage.getQcAssignee());
-            }
-        }
-
-        // Notify all QC staff if no specific QC assigned
-        List<User> qcStaff = userRepository.findByRoleName("QC_STAFF");
-        for (User qc : qcStaff) {
-            if (!notifiedQcs.contains(qc)) {
-                notificationService.notifyUser(qc, "QC", "INFO",
-                        "Lệnh sản xuất mới",
-                        "Lệnh sản xuất #" + po.getPoNumber()
-                                + " đã bắt đầu. Các công đoạn sẽ cần kiểm tra sau khi hoàn thành.",
-                        "PRODUCTION_ORDER", po.getId());
-            }
-        }
-
-        stageRepo.saveAll(stages);
-
-        // Cập nhật ProductionOrder status sang IN_PROGRESS
-        po.setStatus("IN_PROGRESS");
-        po.setExecutionStatus("IN_PROGRESS");
-        poRepo.save(po);
-
-        return stages;
-    }
-
-    /**
+     * return stages;
+     * }
+     * 
+     * /**
      * Lấy danh sách stages của Production Order để hiển thị kế hoạch
      */
     public List<ProductionStage> getOrderStages(Long orderId) {

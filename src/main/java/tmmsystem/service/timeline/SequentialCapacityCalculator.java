@@ -13,15 +13,16 @@ public class SequentialCapacityCalculator {
 
     private static final BigDecimal WORKING_HOURS_PER_DAY = new BigDecimal("8");
     private static final BigDecimal VENDOR_DYEING_DAYS = new BigDecimal("2.0");
+    private static final BigDecimal PACKAGING_CAPACITY_PER_HOUR = new BigDecimal("2500");
 
     public SequentialCapacityCalculator(MachineRepository machineRepository) {
         this.machineRepository = machineRepository;
     }
 
     public SequentialCapacityResult calculate(BigDecimal totalWeightKg,
-                                              BigDecimal faceQty,
-                                              BigDecimal bathQty,
-                                              BigDecimal sportQty) {
+            BigDecimal faceQty,
+            BigDecimal bathQty,
+            BigDecimal sportQty) {
         SequentialCapacityResult result = new SequentialCapacityResult();
 
         BigDecimal warpingCapacity = getTotalCapacityPerDay("WARPING");
@@ -39,24 +40,29 @@ public class SequentialCapacityCalculator {
         result.setCuttingDays(max(
                 divide(faceQty, cuttingCapacityFace),
                 divide(bathQty, cuttingCapacityBath),
-                divide(sportQty, cuttingCapacitySport)
-        ));
+                divide(sportQty, cuttingCapacitySport)));
         result.setSewingDays(max(
                 divide(faceQty, sewingCapacityFace),
                 divide(bathQty, sewingCapacityBath),
-                divide(sportQty, sewingCapacitySport)
-        ));
+                divide(sportQty, sewingCapacitySport)));
+
+        // Packaging: 2500 items/hour * 8 hours = 20000 items/day
+        BigDecimal totalQty = faceQty.add(bathQty).add(sportQty);
+        BigDecimal packagingCapacityPerDay = PACKAGING_CAPACITY_PER_HOUR.multiply(WORKING_HOURS_PER_DAY);
+        result.setPackagingDays(divide(totalQty, packagingCapacityPerDay));
 
         BigDecimal totalProcessing = result.getWarpingDays()
                 .add(result.getWeavingDays())
                 .add(result.getDyeingDays())
                 .add(result.getCuttingDays())
-                .add(result.getSewingDays());
+                .add(result.getSewingDays())
+                .add(result.getPackagingDays());
         BigDecimal waitTimes = new BigDecimal("0.5")
                 .add(new BigDecimal("0.5"))
                 .add(new BigDecimal("1.0"))
                 .add(new BigDecimal("0.2"))
-                .add(new BigDecimal("0.3"));
+                .add(new BigDecimal("0.3"))
+                .add(new BigDecimal("0.2")); // Packaging wait time
         result.setTotalDays(totalProcessing.add(waitTimes));
         result.setBottleneck(findBottleneck(result));
 
@@ -69,8 +75,8 @@ public class SequentialCapacityCalculator {
                 "WEAVING", result.getWeavingDays(),
                 "DYEING", result.getDyeingDays(),
                 "CUTTING", result.getCuttingDays(),
-                "SEWING", result.getSewingDays()
-        );
+                "SEWING", result.getSewingDays(),
+                "PACKAGING", result.getPackagingDays());
         return data.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
@@ -78,15 +84,18 @@ public class SequentialCapacityCalculator {
     }
 
     private BigDecimal divide(BigDecimal numerator, BigDecimal denominator) {
-        if (numerator == null || numerator.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
-        if (denominator == null || denominator.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
+        if (numerator == null || numerator.compareTo(BigDecimal.ZERO) == 0)
+            return BigDecimal.ZERO;
+        if (denominator == null || denominator.compareTo(BigDecimal.ZERO) == 0)
+            return BigDecimal.ZERO;
         return numerator.divide(denominator, 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal max(BigDecimal... values) {
         BigDecimal max = BigDecimal.ZERO;
         for (BigDecimal v : values) {
-            if (v != null && v.compareTo(max) > 0) max = v;
+            if (v != null && v.compareTo(max) > 0)
+                max = v;
         }
         return max;
     }
@@ -107,7 +116,8 @@ public class SequentialCapacityCalculator {
     }
 
     private BigDecimal extractCapacityFromSpecs(String specs, String key) {
-        if (specs == null) return BigDecimal.ZERO;
+        if (specs == null)
+            return BigDecimal.ZERO;
         String pattern = "\"" + key + "\"\\s*:\\s*(\\d+(?:\\.\\d+)?)";
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(pattern).matcher(specs);
         if (matcher.find()) {
@@ -116,4 +126,3 @@ public class SequentialCapacityCalculator {
         return BigDecimal.ZERO;
     }
 }
-
