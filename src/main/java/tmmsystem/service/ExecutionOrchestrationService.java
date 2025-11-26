@@ -112,16 +112,18 @@ public class ExecutionOrchestrationService {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         ensureOrderStarted(stage);
         String currentStatus = stage.getExecutionStatus();
-        // Nếu đã ở trạng thái IN_PROGRESS thì coi như đã bắt đầu - trả về stage mà không báo lỗi
+        // Nếu đã ở trạng thái IN_PROGRESS thì coi như đã bắt đầu - trả về stage mà
+        // không báo lỗi
         if ("IN_PROGRESS".equals(currentStatus)) {
             return stage;
         }
 
         // Chấp nhận cả WAITING (chờ làm), READY (sẵn sàng) và WAITING_REWORK (chờ sửa)
-        if (!"READY".equals(currentStatus) 
-            && !"WAITING".equals(currentStatus)
-            && !"WAITING_REWORK".equals(currentStatus)) {
-            throw new RuntimeException("Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + currentStatus);
+        if (!"READY".equals(currentStatus)
+                && !"WAITING".equals(currentStatus)
+                && !"WAITING_REWORK".equals(currentStatus)) {
+            throw new RuntimeException(
+                    "Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + currentStatus);
         }
         User operator = validateStageStartPermission(stage, userId);
         stage.setStartAt(Instant.now());
@@ -205,8 +207,8 @@ public class ExecutionOrchestrationService {
         User qc = userRepo.findById(qcUserId).orElseThrow();
 
         if (!"QC_IN_PROGRESS".equals(execStatus)) {
-        productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
-        stageRepo.save(stage);
+            productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
+            stageRepo.save(stage);
         }
 
         QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
@@ -345,7 +347,7 @@ public class ExecutionOrchestrationService {
             // Nếu stage chưa có ProductionOrder, không thể tìm next stage
             return;
         }
-        
+
         List<ProductionStage> stages = stageRepo
                 .findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
         ProductionStage next = stages.stream()
@@ -486,8 +488,25 @@ public class ExecutionOrchestrationService {
     }
 
     @Transactional(readOnly = true)
+    public ProductionStage findByQrToken(String token) {
+        return stageRepo.findByQrToken(token).orElseThrow(() -> new RuntimeException("Invalid QR token"));
+    }
+
+    @Transactional
     public java.util.List<ProductionStage> listStagesForPm(Long orderId) {
-        return stageRepo.findStagesByOrderId(orderId);
+        List<ProductionStage> stages = stageRepo.findStagesByOrderId(orderId);
+        // Lazy generation of QR tokens for existing stages
+        boolean updated = false;
+        for (ProductionStage stage : stages) {
+            if (stage.getQrToken() == null || stage.getQrToken().isEmpty()) {
+                stage.setQrToken(java.util.UUID.randomUUID().toString());
+                updated = true;
+            }
+        }
+        if (updated) {
+            stageRepo.saveAll(stages);
+        }
+        return stages;
     }
 
     @Transactional(readOnly = true)

@@ -21,9 +21,9 @@ public class ExecutionController {
     private final ExecutionMapper executionMapper;
 
     public ExecutionController(ExecutionOrchestrationService service,
-                               ProductionMapper productionMapper,
-                               ExecutionService executionService,
-                               ExecutionMapper executionMapper) {
+            ProductionMapper productionMapper,
+            ExecutionService executionService,
+            ExecutionMapper executionMapper) {
         this.orchestrationService = service;
         this.productionMapper = productionMapper;
         this.executionService = executionService;
@@ -145,5 +145,11 @@ public class ExecutionController {
     @GetMapping("/material-requisitions/{reqId}")
     public tmmsystem.entity.MaterialRequisition getMaterialRequisition(@PathVariable Long reqId) {
         return orchestrationService.getMaterialRequisition(reqId);
+    }
+
+    @GetMapping("/stages/by-token/{token}")
+    public ProductionStageDto getStageByToken(@PathVariable String token) {
+        ProductionStage stage = orchestrationService.findByQrToken(token);
+        return productionMapper.toDto(stage);
     }
 }
