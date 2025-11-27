@@ -111,4 +111,11 @@ public class MachineController {
         return ResponseEntity
                 .ok(service.getAssignments(id, org.springframework.data.domain.PageRequest.of(page, size)));
     }
+
+    @Operation(summary = "Đồng bộ lịch sử assignment cũ")
+    @PostMapping("/sync-assignments")
+    public ResponseEntity<?> syncAssignments() {
+        service.syncPastAssignments();
+        return ResponseEntity.ok().build();
+    }
 }

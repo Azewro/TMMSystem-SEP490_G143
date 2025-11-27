@@ -151,4 +151,51 @@ public class MachineService {
             org.springframework.data.domain.Pageable pageable) {
         return assignmentRepository.findByMachineIdOrderByAssignedAtDesc(machineId, pageable);
     }
+
+    @Transactional
+    public void syncPastAssignments() {
+        List<tmmsystem.entity.ProductionStage> allStages = stageRepository.findAll();
+        for (tmmsystem.entity.ProductionStage stage : allStages) {
+            // Skip if stage hasn't started or type is null
+            if (stage.getStartAt() == null || stage.getStageType() == null) {
+                continue;
+            }
+
+            // Check if assignments already exist
+            List<tmmsystem.entity.MachineAssignment> existing = assignmentRepository
+                    .findByProductionStageId(stage.getId());
+            if (!existing.isEmpty()) {
+                continue;
+            }
+
+            // Find machines by type
+            List<Machine> machines = repository.findByType(stage.getStageType());
+            // Also check aliases
+            if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
+                machines.addAll(repository.findByType(STAGE_TYPE_ALIASES.get(stage.getStageType())));
+            }
+
+            for (Machine m : machines) {
+                tmmsystem.entity.MachineAssignment ma = new tmmsystem.entity.MachineAssignment();
+                ma.setMachine(m);
+                ma.setProductionStage(stage);
+                ma.setAssignedAt(stage.getStartAt());
+                ma.setReservationType("PRODUCTION");
+
+                // Determine status
+                boolean isReleased = stage.getCompleteAt() != null ||
+                        "COMPLETED".equals(stage.getExecutionStatus()) ||
+                        "QC_PASSED".equals(stage.getExecutionStatus());
+
+                if (isReleased) {
+                    ma.setReservationStatus("RELEASED");
+                    ma.setReleasedAt(stage.getCompleteAt() != null ? stage.getCompleteAt() : stage.getUpdatedAt());
+                } else {
+                    ma.setReservationStatus("ACTIVE");
+                }
+
+                assignmentRepository.save(ma);
+            }
+        }
+    }
 }

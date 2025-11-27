@@ -17,6 +17,8 @@ public interface MachineRepository extends JpaRepository<Machine, Long>, JpaSpec
     @Query("UPDATE Machine m SET m.status = :status WHERE m.type = :type")
     void updateStatusByType(String type, String status);
 
+    List<Machine> findByType(String type);
+
     @Modifying
     @Query("UPDATE Machine m SET m.status = 'AVAILABLE'")
     void resetAllMachineStatuses();
