@@ -1,22 +1,24 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 
-@Entity @Table(name = "customer",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"email"}),
-                @UniqueConstraint(columnNames = {"phone_number"}),
-                @UniqueConstraint(columnNames = {"customer_code"})
-        }
-)
-@Getter @Setter
+@Entity
+@Table(name = "customer", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "email" }),
+        @UniqueConstraint(columnNames = { "phone_number" }),
+        @UniqueConstraint(columnNames = { "customer_code" })
+})
+@Getter
+@Setter
 public class Customer {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @CreationTimestamp
@@ -77,7 +79,7 @@ public class Customer {
     // Status & registration
     @Column(name = "is_active")
     private Boolean active = true;
-    @Column(name = "registration_type", length = 20)
+    @Column(name = "registration_type", length = 100)
     private String registrationType = "SALES_CREATED";
 
     // Sales in charge

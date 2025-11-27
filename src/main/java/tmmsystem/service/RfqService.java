@@ -25,7 +25,9 @@ public class RfqService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
 
-    public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository, NotificationService notificationService, CustomerRepository customerRepository, UserRepository userRepository) {
+    public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository,
+            NotificationService notificationService, CustomerRepository customerRepository,
+            UserRepository userRepository) {
         this.rfqRepository = rfqRepository;
         this.detailRepository = detailRepository;
         this.notificationService = notificationService;
@@ -33,32 +35,37 @@ public class RfqService {
         this.userRepository = userRepository;
     }
 
-    public List<Rfq> findAll() { return rfqRepository.findAll(); }
-    public Page<Rfq> findAll(Pageable pageable) { return rfqRepository.findAll(pageable); }
-    
+    public List<Rfq> findAll() {
+        return rfqRepository.findAll();
+    }
+
+    public Page<Rfq> findAll(Pageable pageable) {
+        return rfqRepository.findAll(pageable);
+    }
+
     public Page<Rfq> findAll(Pageable pageable, String search, String status) {
         return findAll(pageable, search, status, null);
     }
-    
+
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId) {
         return findAll(pageable, search, status, customerId, null);
     }
-    
+
     public Page<Rfq> findAll(Pageable pageable, String search, String status, Long customerId, String createdDate) {
         // Check if we have any actual filters (not null and not empty)
         boolean hasSearch = search != null && !search.trim().isEmpty();
         boolean hasStatus = status != null && !status.trim().isEmpty();
         boolean hasCustomerId = customerId != null;
         boolean hasCreatedDate = createdDate != null && !createdDate.trim().isEmpty();
-        
+
         if (!hasSearch && !hasStatus && !hasCustomerId && !hasCreatedDate) {
             return rfqRepository.findAll(pageable);
         }
-        
+
         String searchLower = hasSearch && search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
         Long finalCustomerId = customerId;
-        
+
         // Parse createdDate if provided
         java.time.LocalDate targetDate = null;
         if (hasCreatedDate) {
@@ -69,51 +76,52 @@ public class RfqService {
             }
         }
         final java.time.LocalDate finalTargetDate = targetDate;
-        
+
         return rfqRepository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-            
+
             // Customer filter
             if (hasCustomerId && finalCustomerId != null) {
                 predicates.add(cb.equal(root.get("customer").get("id"), finalCustomerId));
             }
-            
+
             // Search predicate - chỉ tìm theo mã RFQ và tên khách hàng
             if (hasSearch && search != null) {
                 var searchPredicate = cb.or(
-                    cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%")
-                );
+                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"));
                 predicates.add(searchPredicate);
             }
-            
+
             // Status filter
             if (hasStatus && finalStatus != null) {
                 predicates.add(cb.equal(root.get("status"), finalStatus));
             }
-            
+
             // Created date filter
             if (hasCreatedDate && finalTargetDate != null) {
                 // Filter by date (ignoring time part)
-                // Compare date part only: createdAt >= start of day AND createdAt < start of next day
+                // Compare date part only: createdAt >= start of day AND createdAt < start of
+                // next day
                 java.time.LocalDateTime startOfDay = finalTargetDate.atStartOfDay();
                 java.time.LocalDateTime startOfNextDay = finalTargetDate.plusDays(1).atStartOfDay();
                 predicates.add(cb.and(
-                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
-                    cb.lessThan(root.get("createdAt"), startOfNextDay)
-                ));
+                        cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                        cb.lessThan(root.get("createdAt"), startOfNextDay)));
             }
-            
+
             // Ensure we have at least one predicate before combining
             if (predicates.isEmpty()) {
                 return cb.conjunction(); // Return true predicate if no filters
             }
-            
+
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         }, pageable);
     }
-    
-    public Rfq findById(Long id) { return rfqRepository.findById(id).orElseThrow(); }
+
+    public Rfq findById(Long id) {
+        return rfqRepository.findById(id).orElseThrow();
+    }
 
     @Transactional
     public Rfq create(Rfq rfq) {
@@ -150,43 +158,70 @@ public class RfqService {
 
     @Transactional
     public Rfq createFromLoggedIn(RfqCreateDto dto) {
-        if (dto.getCustomerId() == null) throw new IllegalArgumentException("customerId is required");
+        if (dto.getCustomerId() == null)
+            throw new IllegalArgumentException("customerId is required");
         Rfq rfq = new Rfq();
         rfq.setRfqNumber(dto.getRfqNumber());
-        Customer c = new Customer(); c.setId(dto.getCustomerId()); rfq.setCustomer(c);
+        Customer c = new Customer();
+        c.setId(dto.getCustomerId());
+        rfq.setCustomer(c);
         rfq.setSourceType(dto.getSourceType());
         rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
         rfq.setStatus(dto.getStatus());
         rfq.setSent(dto.getIsSent());
         rfq.setNotes(dto.getNotes());
-        if (dto.getCreatedById() != null) { User u = new User(); u.setId(dto.getCreatedById()); rfq.setCreatedBy(u); }
-        if (dto.getAssignedPlanningId() != null) { User u = new User(); u.setId(dto.getAssignedPlanningId()); rfq.setAssignedPlanning(u); }
-        if (dto.getApprovedById() != null) { User u = new User(); u.setId(dto.getApprovedById()); rfq.setApprovedBy(u); }
+        if (dto.getCreatedById() != null) {
+            User u = new User();
+            u.setId(dto.getCreatedById());
+            rfq.setCreatedBy(u);
+        }
+        if (dto.getAssignedPlanningId() != null) {
+            User u = new User();
+            u.setId(dto.getAssignedPlanningId());
+            rfq.setAssignedPlanning(u);
+        }
+        if (dto.getApprovedById() != null) {
+            User u = new User();
+            u.setId(dto.getApprovedById());
+            rfq.setApprovedBy(u);
+        }
         rfq.setApprovalDate(dto.getApprovalDate());
 
         if (dto.getEmployeeCode() != null && !dto.getEmployeeCode().isBlank()) {
             String code = dto.getEmployeeCode().trim();
-            User user = userRepository.findByEmployeeCode(code).orElseThrow(() ->
-                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + code)
-            );
+            User user = userRepository.findByEmployeeCode(code)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Invalid employeeCode or user not found: " + code));
             String roleName = user.getRole() != null ? user.getRole().getName() : null;
             if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
             }
             rfq.setAssignedSales(user);
         } else if (dto.getAssignedSalesId() != null) {
-            User u = new User(); u.setId(dto.getAssignedSalesId()); rfq.setAssignedSales(u);
+            User u = new User();
+            u.setId(dto.getAssignedSalesId());
+            rfq.setAssignedSales(u);
         }
 
-        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
+        if (dto.getExpectedDeliveryDate() != null)
+            validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
-        // Prioritize contact info from DTO, fall back to customer profile for historical snapshot
+        // Prioritize contact info from DTO, fall back to customer profile for
+        // historical snapshot
         Customer loaded = customerRepository.findById(dto.getCustomerId()).orElse(null);
         if (loaded != null) {
-            rfq.setContactPersonSnapshot(dto.getContactPerson() != null && !dto.getContactPerson().isBlank() ? dto.getContactPerson() : loaded.getContactPerson());
-            rfq.setContactEmailSnapshot(dto.getContactEmail() != null && !dto.getContactEmail().isBlank() ? normalizeEmail(dto.getContactEmail()) : normalizeEmail(loaded.getEmail()));
-            rfq.setContactPhoneSnapshot(dto.getContactPhone() != null && !dto.getContactPhone().isBlank() ? normalizePhone(dto.getContactPhone()) : normalizePhone(loaded.getPhoneNumber()));
-            rfq.setContactAddressSnapshot(dto.getContactAddress() != null && !dto.getContactAddress().isBlank() ? dto.getContactAddress() : loaded.getAddress());
+            rfq.setContactPersonSnapshot(
+                    dto.getContactPerson() != null && !dto.getContactPerson().isBlank() ? dto.getContactPerson()
+                            : loaded.getContactPerson());
+            rfq.setContactEmailSnapshot(dto.getContactEmail() != null && !dto.getContactEmail().isBlank()
+                    ? normalizeEmail(dto.getContactEmail())
+                    : normalizeEmail(loaded.getEmail()));
+            rfq.setContactPhoneSnapshot(dto.getContactPhone() != null && !dto.getContactPhone().isBlank()
+                    ? normalizePhone(dto.getContactPhone())
+                    : normalizePhone(loaded.getPhoneNumber()));
+            rfq.setContactAddressSnapshot(
+                    dto.getContactAddress() != null && !dto.getContactAddress().isBlank() ? dto.getContactAddress()
+                            : loaded.getAddress());
 
             // Prioritize contact method from DTO, then infer from the chosen contact info
             String rfqContactEmail = rfq.getContactEmailSnapshot();
@@ -201,7 +236,8 @@ public class RfqService {
     @Transactional
     public Rfq createFromPublic(RfqPublicCreateDto dto) {
         // validate at service level as well (caller should have validated DTO)
-        if ((dto.getContactEmail() == null || dto.getContactEmail().isBlank()) && (dto.getContactPhone() == null || dto.getContactPhone().isBlank())) {
+        if ((dto.getContactEmail() == null || dto.getContactEmail().isBlank())
+                && (dto.getContactPhone() == null || dto.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Public submission must provide contactEmail or contactPhone");
         }
 
@@ -224,8 +260,10 @@ public class RfqService {
             int rand = new java.security.SecureRandom().nextInt(900) + 100;
             newCustomer.setCustomerCode("CUS-" + prefix + "-" + rand);
             newCustomer.setContactPerson(dto.getContactPerson());
-            if (normEmail != null) newCustomer.setEmail(normEmail);
-            if (normPhone != null) newCustomer.setPhoneNumber(normPhone);
+            if (normEmail != null)
+                newCustomer.setEmail(normEmail);
+            if (normPhone != null)
+                newCustomer.setPhoneNumber(normPhone);
             newCustomer.setAddress(dto.getContactAddress());
             newCustomer.setVerified(false);
             newCustomer.setRegistrationType("PUBLIC_FORM");
@@ -233,9 +271,12 @@ public class RfqService {
                 customer = customerRepository.save(newCustomer);
             } catch (DataIntegrityViolationException ex) {
                 // Race condition: someone else inserted same email/phone concurrently; re-query
-                if (normEmail != null) customer = customerRepository.findByEmail(normEmail).orElse(null);
-                if (customer == null && normPhone != null) customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
-                if (customer == null) throw ex; // rethrow if still not found
+                if (normEmail != null)
+                    customer = customerRepository.findByEmail(normEmail).orElse(null);
+                if (customer == null && normPhone != null)
+                    customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
+                if (customer == null)
+                    throw ex; // rethrow if still not found
             }
         }
 
@@ -257,9 +298,9 @@ public class RfqService {
 
         if (dto.getEmployeeCode() != null && !dto.getEmployeeCode().isBlank()) {
             String code = dto.getEmployeeCode().trim();
-            User user = userRepository.findByEmployeeCode(code).orElseThrow(() ->
-                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + code)
-            );
+            User user = userRepository.findByEmployeeCode(code)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Invalid employeeCode or user not found: " + code));
             String roleName = user.getRole() != null ? user.getRole().getName() : null;
             if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
@@ -267,64 +308,75 @@ public class RfqService {
             rfq.setAssignedSales(user);
         }
 
-        if (dto.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
+        if (dto.getExpectedDeliveryDate() != null)
+            validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
         return createWithDetails(rfq, dto.getDetails());
     }
 
     @Transactional
     public Rfq createBySales(SalesRfqCreateRequest req, Long salesUserId) {
-        if (salesUserId == null) throw new IllegalArgumentException("Missing salesUserId header");
-        if ((req.getContactEmail() == null || req.getContactEmail().isBlank()) && (req.getContactPhone() == null || req.getContactPhone().isBlank())) {
+        if (salesUserId == null)
+            throw new IllegalArgumentException("Missing salesUserId header");
+        if ((req.getContactEmail() == null || req.getContactEmail().isBlank())
+                && (req.getContactPhone() == null || req.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Must provide contactEmail or contactPhone");
         }
         String email = normalizeEmail(req.getContactEmail());
         String phone = normalizePhone(req.getContactPhone());
         String method = validateAndDetermineMethod(req.getContactMethod(), email, phone);
         Customer customer = null;
-        if (email != null) customer = customerRepository.findByEmail(email).orElse(null);
-        if (customer == null && phone != null) customer = customerRepository.findByPhoneNumber(phone).orElse(null);
+        if (email != null)
+            customer = customerRepository.findByEmail(email).orElse(null);
+        if (customer == null && phone != null)
+            customer = customerRepository.findByPhoneNumber(phone).orElse(null);
         if (customer == null) {
             customer = new Customer();
             String prefix = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
             int rand = new java.security.SecureRandom().nextInt(900) + 100;
             customer.setCustomerCode("CUS-" + prefix + "-" + rand);
             customer.setContactPerson(req.getContactPerson());
-            if (email != null) customer.setEmail(email);
-            if (phone != null) customer.setPhoneNumber(phone);
+            if (email != null)
+                customer.setEmail(email);
+            if (phone != null)
+                customer.setPhoneNumber(phone);
             customer.setAddress(req.getContactAddress());
             customer.setVerified(false);
-            customer.setRegistrationType("SALES_CREATED_ON_BEHALF");
+            customer.setRegistrationType("SALES_ON_BEHALF");
             customer = customerRepository.save(customer);
         }
         Rfq rfq = new Rfq();
         rfq.setCustomer(customer);
         rfq.setSourceType("BY_SALES");
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
-        
-        // Logic: If employeeCode is provided, status is SENT (auto-assigned). 
+
+        // Logic: If employeeCode is provided, status is SENT (auto-assigned).
         // If not, status is DRAFT (assigned but not sent).
         if (req.getEmployeeCode() != null && !req.getEmployeeCode().isBlank()) {
             rfq.setStatus("SENT");
         } else {
             rfq.setStatus("DRAFT");
         }
-        
+
         rfq.setNotes(req.getNotes());
-        User sales = new User(); sales.setId(salesUserId); rfq.setAssignedSales(sales);
+        User sales = new User();
+        sales.setId(salesUserId);
+        rfq.setAssignedSales(sales);
         // snapshots
         rfq.setContactPersonSnapshot(req.getContactPerson());
         rfq.setContactEmailSnapshot(email);
         rfq.setContactPhoneSnapshot(phone);
         rfq.setContactAddressSnapshot(req.getContactAddress());
         rfq.setContactMethod(method);
-        if (req.getExpectedDeliveryDate() != null) validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), java.time.LocalDate.now());
+        if (req.getExpectedDeliveryDate() != null)
+            validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), java.time.LocalDate.now());
         return createWithDetails(rfq, req.getDetails());
     }
 
     private String validateAndDetermineMethod(String providedMethod, String email, String phone) {
         String inferred = inferContactMethod(email, phone);
-        if (providedMethod == null || providedMethod.isBlank()) return inferred;
+        if (providedMethod == null || providedMethod.isBlank())
+            return inferred;
         String upper = providedMethod.trim().toUpperCase();
         if (!upper.equals("EMAIL") && !upper.equals("PHONE")) {
             throw new IllegalArgumentException("contactMethod must be EMAIL or PHONE");
@@ -339,21 +391,26 @@ public class RfqService {
     }
 
     private String inferContactMethod(String email, String phone) {
-        if (email != null && !email.isBlank()) return "EMAIL";
-        if (phone != null && !phone.isBlank()) return "PHONE";
+        if (email != null && !email.isBlank())
+            return "EMAIL";
+        if (phone != null && !phone.isBlank())
+            return "PHONE";
         return null; // caller validation ensures at least one present
     }
 
     private String normalizeEmail(String email) {
-        if (email == null) return null;
+        if (email == null)
+            return null;
         String e = email.trim().toLowerCase();
         return e.isEmpty() ? null : e;
     }
 
     private String normalizePhone(String phone) {
-        if (phone == null) return null;
+        if (phone == null)
+            return null;
         String p = phone.trim();
-        if (p.isEmpty()) return null;
+        if (p.isEmpty())
+            return null;
         p = p.replaceAll("[ ()\\-]", "");
         return p;
     }
@@ -382,15 +439,18 @@ public class RfqService {
         if (Boolean.TRUE.equals(rfq.getLocked())) {
             throw new IllegalStateException("RFQ locked");
         }
-        
+
         // Update basic fields
         if (dto.getExpectedDeliveryDate() != null) {
-            java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+            java.time.LocalDate baseDate = rfq.getCreatedAt() != null
+                    ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    : java.time.LocalDate.now();
             validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), baseDate);
             rfq.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
         }
-        if (dto.getNotes() != null) rfq.setNotes(dto.getNotes());
-        
+        if (dto.getNotes() != null)
+            rfq.setNotes(dto.getNotes());
+
         // Update customer contact info and snapshots
         Customer cust = rfq.getCustomer();
         if (cust != null) {
@@ -417,7 +477,7 @@ public class RfqService {
             String inferred = inferContactMethod(rfq.getContactEmailSnapshot(), rfq.getContactPhoneSnapshot());
             rfq.setContactMethod(inferred);
         }
-        
+
         // Update details if provided
         if (dto.getDetails() != null) {
             detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
@@ -436,14 +496,21 @@ public class RfqService {
                 detailRepository.save(nd);
             }
         }
-        
+
         return rfqRepository.save(rfq);
     }
 
-    public void delete(Long id) { rfqRepository.deleteById(id); }
+    public void delete(Long id) {
+        rfqRepository.deleteById(id);
+    }
 
-    public List<RfqDetail> findDetailsByRfqId(Long rfqId) { return detailRepository.findByRfqId(rfqId); }
-    public RfqDetail findDetailById(Long id) { return detailRepository.findById(id).orElseThrow(); }
+    public List<RfqDetail> findDetailsByRfqId(Long rfqId) {
+        return detailRepository.findByRfqId(rfqId);
+    }
+
+    public RfqDetail findDetailById(Long id) {
+        return detailRepository.findById(id).orElseThrow();
+    }
 
     @Transactional
     public RfqDetail addDetail(Long rfqId, RfqDetailDto dto) {
@@ -453,7 +520,11 @@ public class RfqService {
         }
         RfqDetail detail = new RfqDetail();
         detail.setRfq(rfq);
-        if (dto.getProductId() != null) { Product product = new Product(); product.setId(dto.getProductId()); detail.setProduct(product); }
+        if (dto.getProductId() != null) {
+            Product product = new Product();
+            product.setId(dto.getProductId());
+            detail.setProduct(product);
+        }
         detail.setQuantity(dto.getQuantity());
         detail.setUnit(dto.getUnit());
         detail.setNoteColor(dto.getNoteColor());
@@ -468,7 +539,11 @@ public class RfqService {
         if (isImmutableStatus(rfq.getStatus())) {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
-        if (dto.getProductId() != null) { Product product = new Product(); product.setId(dto.getProductId()); detail.setProduct(product); }
+        if (dto.getProductId() != null) {
+            Product product = new Product();
+            product.setId(dto.getProductId());
+            detail.setProduct(product);
+        }
         detail.setQuantity(dto.getQuantity());
         detail.setUnit(dto.getUnit());
         detail.setNoteColor(dto.getNoteColor());
@@ -486,7 +561,8 @@ public class RfqService {
     }
 
     private boolean isImmutableStatus(String status) {
-        if (status == null) return false;
+        if (status == null)
+            return false;
         return switch (status) {
             case "PRELIMINARY_CHECKED", "FORWARDED_TO_PLANNING", "RECEIVED_BY_PLANNING", "QUOTED", "CANCELED" -> true;
             default -> false;
@@ -570,17 +646,20 @@ public class RfqService {
     @Transactional
     public Rfq assignSales(Long rfqId, Long salesId, String employeeCode) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
-        if (!"DRAFT".equals(rfq.getStatus())) throw new IllegalStateException("Chỉ gán Sales khi RFQ ở DRAFT");
+        if (!"DRAFT".equals(rfq.getStatus()))
+            throw new IllegalStateException("Chỉ gán Sales khi RFQ ở DRAFT");
         if (salesId == null && (employeeCode == null || employeeCode.isBlank())) {
             throw new IllegalArgumentException("Thiếu assignedSalesId hoặc employeeCode");
         }
         User salesUser;
         if (salesId != null) {
             salesUser = userRepository.findById(salesId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sales user not found with id: " + salesId));
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Sales user not found with id: " + salesId));
         } else {
-            salesUser = userRepository.findByEmployeeCode(employeeCode.trim()).orElseThrow(() ->
-                    new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid employeeCode or user not found: " + employeeCode));
+            salesUser = userRepository.findByEmployeeCode(employeeCode.trim())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Invalid employeeCode or user not found: " + employeeCode));
         }
 
         String roleName = salesUser.getRole() != null ? salesUser.getRole().getName() : null;
@@ -593,18 +672,18 @@ public class RfqService {
 
         // Notify the assigned sales user
         notificationService.notifyUser(
-            salesUser,
-            "ORDER",
-            "INFO",
-            "Bạn có RFQ mới được phân công",
-            "Yêu cầu báo giá #" + savedRfq.getRfqNumber() + " từ khách hàng " + (savedRfq.getContactPersonSnapshot() != null ? savedRfq.getContactPersonSnapshot() : "N/A") + " đã được gán cho bạn.",
-            "RFQ",
-            savedRfq.getId()
-        );
+                salesUser,
+                "ORDER",
+                "INFO",
+                "Bạn có RFQ mới được phân công",
+                "Yêu cầu báo giá #" + savedRfq.getRfqNumber() + " từ khách hàng "
+                        + (savedRfq.getContactPersonSnapshot() != null ? savedRfq.getContactPersonSnapshot() : "N/A")
+                        + " đã được gán cho bạn.",
+                "RFQ",
+                savedRfq.getId());
 
         return savedRfq;
     }
-
 
     @Transactional
     public Rfq assignStaff(Long rfqId, Long salesId, Long approvedById) {
@@ -615,42 +694,51 @@ public class RfqService {
         if (salesId == null) {
             throw new IllegalArgumentException("assignedSalesId là bắt buộc");
         }
-        User sales = new User(); sales.setId(salesId); rfq.setAssignedSales(sales);
-        if (approvedById != null) { User director = new User(); director.setId(approvedById); rfq.setApprovedBy(director); rfq.setApprovalDate(java.time.Instant.now()); }
+        User sales = new User();
+        sales.setId(salesId);
+        rfq.setAssignedSales(sales);
+        if (approvedById != null) {
+            User director = new User();
+            director.setId(approvedById);
+            rfq.setApprovedBy(director);
+            rfq.setApprovalDate(java.time.Instant.now());
+        }
         return rfqRepository.save(rfq);
     }
 
     public List<Rfq> findByAssignedSales(Long salesId) {
-        if (salesId == null) return java.util.Collections.emptyList();
+        if (salesId == null)
+            return java.util.Collections.emptyList();
         return rfqRepository.findByAssignedSales_Id(salesId);
     }
-    
+
     public Page<Rfq> findByAssignedSales(Long salesId, Pageable pageable) {
-        if (salesId == null) return Page.empty(pageable);
+        if (salesId == null)
+            return Page.empty(pageable);
         return rfqRepository.findByAssignedSales_Id(salesId, pageable);
     }
-    
+
     public Page<Rfq> findByAssignedSales(Long salesId, Pageable pageable, String search, String status) {
-        if (salesId == null) return Page.empty(pageable);
+        if (salesId == null)
+            return Page.empty(pageable);
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             return rfqRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("assignedSales").get("id"), salesId));
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -659,36 +747,38 @@ public class RfqService {
     }
 
     public List<Rfq> findByAssignedPlanning(Long planningId) {
-        if (planningId == null) return java.util.Collections.emptyList();
+        if (planningId == null)
+            return java.util.Collections.emptyList();
         return rfqRepository.findByAssignedPlanning_Id(planningId);
     }
-    
+
     public Page<Rfq> findByAssignedPlanning(Long planningId, Pageable pageable) {
-        if (planningId == null) return Page.empty(pageable);
+        if (planningId == null)
+            return Page.empty(pageable);
         return rfqRepository.findByAssignedPlanning_Id(planningId, pageable);
     }
-    
+
     public Page<Rfq> findByAssignedPlanning(Long planningId, Pageable pageable, String search, String status) {
-        if (planningId == null) return Page.empty(pageable);
+        if (planningId == null)
+            return Page.empty(pageable);
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             return rfqRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("assignedPlanning").get("id"), planningId));
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("rfqNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("contactPersonSnapshot")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -699,7 +789,7 @@ public class RfqService {
     public List<Rfq> findDraftUnassigned() {
         return rfqRepository.findByStatusAndAssignedSalesIsNull("DRAFT");
     }
-    
+
     public Page<Rfq> findDraftUnassigned(Pageable pageable) {
         return rfqRepository.findByStatusAndAssignedSalesIsNull("DRAFT", pageable);
     }
@@ -716,7 +806,10 @@ public class RfqService {
                 return candidate;
             }
             attempt++;
-            try { Thread.sleep(10L); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException ignored) {
+            }
         }
         // Fallback random suffix to avoid collisions
         int rand = new java.security.SecureRandom().nextInt(900) + 100;
@@ -725,12 +818,14 @@ public class RfqService {
 
     // Hook to persist capacity evaluation summary into RFQ
     @Transactional
-    public void persistCapacityEvaluation(Long rfqId, String capacityStatus, String reason, java.time.LocalDate proposedNewDate) {
+    public void persistCapacityEvaluation(Long rfqId, String capacityStatus, String reason,
+            java.time.LocalDate proposedNewDate) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
         rfq.setCapacityStatus(capacityStatus);
         rfq.setCapacityReason(reason);
         rfq.setProposedNewDeliveryDate(proposedNewDate);
-        // Khi không đủ năng lực, chuyển status về SENT để Sales có thể chỉnh sửa hoặc hủy
+        // Khi không đủ năng lực, chuyển status về SENT để Sales có thể chỉnh sửa hoặc
+        // hủy
         if ("INSUFFICIENT".equalsIgnoreCase(capacityStatus)) {
             rfq.setStatus("SENT");
             notificationService.notifyCapacityInsufficient(rfq);
@@ -751,25 +846,37 @@ public class RfqService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not assigned sales");
         }
         if (req.getExpectedDeliveryDate() != null) {
-            java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+            java.time.LocalDate baseDate = rfq.getCreatedAt() != null
+                    ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    : java.time.LocalDate.now();
             validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), baseDate);
             rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
         }
-        if (req.getNotes() != null) rfq.setNotes(req.getNotes());
+        if (req.getNotes() != null)
+            rfq.setNotes(req.getNotes());
         Customer cust = rfq.getCustomer();
         if (cust != null) {
-            if (req.getContactPerson() != null) cust.setContactPerson(req.getContactPerson());
-            if (req.getContactEmail() != null) cust.setEmail(normalizeEmail(req.getContactEmail()));
-            if (req.getContactPhone() != null) cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
-            if (req.getContactAddress() != null) cust.setAddress(req.getContactAddress());
+            if (req.getContactPerson() != null)
+                cust.setContactPerson(req.getContactPerson());
+            if (req.getContactEmail() != null)
+                cust.setEmail(normalizeEmail(req.getContactEmail()));
+            if (req.getContactPhone() != null)
+                cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
+            if (req.getContactAddress() != null)
+                cust.setAddress(req.getContactAddress());
             customerRepository.save(cust);
             // Update snapshots simultaneously
-            if (req.getContactPerson() != null) rfq.setContactPersonSnapshot(req.getContactPerson());
-            if (req.getContactEmail() != null) rfq.setContactEmailSnapshot(normalizeEmail(req.getContactEmail()));
-            if (req.getContactPhone() != null) rfq.setContactPhoneSnapshot(normalizePhone(req.getContactPhone()));
-            if (req.getContactAddress() != null) rfq.setContactAddressSnapshot(req.getContactAddress());
+            if (req.getContactPerson() != null)
+                rfq.setContactPersonSnapshot(req.getContactPerson());
+            if (req.getContactEmail() != null)
+                rfq.setContactEmailSnapshot(normalizeEmail(req.getContactEmail()));
+            if (req.getContactPhone() != null)
+                rfq.setContactPhoneSnapshot(normalizePhone(req.getContactPhone()));
+            if (req.getContactAddress() != null)
+                rfq.setContactAddressSnapshot(req.getContactAddress());
             if (req.getContactMethod() != null && !req.getContactMethod().isBlank()) {
-                String method = validateAndDetermineMethod(req.getContactMethod(), rfq.getContactEmailSnapshot(), rfq.getContactPhoneSnapshot());
+                String method = validateAndDetermineMethod(req.getContactMethod(), rfq.getContactEmailSnapshot(),
+                        rfq.getContactPhoneSnapshot());
                 rfq.setContactMethod(method);
             } else {
                 // Re-infer if snapshots changed
@@ -782,8 +889,15 @@ public class RfqService {
             for (RfqDetailDto d : req.getDetails()) {
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
-                if (d.getProductId() != null) { Product p = new Product(); p.setId(d.getProductId()); nd.setProduct(p); }
-                nd.setQuantity(d.getQuantity()); nd.setUnit(d.getUnit()); nd.setNoteColor(d.getNoteColor()); nd.setNotes(d.getNotes());
+                if (d.getProductId() != null) {
+                    Product p = new Product();
+                    p.setId(d.getProductId());
+                    nd.setProduct(p);
+                }
+                nd.setQuantity(d.getQuantity());
+                nd.setUnit(d.getUnit());
+                nd.setNoteColor(d.getNoteColor());
+                nd.setNotes(d.getNotes());
                 detailRepository.save(nd);
             }
         }
@@ -797,14 +911,17 @@ public class RfqService {
             throw new IllegalStateException("RFQ is locked and cannot change expected delivery date");
         }
         java.time.LocalDate date = parseFlexibleDate(expectedDateStr);
-        java.time.LocalDate baseDate = rfq.getCreatedAt() != null ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate() : java.time.LocalDate.now();
+        java.time.LocalDate baseDate = rfq.getCreatedAt() != null
+                ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                : java.time.LocalDate.now();
         validateExpectedDeliveryDate(date, baseDate);
         rfq.setExpectedDeliveryDate(date);
         return rfqRepository.save(rfq);
     }
 
     private java.time.LocalDate parseFlexibleDate(String value) {
-        if (value == null || value.isBlank()) throw new IllegalArgumentException("expectedDeliveryDate is required");
+        if (value == null || value.isBlank())
+            throw new IllegalArgumentException("expectedDeliveryDate is required");
         String v = value.trim();
         try {
             return java.time.LocalDate.parse(v); // yyyy-MM-dd
@@ -818,20 +935,25 @@ public class RfqService {
                     java.time.LocalDate now = java.time.LocalDate.now();
                     return now.withDayOfMonth(day);
                 } catch (NumberFormatException ex2) {
-                    throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd or dd-MM-yyyy or day of month (1-31)");
+                    throw new IllegalArgumentException(
+                            "Invalid date format. Use yyyy-MM-dd or dd-MM-yyyy or day of month (1-31)");
                 }
             }
         }
     }
 
     private void validateExpectedDeliveryDate(java.time.LocalDate date, java.time.LocalDate baseDate) {
-        if (date == null) throw new IllegalArgumentException("expectedDeliveryDate is required");
-        if (baseDate == null) baseDate = java.time.LocalDate.now();
-        
-        // Use 29 days to be lenient for timezone differences, while the UI and error message still enforce 30 days.
+        if (date == null)
+            throw new IllegalArgumentException("expectedDeliveryDate is required");
+        if (baseDate == null)
+            baseDate = java.time.LocalDate.now();
+
+        // Use 29 days to be lenient for timezone differences, while the UI and error
+        // message still enforce 30 days.
         java.time.LocalDate min = baseDate.plusDays(29);
         if (date.isBefore(min)) {
-            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from creation date (" + baseDate + ") (>= " + baseDate.plusDays(30) + ")");
+            throw new IllegalArgumentException("Expected delivery date must be at least 30 days from creation date ("
+                    + baseDate + ") (>= " + baseDate.plusDays(30) + ")");
         }
     }
 }
