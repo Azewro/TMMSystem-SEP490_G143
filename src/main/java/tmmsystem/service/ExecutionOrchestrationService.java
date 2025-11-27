@@ -121,6 +121,7 @@ public class ExecutionOrchestrationService {
         // Chấp nhận cả WAITING (chờ làm), READY (sẵn sàng) và WAITING_REWORK (chờ sửa)
         if (!"READY".equals(currentStatus)
                 && !"WAITING".equals(currentStatus)
+                && !"READY_TO_PRODUCE".equals(currentStatus)
                 && !"WAITING_REWORK".equals(currentStatus)) {
             throw new RuntimeException(
                     "Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + currentStatus);
