@@ -104,12 +104,15 @@ public class MachineController {
 
     @Operation(summary = "Lấy lịch sử sử dụng máy")
     @GetMapping("/{id}/assignments")
-    public ResponseEntity<org.springframework.data.domain.Page<tmmsystem.entity.MachineAssignment>> getAssignments(
+    public ResponseEntity<org.springframework.data.domain.Page<tmmsystem.dto.machine.MachineAssignmentDto>> getAssignments(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity
-                .ok(service.getAssignments(id, org.springframework.data.domain.PageRequest.of(page, size)));
+        org.springframework.data.domain.Page<tmmsystem.entity.MachineAssignment> entityPage = service.getAssignments(id,
+                org.springframework.data.domain.PageRequest.of(page, size));
+        org.springframework.data.domain.Page<tmmsystem.dto.machine.MachineAssignmentDto> dtoPage = entityPage
+                .map(mapper::toDto);
+        return ResponseEntity.ok(dtoPage);
     }
 
     @Operation(summary = "Đồng bộ lịch sử assignment cũ")

@@ -7,7 +7,8 @@ import tmmsystem.entity.Machine;
 @Component
 public class MachineMapper {
     public MachineDto toDto(Machine e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         MachineDto dto = new MachineDto();
         dto.setId(e.getId());
         dto.setCode(e.getCode());
@@ -25,7 +26,8 @@ public class MachineMapper {
     }
 
     public Machine toEntity(MachineDto dto) {
-        if (dto == null) return null;
+        if (dto == null)
+            return null;
         Machine e = new Machine();
         e.setId(dto.getId());
         e.setCode(dto.getCode());
@@ -39,6 +41,22 @@ public class MachineMapper {
         e.setMaintenanceIntervalDays(dto.getMaintenanceIntervalDays());
         return e;
     }
+
+    public tmmsystem.dto.machine.MachineAssignmentDto toDto(tmmsystem.entity.MachineAssignment e) {
+        if (e == null)
+            return null;
+        tmmsystem.dto.machine.MachineAssignmentDto dto = new tmmsystem.dto.machine.MachineAssignmentDto();
+        dto.setId(e.getId());
+        if (e.getMachine() != null)
+            dto.setMachineId(e.getMachine().getId());
+        if (e.getProductionStage() != null)
+            dto.setProductionStageId(e.getProductionStage().getId());
+        if (e.getPlanStage() != null)
+            dto.setPlanStageId(e.getPlanStage().getId());
+        dto.setAssignedAt(e.getAssignedAt());
+        dto.setReleasedAt(e.getReleasedAt());
+        dto.setReservationType(e.getReservationType());
+        dto.setReservationStatus(e.getReservationStatus());
+        return dto;
+    }
 }
-
-
