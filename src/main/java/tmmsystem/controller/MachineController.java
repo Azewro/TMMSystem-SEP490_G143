@@ -27,7 +27,11 @@ import tmmsystem.dto.PageResponse;
 public class MachineController {
     private final MachineService service;
     private final MachineMapper mapper;
-    public MachineController(MachineService service, MachineMapper mapper) { this.service = service; this.mapper = mapper; }
+
+    public MachineController(MachineService service, MachineMapper mapper) {
+        this.service = service;
+        this.mapper = mapper;
+    }
 
     @GetMapping
     public PageResponse<MachineDto> list(
@@ -39,19 +43,20 @@ public class MachineController {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
         Page<tmmsystem.entity.Machine> machinePage = service.findAll(pageable, search, type, status);
         List<MachineDto> content = machinePage.getContent().stream().map(mapper::toDto).collect(Collectors.toList());
-        return new PageResponse<>(content, machinePage.getNumber(), machinePage.getSize(), 
-                machinePage.getTotalElements(), machinePage.getTotalPages(), machinePage.isFirst(), machinePage.isLast());
+        return new PageResponse<>(content, machinePage.getNumber(), machinePage.getSize(),
+                machinePage.getTotalElements(), machinePage.getTotalPages(), machinePage.isFirst(),
+                machinePage.isLast());
     }
 
     @GetMapping("/{id}")
-    public MachineDto get(@PathVariable Long id) { return mapper.toDto(service.findById(id)); }
+    public MachineDto get(@PathVariable Long id) {
+        return mapper.toDto(service.findById(id));
+    }
 
     @Operation(summary = "Tạo máy")
     @PostMapping
     public MachineDto create(
-            @RequestBody(description = "Payload tạo máy", required = true,
-                    content = @Content(schema = @Schema(implementation = MachineRequest.class)))
-            @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
+            @RequestBody(description = "Payload tạo máy", required = true, content = @Content(schema = @Schema(implementation = MachineRequest.class))) @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
         tmmsystem.entity.Machine e = new tmmsystem.entity.Machine();
         e.setCode(body.getCode());
         e.setName(body.getName());
@@ -61,7 +66,8 @@ public class MachineController {
         e.setSpecifications(body.getSpecifications());
         e.setLastMaintenanceAt(body.getLastMaintenanceAt());
         e.setNextMaintenanceAt(body.getNextMaintenanceAt());
-        e.setMaintenanceIntervalDays(body.getMaintenanceIntervalDays() != null ? body.getMaintenanceIntervalDays() : 90);
+        e.setMaintenanceIntervalDays(
+                body.getMaintenanceIntervalDays() != null ? body.getMaintenanceIntervalDays() : 90);
         return mapper.toDto(service.create(e));
     }
 
@@ -69,9 +75,7 @@ public class MachineController {
     @PutMapping("/{id}")
     public MachineDto update(
             @PathVariable Long id,
-            @RequestBody(description = "Payload cập nhật máy", required = true,
-                    content = @Content(schema = @Schema(implementation = MachineRequest.class)))
-            @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
+            @RequestBody(description = "Payload cập nhật máy", required = true, content = @Content(schema = @Schema(implementation = MachineRequest.class))) @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
         tmmsystem.entity.Machine e = new tmmsystem.entity.Machine();
         e.setCode(body.getCode());
         e.setName(body.getName());
@@ -90,6 +94,21 @@ public class MachineController {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @Operation(summary = "Reset và đồng bộ trạng thái máy")
+    @PostMapping("/reset-status")
+    public ResponseEntity<?> resetStatus() {
+        service.syncMachineStatuses();
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Lấy lịch sử sử dụng máy")
+    @GetMapping("/{id}/assignments")
+    public ResponseEntity<org.springframework.data.domain.Page<tmmsystem.entity.MachineAssignment>> getAssignments(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity
+                .ok(service.getAssignments(id, org.springframework.data.domain.PageRequest.of(page, size)));
+    }
 }
-
-

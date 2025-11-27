@@ -8,16 +8,33 @@ import tmmsystem.repository.MachineRepository;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.util.Map;
 
 @Service
 public class MachineService {
     private final MachineRepository repository;
     private final tmmsystem.repository.ProductionStageRepository stageRepository;
+    private final tmmsystem.repository.MachineAssignmentRepository assignmentRepository;
+    private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
+            Map.entry("WARPING", "CUONG_MAC"),
+            Map.entry("CUONG_MAC", "WARPING"),
+            Map.entry("WEAVING", "DET"),
+            Map.entry("DET", "WEAVING"),
+            Map.entry("DYEING", "NHUOM"),
+            Map.entry("NHUOM", "DYEING"),
+            Map.entry("CUTTING", "CAT"),
+            Map.entry("CAT", "CUTTING"),
+            Map.entry("HEMMING", "MAY"),
+            Map.entry("MAY", "HEMMING"),
+            Map.entry("PACKAGING", "DONG_GOI"),
+            Map.entry("DONG_GOI", "PACKAGING"));
 
     public MachineService(MachineRepository repository,
-            tmmsystem.repository.ProductionStageRepository stageRepository) {
+            tmmsystem.repository.ProductionStageRepository stageRepository,
+            tmmsystem.repository.MachineAssignmentRepository assignmentRepository) {
         this.repository = repository;
         this.stageRepository = stageRepository;
+        this.assignmentRepository = assignmentRepository;
     }
 
     public List<Machine> findAll() {
@@ -123,6 +140,15 @@ public class MachineService {
         // 4. Update machines for active types
         for (String type : activeTypes) {
             repository.updateStatusByType(type, "IN_USE");
+            // Also update for alias if exists
+            if (STAGE_TYPE_ALIASES.containsKey(type)) {
+                repository.updateStatusByType(STAGE_TYPE_ALIASES.get(type), "IN_USE");
+            }
         }
+    }
+
+    public org.springframework.data.domain.Page<tmmsystem.entity.MachineAssignment> getAssignments(Long machineId,
+            org.springframework.data.domain.Pageable pageable) {
+        return assignmentRepository.findByMachineIdOrderByAssignedAtDesc(machineId, pageable);
     }
 }

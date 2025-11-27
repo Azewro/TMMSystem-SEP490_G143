@@ -16,6 +16,10 @@ import tmmsystem.repository.QualityIssueRepository;
 import tmmsystem.repository.QcSessionRepository;
 import tmmsystem.repository.UserRepository;
 import tmmsystem.repository.StageTrackingRepository;
+import tmmsystem.repository.MachineRepository;
+import tmmsystem.repository.MachineAssignmentRepository;
+import tmmsystem.entity.MachineAssignment;
+import tmmsystem.entity.Machine;
 
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +44,8 @@ public class ExecutionOrchestrationService {
     private final StageTrackingRepository stageTrackingRepository;
     private final QcCheckpointRepository qcCheckpointRepository;
     private final QcInspectionRepository qcInspectionRepository;
+    private final MachineRepository machineRepository;
+    private final MachineAssignmentRepository machineAssignmentRepository;
     private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
             Map.entry("WARPING", "CUONG_MAC"),
             Map.entry("CUONG_MAC", "WARPING"),
@@ -64,7 +70,9 @@ public class ExecutionOrchestrationService {
             ProductionService productionService,
             StageTrackingRepository stageTrackingRepository,
             QcCheckpointRepository qcCheckpointRepository,
-            QcInspectionRepository qcInspectionRepository) {
+            QcInspectionRepository qcInspectionRepository,
+            MachineRepository machineRepository,
+            MachineAssignmentRepository machineAssignmentRepository) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -76,6 +84,8 @@ public class ExecutionOrchestrationService {
         this.stageTrackingRepository = stageTrackingRepository;
         this.qcCheckpointRepository = qcCheckpointRepository;
         this.qcInspectionRepository = qcInspectionRepository;
+        this.machineRepository = machineRepository;
+        this.machineAssignmentRepository = machineAssignmentRepository;
     }
 
     // Helper lấy tất cả stage thuộc orderId (dựa trên quan hệ WorkOrderDetail ->
@@ -126,10 +136,57 @@ public class ExecutionOrchestrationService {
             throw new RuntimeException(
                     "Công đoạn không ở trạng thái sẵn sàng bắt đầu. Trạng thái hiện tại: " + currentStatus);
         }
+
+        // Check machine availability
+        if (stage.getStageType() != null) {
+            java.util.List<tmmsystem.entity.Machine> availableMachines = machineRepository
+                    .findByTypeAndStatus(stage.getStageType(), "AVAILABLE");
+            if (availableMachines.isEmpty()) {
+                throw new RuntimeException("Không có máy " + stage.getStageType()
+                        + " nào sẵn sàng (AVAILABLE). Vui lòng kiểm tra lại trạng thái máy móc.");
+            }
+        }
+
         User operator = validateStageStartPermission(stage, userId);
         stage.setStartAt(Instant.now());
         stage.setExecutionStatus("IN_PROGRESS");
         productionService.syncStageStatus(stage, "IN_PROGRESS"); // NEW: Sync status
+
+        // Update machine status to IN_USE and create MachineAssignment
+        if (stage.getStageType() != null) {
+            // Update status
+            machineRepository.updateStatusByType(stage.getStageType(), "IN_USE");
+
+            // Create assignment for main type
+            List<Machine> machines = machineRepository.findByTypeAndStatus(stage.getStageType(), "IN_USE");
+            for (Machine m : machines) {
+                MachineAssignment ma = new MachineAssignment();
+                ma.setMachine(m);
+                ma.setProductionStage(stage);
+                ma.setAssignedAt(Instant.now());
+                ma.setReservationStatus("ACTIVE");
+                ma.setReservationType("PRODUCTION");
+                machineAssignmentRepository.save(ma);
+            }
+
+            // Also update for alias if exists
+            if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
+                String aliasType = STAGE_TYPE_ALIASES.get(stage.getStageType());
+                machineRepository.updateStatusByType(aliasType, "IN_USE");
+
+                // Create assignment for alias type
+                List<Machine> aliasMachines = machineRepository.findByTypeAndStatus(aliasType, "IN_USE");
+                for (Machine m : aliasMachines) {
+                    MachineAssignment ma = new MachineAssignment();
+                    ma.setMachine(m);
+                    ma.setProductionStage(stage);
+                    ma.setAssignedAt(Instant.now());
+                    ma.setReservationStatus("ACTIVE");
+                    ma.setReservationType("PRODUCTION");
+                    machineAssignmentRepository.save(ma);
+                }
+            }
+        }
 
         if (stage.getProgressPercent() == null)
             stage.setProgressPercent(0);
@@ -185,6 +242,25 @@ public class ExecutionOrchestrationService {
             } else {
                 notificationService.notifyRole("QC_STAFF", "QC", "INFO", "Chờ kiểm tra",
                         "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
+            }
+
+            // Update machine status to AVAILABLE and release MachineAssignment
+            if (stage.getStageType() != null) {
+                machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
+
+                // Release assignments
+                List<MachineAssignment> assignments = machineAssignmentRepository
+                        .findByProductionStageAndReservationStatus(stage, "ACTIVE");
+                for (MachineAssignment ma : assignments) {
+                    ma.setReservationStatus("RELEASED");
+                    ma.setReleasedAt(Instant.now());
+                    machineAssignmentRepository.save(ma);
+                }
+
+                // Also update for alias if exists
+                if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
+                    machineRepository.updateStatusByType(STAGE_TYPE_ALIASES.get(stage.getStageType()), "AVAILABLE");
+                }
             }
         }
         ProductionStage saved = stageRepo.save(stage);

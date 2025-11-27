@@ -1,3 +1,4 @@
+
 package tmmsystem.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,4 +16,10 @@ public interface MachineAssignmentRepository extends JpaRepository<MachineAssign
     List<MachineAssignment> findByProductionStageIdAndReleasedAtIsNull(Long productionStageId);
 
     void deleteByPlanStagePlanId(Long planId);
+
+    List<MachineAssignment> findByProductionStageAndReservationStatus(tmmsystem.entity.ProductionStage productionStage,
+            String reservationStatus);
+
+    org.springframework.data.domain.Page<MachineAssignment> findByMachineIdOrderByAssignedAtDesc(Long machineId,
+            org.springframework.data.domain.Pageable pageable);
 }
