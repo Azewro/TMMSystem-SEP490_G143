@@ -129,6 +129,8 @@ public class ExecutionOrchestrationService {
         User operator = validateStageStartPermission(stage, userId);
         stage.setStartAt(Instant.now());
         stage.setExecutionStatus("IN_PROGRESS");
+        productionService.syncStageStatus(stage, "IN_PROGRESS"); // NEW: Sync status
+
         if (stage.getProgressPercent() == null)
             stage.setProgressPercent(0);
         ProductionStage saved = stageRepo.save(stage);

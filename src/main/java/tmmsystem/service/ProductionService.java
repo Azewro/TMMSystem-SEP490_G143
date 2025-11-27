@@ -1552,5 +1552,16 @@ public class ProductionService {
             default:
                 return status;
         }
+        @Transactional
+    public void fixDataConsistency() {
+        List<ProductionStage> allStages = stageRepo.findAll();
+        for (ProductionStage stage : allStages) {
+            String execStatus = stage.getExecutionStatus();
+            if (execStatus != null) {
+                syncStageStatus(stage, execStatus);
+                stageRepo.save(stage);
+            }
+        }
     }
+}
 }

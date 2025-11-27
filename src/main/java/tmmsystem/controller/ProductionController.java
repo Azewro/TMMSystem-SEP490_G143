@@ -609,4 +609,11 @@ public class ProductionController {
         return service.bulkAssignStageLeaders(orderId, stageLeaderMap).stream().map(s -> mapper.toDto(s))
                 .collect(java.util.stream.Collectors.toList());
     }
+
+    @Operation(summary = "Fix Data Consistency (Admin/Dev)")
+    @PostMapping("/fix-data")
+    public ResponseEntity<?> fixDataConsistency() {
+        service.fixDataConsistency();
+        return ResponseEntity.ok(Map.of("message", "Data consistency fixed successfully"));
+    }
 }
