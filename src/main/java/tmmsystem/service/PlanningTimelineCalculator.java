@@ -14,7 +14,7 @@ public class PlanningTimelineCalculator {
     public record StageTimeline(String stageType, LocalDateTime start, LocalDateTime end) {
     }
 
-    @Value("${planning.timeline.startHour:8}")
+    @Value("${planning.timeline.startHour:9}")
     private int startHour;
 
     @Value("${planning.timeline.dailyHours:8}")
@@ -106,16 +106,16 @@ public class PlanningTimelineCalculator {
         remainingMinutes -= availableToday;
 
         long fullDays = remainingMinutes / dailyMinutes;
-        if (fullDays > 0) {
-            time = dayStart.plusDays(1 + fullDays);
-            remainingMinutes -= fullDays * dailyMinutes;
-        } else {
-            time = dayStart.plusDays(1);
-        }
-
-        LocalDateTime finalDayStart = time.withHour(startHour).withMinute(0).withSecond(0).withNano(0);
         long finalMinutes = remainingMinutes % dailyMinutes;
-        return finalDayStart.plusMinutes(finalMinutes);
+
+        if (finalMinutes == 0) {
+            // Ends exactly at the end of a working day
+            return dayStart.plusDays(fullDays).withHour(startHour + dailyHours).withMinute(0).withSecond(0).withNano(0);
+        } else {
+            // Spills over to the next day
+            return dayStart.plusDays(1 + fullDays).withHour(startHour).withMinute(0).withSecond(0).withNano(0)
+                    .plusMinutes(finalMinutes);
+        }
     }
 
     private LocalDateTime alignToWorkingWindow(LocalDateTime time) {

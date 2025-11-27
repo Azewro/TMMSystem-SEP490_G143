@@ -310,6 +310,7 @@ public class CapacityCheckService {
         var dyeing = findTimeline(timelines, "DYEING");
         var cutting = findTimeline(timelines, "CUTTING");
         var hemming = findTimeline(timelines, "HEMMING");
+        var packaging = findTimeline(timelines, "PACKAGING");
 
         machineCapacity.setWarpingStage(createStageInfo("Mắc cuồng", "WARPING", capacityResult.getWarpingDays(),
                 WARPING_WAIT_TIME, warping.start().toLocalDate(), warping.end().toLocalDate(),
@@ -331,23 +332,8 @@ public class CapacityCheckService {
                 SEWING_WAIT_TIME, hemming.start().toLocalDate(), hemming.end().toLocalDate(),
                 getMachineCapacity("SEWING"), "May vải thành sản phẩm hoàn chỉnh"));
 
-        // Calculate Packaging dates manually
-        // Start = Sewing End + Wait (0.2)
-        // Duration = Packaging Days
-        LocalDate packStartDate = hemming.end().toLocalDate();
-        // If wait is small (0.2), maybe same day? But let's add 1 day for safety/buffer
-        // or if it crosses shift.
-        // For simplicity and safety in planning:
-        if (PACKAGING_WAIT_TIME.compareTo(BigDecimal.ZERO) > 0) {
-            packStartDate = packStartDate.plusDays(1);
-        }
-        LocalDate packEndDate = packStartDate
-                .plusDays(capacityResult.getPackagingDays().setScale(0, RoundingMode.CEILING).longValue() - 1);
-        if (packEndDate.isBefore(packStartDate))
-            packEndDate = packStartDate;
-
         machineCapacity.setPackagingStage(createStageInfo("Đóng gói", "PACKAGING", capacityResult.getPackagingDays(),
-                PACKAGING_WAIT_TIME, packStartDate, packEndDate,
+                PACKAGING_WAIT_TIME, packaging.start().toLocalDate(), packaging.end().toLocalDate(),
                 new BigDecimal("20000"), "Đóng gói sản phẩm (5 người)"));
 
         BigDecimal totalWaitTime = WARPING_WAIT_TIME
