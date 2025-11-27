@@ -1002,6 +1002,7 @@ public class ProductionService {
         String mappedStatus;
         switch (executionStatus) {
             case "WAITING":
+            case "READY_TO_PRODUCE": // NEW: Map READY_TO_PRODUCE to WAITING
                 mappedStatus = "WAITING"; // "chờ làm"
                 break;
             case "IN_PROGRESS":
