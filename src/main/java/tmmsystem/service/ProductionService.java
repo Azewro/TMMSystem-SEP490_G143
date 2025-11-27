@@ -1552,7 +1552,9 @@ public class ProductionService {
             default:
                 return status;
         }
-        @Transactional
+    }
+
+    @Transactional
     public void fixDataConsistency() {
         List<ProductionStage> allStages = stageRepo.findAll();
         for (ProductionStage stage : allStages) {
@@ -1563,5 +1565,4 @@ public class ProductionService {
             }
         }
     }
-}
 }
