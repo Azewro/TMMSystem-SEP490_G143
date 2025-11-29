@@ -12,16 +12,26 @@ public interface RfqRepository extends JpaRepository<Rfq, Long>, JpaSpecificatio
 
     @Query(value = "SELECT MAX(CAST(SUBSTRING_INDEX(rfq_number, '-', -1) AS UNSIGNED)) FROM rfq WHERE rfq_number LIKE CONCAT('RFQ-', DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d'), '-%')", nativeQuery = true)
     Integer findMaxRfqSeqForToday();
-    
+
     java.util.List<Rfq> findByAssignedSales_Id(Long salesId);
+
     Page<Rfq> findByAssignedSales_Id(Long salesId, Pageable pageable);
+
     java.util.List<Rfq> findByAssignedPlanning_Id(Long planningId);
+
     Page<Rfq> findByAssignedPlanning_Id(Long planningId, Pageable pageable);
+
     java.util.List<Rfq> findByStatusAndAssignedSalesIsNull(String status);
+
+    java.util.List<Rfq> findByStatusAndAssignedSalesIsNotNull(String status);
+
     Page<Rfq> findByStatusAndAssignedSalesIsNull(String status, Pageable pageable);
-    // Deprecated: kept for backward compatibility, use findByStatusAndAssignedSalesIsNull instead
+
+    // Deprecated: kept for backward compatibility, use
+    // findByStatusAndAssignedSalesIsNull instead
     @Deprecated
     java.util.List<Rfq> findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull(String status);
+
     @Deprecated
     Page<Rfq> findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull(String status, Pageable pageable);
 }

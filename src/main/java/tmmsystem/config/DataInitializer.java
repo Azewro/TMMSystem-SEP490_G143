@@ -1,6 +1,7 @@
 package tmmsystem.config;
 
-import org.slf4j.Logger; import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,10 +19,16 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
 
-    @Autowired private UserRepository userRepository;
-    @Autowired private CustomerRepository customerRepository;
-    @Autowired private QcCheckpointRepository qcCheckpointRepository;
-    @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private CustomerRepository customerRepository;
+    @Autowired
+    private QcCheckpointRepository qcCheckpointRepository;
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    @Autowired
+    private tmmsystem.service.RfqService rfqService;
 
     @Override
     public void run(String... args) {
@@ -29,9 +36,14 @@ public class DataInitializer implements CommandLineRunner {
             // Chỉ thực thi đổi mật khẩu cho tất cả User/Customer thành "Abcd1234"
             resetAllUserPasswords();
             resetAllCustomerPasswords();
-           
+
+            // Fix RFQ status on startup
+            int fixedRfqs = rfqService.scanAndFixDraftRfqs();
+            if (fixedRfqs > 0) {
+                log.info("Startup: Auto-corrected {} RFQs from DRAFT to SENT (assigned sales found)", fixedRfqs);
+            }
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
-            //  seedQcCheckpoints();
+            // seedQcCheckpoints();
             // createSampleMachines();
             // createSampleCategoriesAndProducts();
             // createSampleMaterials();
@@ -49,7 +61,8 @@ public class DataInitializer implements CommandLineRunner {
         int count = 0;
         for (User u : users) {
             u.setPassword(encoded);
-            userRepository.save(u); count++;
+            userRepository.save(u);
+            count++;
         }
         log.info("Đã đổi mật khẩu {} User thành '{}'", count, raw);
     }
@@ -62,7 +75,8 @@ public class DataInitializer implements CommandLineRunner {
         int count = 0;
         for (Customer c : customers) {
             c.setPassword(encoded);
-            customerRepository.save(c); count++;
+            customerRepository.save(c);
+            count++;
         }
         log.info("Đã đổi mật khẩu {} Customer thành '{}'", count, raw);
     }
@@ -129,7 +143,7 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void addSeed(List<QcSeed> seeds, String stageType, String name,
-                         String criteria, String sampling, boolean mandatory, int order) {
+            String criteria, String sampling, boolean mandatory, int order) {
         seeds.add(new QcSeed(stageType, name, criteria, sampling, mandatory, order));
     }
 
@@ -142,7 +156,7 @@ public class DataInitializer implements CommandLineRunner {
         final int displayOrder;
 
         QcSeed(String stageType, String name, String criteria, String sampling,
-               boolean mandatory, int displayOrder) {
+                boolean mandatory, int displayOrder) {
             this.stageType = stageType;
             this.name = name;
             this.criteria = criteria;
@@ -153,32 +167,61 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     /*
-    ============================
-    LƯU CÁC HÀM KHỞI TẠO MẪU (KHÔNG THỰC THI) NGUYÊN VẸN TỪ BẢN CŨ
-    Để dùng sau này, chỉ cần bỏ comment ở phần gọi trong run().
-    ============================
-
-    // @Autowired private MachineRepository machineRepository;
-    // @Autowired private ProductRepository productRepository;
-    // @Autowired private ProductCategoryRepository productCategoryRepository;
-    // @Autowired private MaterialRepository materialRepository;
-    // @Autowired private MaterialStockRepository materialStockRepository;
-    // @Autowired private RoleRepository roleRepository;
-
-    // private static final java.util.Random RNG = new java.util.Random();
-
-    // private void createSampleMachines() { /* ... giữ nguyên nội dung như bản comment cũ ... */ /* }
-    // private void createMachine(String code, String name, String type, String location, String specifications) { /* ... */ /* }
-    // private void createSampleMaterials() { /* ... */ /* }
-    // private void createMaterial(String code, String name, java.math.BigDecimal priceVndPerKg) { /* ... */ /* }
-    // private void createSampleCategoriesAndProducts() { /* ... */ /* }
-    // private tmmsystem.entity.ProductCategory createCategory(String name, String description) { /* ... */ /* }
-    // private void createProduct(String code, String name, tmmsystem.entity.ProductCategory category, String dimensions, int weightGrams, java.math.BigDecimal price) { /* ... */ /* }
-    // private java.math.BigDecimal bd(long vnd) { /* ... */ /* }
-
-    // private void createDepartmentalRolesAndUsers() { /* ... */ /* }
-    // private void createRoleIfMissing(String name, String description) { /* ... */ /* }
-    // private void createUserIfMissing(String email, String name, String phone, String roleName) { /* ... */ /* }
-
-    */
+     * ============================
+     * LƯU CÁC HÀM KHỞI TẠO MẪU (KHÔNG THỰC THI) NGUYÊN VẸN TỪ BẢN CŨ
+     * Để dùng sau này, chỉ cần bỏ comment ở phần gọi trong run().
+     * ============================
+     * 
+     * // @Autowired private MachineRepository machineRepository;
+     * // @Autowired private ProductRepository productRepository;
+     * // @Autowired private ProductCategoryRepository productCategoryRepository;
+     * // @Autowired private MaterialRepository materialRepository;
+     * // @Autowired private MaterialStockRepository materialStockRepository;
+     * // @Autowired private RoleRepository roleRepository;
+     * 
+     * // private static final java.util.Random RNG = new java.util.Random();
+     * 
+     * // private void createSampleMachines() { /* ... giữ nguyên nội dung như bản
+     * comment cũ ...
+     */ /*
+         * }
+         * // private void createMachine(String code, String name, String type, String
+         * location, String specifications) { /* ...
+         */ /*
+             * }
+             * // private void createSampleMaterials() { /* ...
+             */ /*
+                 * }
+                 * // private void createMaterial(String code, String name, java.math.BigDecimal
+                 * priceVndPerKg) { /* ...
+                 */ /*
+                     * }
+                     * // private void createSampleCategoriesAndProducts() { /* ...
+                     */ /*
+                         * }
+                         * // private tmmsystem.entity.ProductCategory createCategory(String name,
+                         * String description) { /* ...
+                         */ /*
+                             * }
+                             * // private void createProduct(String code, String name,
+                             * tmmsystem.entity.ProductCategory category, String dimensions, int
+                             * weightGrams, java.math.BigDecimal price) { /* ...
+                             */ /*
+                                 * }
+                                 * // private java.math.BigDecimal bd(long vnd) { /* ...
+                                 */ /*
+                                     * }
+                                     * 
+                                     * // private void createDepartmentalRolesAndUsers() { /* ...
+                                     */ /*
+                                         * }
+                                         * // private void createRoleIfMissing(String name, String description) { /* ...
+                                         */ /*
+                                             * }
+                                             * // private void createUserIfMissing(String email, String name, String
+                                             * phone, String roleName) { /* ...
+                                             */ /*
+                                                 * }
+                                                 * 
+                                                 */
 }

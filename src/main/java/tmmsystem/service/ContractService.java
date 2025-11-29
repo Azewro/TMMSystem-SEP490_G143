@@ -34,13 +34,13 @@ public class ContractService {
     private int lotMergeWindowDays;
 
     @Autowired
-    public ContractService(ContractRepository repository, 
-                         UserRepository userRepository,
-                         NotificationService notificationService,
-                         FileStorageService fileStorageService,
-                         ProductionPlanService productionPlanService,
-                         ProductionLotRepository lotRepo,
-                         ProductionLotOrderRepository lotOrderRepo) {
+    public ContractService(ContractRepository repository,
+            UserRepository userRepository,
+            NotificationService notificationService,
+            FileStorageService fileStorageService,
+            ProductionPlanService productionPlanService,
+            ProductionLotRepository lotRepo,
+            ProductionLotOrderRepository lotOrderRepo) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
@@ -50,52 +50,78 @@ public class ContractService {
         this.lotOrderRepo = lotOrderRepo;
     }
 
-    public List<Contract> findAll() { return repository.findAll(); }
-    public Page<Contract> findAll(Pageable pageable) { return repository.findAll(pageable); }
-    
+    public List<Contract> findAll() {
+        return repository.findAll();
+    }
+
+    public Page<Contract> findAll(Pageable pageable) {
+        return repository.findAll(pageable);
+    }
+
     public Page<Contract> findAll(Pageable pageable, String search, String status, java.time.LocalDate deliveryDate) {
-        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty() || deliveryDate != null) {
+        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()
+                || deliveryDate != null) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             java.time.LocalDate finalDeliveryDate = deliveryDate;
             return repository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
-                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                    if ("IN_PRODUCTION".equals(finalStatus)) {
+                        predicates.add(root.get("status").in("WAITING_PRODUCTION", "IN_PROGRESS"));
+                    } else if ("PENDING_PROCESS".equals(finalStatus)) {
+                        predicates.add(root.get("status").in("PENDING_APPROVAL", "APPROVED"));
+                    } else {
+                        predicates.add(cb.equal(root.get("status"), finalStatus));
+                    }
                 }
-                
+
                 if (finalDeliveryDate != null) {
                     predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
             return repository.findAll(pageable);
         }
     }
-    public Contract findById(Long id) { return repository.findById(id).orElseThrow(); }
+
+    public Contract findById(Long id) {
+        return repository.findById(id).orElseThrow();
+    }
 
     // NEW: queries by approved sales/planning id
-    public List<Contract> findBySalesApprovedUserId(Long userId) { return repository.findBySalesApprovedBy_Id(userId); }
-    public List<Contract> findByPlanningApprovedUserId(Long userId) { return repository.findByPlanningApprovedBy_Id(userId); }
+    public List<Contract> findBySalesApprovedUserId(Long userId) {
+        return repository.findBySalesApprovedBy_Id(userId);
+    }
+
+    public List<Contract> findByPlanningApprovedUserId(Long userId) {
+        return repository.findByPlanningApprovedBy_Id(userId);
+    }
 
     // NEW: queries by assigned sales/planning id
-    public List<Contract> findByAssignedSalesUserId(Long userId) { return repository.findByAssignedSales_Id(userId); }
-    public List<Contract> findByAssignedPlanningUserId(Long userId) { return repository.findByAssignedPlanning_Id(userId); }
+    public List<Contract> findByAssignedSalesUserId(Long userId) {
+        return repository.findByAssignedSales_Id(userId);
+    }
+
+    public List<Contract> findByAssignedPlanningUserId(Long userId) {
+        return repository.findByAssignedPlanning_Id(userId);
+    }
 
     @Transactional
-    public Contract create(Contract c) { return repository.save(c); }
+    public Contract create(Contract c) {
+        return repository.save(c);
+    }
 
     @Transactional
     public Contract update(Long id, Contract updated) {
@@ -123,42 +149,44 @@ public class ContractService {
         return existing;
     }
 
-    public void delete(Long id) { repository.deleteById(id); }
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
 
     // ===== GIAI ĐOẠN 3: CONTRACT UPLOAD & APPROVAL =====
-    
+
     @Transactional
     public Contract uploadSignedContract(Long contractId, MultipartFile file, String notes, Long saleUserId) {
         Contract contract = repository.findById(contractId)
-            .orElseThrow(() -> new RuntimeException("Contract not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
         try {
             // Upload file to local storage
             String filePath = fileStorageService.uploadContractFile(file, contractId);
-            
+
             // Update contract
             contract.setFilePath(filePath);
             contract.setStatus("PENDING_APPROVAL");
             contract.setUpdatedAt(Instant.now());
-            
+
             Contract savedContract = repository.save(contract);
-            
+
             // Send notification to Director
             notificationService.notifyContractUploaded(savedContract);
-            
+
             return savedContract;
         } catch (Exception e) {
             log.error("Error uploading contract file", e);
             throw new RuntimeException("Failed to upload contract file: " + e.getMessage(), e);
         }
     }
-    
+
     @Transactional
     public Contract approveContract(Long contractId, Long directorId, String notes) {
         Contract contract = repository.findById(contractId)
-            .orElseThrow(() -> new RuntimeException("Contract not found"));
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
         User director = userRepository.findById(directorId)
-            .orElseThrow(() -> new RuntimeException("Director not found"));
+                .orElseThrow(() -> new RuntimeException("Director not found"));
         contract.setStatus("APPROVED");
         contract.setDirectorApprovedBy(director);
         contract.setDirectorApprovedAt(Instant.now());
@@ -168,142 +196,149 @@ public class ContractService {
 
         // Option A: tách theo product và merge ngay
         try {
-            if (savedContract.getQuotation()!=null && savedContract.getQuotation().getDetails()!=null){
+            if (savedContract.getQuotation() != null && savedContract.getQuotation().getDetails() != null) {
                 var byProduct = savedContract.getQuotation().getDetails().stream()
                         .collect(java.util.stream.Collectors.groupingBy(d -> d.getProduct().getId()));
-                for (var e : byProduct.entrySet()){
-                    productionPlanService.createOrMergeLotFromContractAndProduct(savedContract, e.getKey(), e.getValue());
+                for (var e : byProduct.entrySet()) {
+                    productionPlanService.createOrMergeLotFromContractAndProduct(savedContract, e.getKey(),
+                            e.getValue());
                 }
             }
-        } catch (Exception e){
+        } catch (Exception e) {
             log.warn("Immediate lot merge failed: {}", e.getMessage());
         }
 
         // Fallback: chạy scan nền để đảm bảo đồng bộ
-        try { if (autoMergeService!=null) autoMergeService.scanNewlyApprovedContracts(); } catch (Exception ignore) {}
+        try {
+            if (autoMergeService != null)
+                autoMergeService.scanNewlyApprovedContracts();
+        } catch (Exception ignore) {
+        }
 
         // Thông báo
         notificationService.notifyContractApproved(savedContract);
         return savedContract;
     }
-    
+
     @Transactional
     public Contract rejectContract(Long contractId, Long directorId, String rejectionNotes) {
         Contract contract = repository.findById(contractId)
-            .orElseThrow(() -> new RuntimeException("Contract not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
         User director = userRepository.findById(directorId)
-            .orElseThrow(() -> new RuntimeException("Director not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Director not found"));
+
         contract.setStatus("REJECTED");
         contract.setDirectorApprovedBy(director);
         contract.setDirectorApprovedAt(Instant.now());
         contract.setDirectorApprovalNotes(rejectionNotes);
         contract.setUpdatedAt(Instant.now());
-        
+
         Contract savedContract = repository.save(contract);
-        
+
         // Send notification to Sale Staff
         notificationService.notifyContractRejected(savedContract);
-        
+
         return savedContract;
     }
-    
+
     public List<Contract> getContractsPendingApproval() {
         return repository.findByStatus("PENDING_APPROVAL");
     }
-    
+
     public Page<Contract> getContractsPendingApproval(Pageable pageable) {
         return repository.findByStatus("PENDING_APPROVAL", pageable);
     }
-    
-    public Page<Contract> getContractsPendingApproval(Pageable pageable, String search, String status, java.time.LocalDate deliveryDate) {
+
+    public Page<Contract> getContractsPendingApproval(Pageable pageable, String search, String status,
+            java.time.LocalDate deliveryDate) {
         String searchLower = search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
         java.time.LocalDate finalDeliveryDate = deliveryDate;
         return repository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
             predicates.add(cb.equal(root.get("status"), "PENDING_APPROVAL"));
-            
+
             if (search != null && !search.trim().isEmpty()) {
                 var searchPredicate = cb.or(
-                    cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                );
+                        cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                 predicates.add(searchPredicate);
             }
-            
+
             if (finalStatus != null && !finalStatus.trim().isEmpty() && !finalStatus.equals("PENDING_APPROVAL")) {
                 predicates.add(cb.equal(root.get("status"), finalStatus));
             }
-            
+
             if (finalDeliveryDate != null) {
                 predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
             }
-            
+
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         }, pageable);
     }
-    
+
     public List<Contract> getDirectorPendingContracts() {
         return repository.findByStatus("PENDING_APPROVAL");
     }
-    
+
     public Page<Contract> getDirectorPendingContracts(Pageable pageable) {
         return repository.findByStatus("PENDING_APPROVAL", pageable);
     }
-    
-    public Page<Contract> getDirectorPendingContracts(Pageable pageable, String search, String status, java.time.LocalDate createdDate, java.time.LocalDate deliveryDate) {
-        // If no filters provided, return only PENDING_APPROVAL contracts (default behavior)
-        if ((search == null || search.trim().isEmpty()) && 
-            (status == null || status.trim().isEmpty()) && 
-            createdDate == null && 
-            deliveryDate == null) {
+
+    public Page<Contract> getDirectorPendingContracts(Pageable pageable, String search, String status,
+            java.time.LocalDate createdDate, java.time.LocalDate deliveryDate) {
+        // If no filters provided, return only PENDING_APPROVAL contracts (default
+        // behavior)
+        if ((search == null || search.trim().isEmpty()) &&
+                (status == null || status.trim().isEmpty()) &&
+                createdDate == null &&
+                deliveryDate == null) {
             return repository.findByStatus("PENDING_APPROVAL", pageable);
         }
-        
+
         String searchLower = search != null ? search.trim().toLowerCase() : "";
         String finalStatus = status;
         java.time.LocalDate finalCreatedDate = createdDate;
         java.time.LocalDate finalDeliveryDate = deliveryDate;
         return repository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-            
+
             // Only filter by status if status filter is provided
             if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                 predicates.add(cb.equal(root.get("status"), finalStatus));
             }
             // If no status filter, don't filter by status (show all)
-            
+
             if (search != null && !search.trim().isEmpty()) {
                 var searchPredicate = cb.or(
-                    cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                );
+                        cb.like(cb.lower(root.get("contractNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                 predicates.add(searchPredicate);
             }
-            
+
             if (finalCreatedDate != null) {
                 // Filter by createdAt (date part only, ignore time)
                 // Convert LocalDate to start and end of day in Instant
-                java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-                java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+                java.time.Instant startOfDay = finalCreatedDate.atStartOfDay(java.time.ZoneId.systemDefault())
+                        .toInstant();
+                java.time.Instant endOfDay = finalCreatedDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault())
+                        .toInstant();
                 predicates.add(cb.and(
-                    cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
-                    cb.lessThan(root.get("createdAt"), endOfDay)
-                ));
+                        cb.greaterThanOrEqualTo(root.get("createdAt"), startOfDay),
+                        cb.lessThan(root.get("createdAt"), endOfDay)));
             }
-            
+
             if (finalDeliveryDate != null) {
                 predicates.add(cb.equal(root.get("deliveryDate"), finalDeliveryDate));
             }
-            
+
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         }, pageable);
     }
-    
+
     public String getContractFileUrl(Long contractId) {
         try {
             return fileStorageService.getContractFileUrl(contractId);
@@ -312,7 +347,7 @@ public class ContractService {
             return null;
         }
     }
-    
+
     public byte[] downloadContractFile(Long contractId) {
         try {
             return fileStorageService.downloadContractFile(contractId);
@@ -321,7 +356,7 @@ public class ContractService {
             throw new RuntimeException("Failed to download contract file: " + e.getMessage(), e);
         }
     }
-    
+
     public String getContractFileName(Long contractId) {
         try {
             return fileStorageService.getContractFileName(contractId);
@@ -330,57 +365,60 @@ public class ContractService {
             throw new RuntimeException("Failed to get contract file name: " + e.getMessage(), e);
         }
     }
-    
+
     // ===== ORDER DETAILS API =====
-    
+
     public tmmsystem.dto.sales.OrderDetailsDto getOrderDetails(Long contractId) {
         Contract contract = repository.findById(contractId)
-            .orElseThrow(() -> new RuntimeException("Contract not found"));
-        
+                .orElseThrow(() -> new RuntimeException("Contract not found"));
+
         // Build customer info
-        tmmsystem.dto.sales.OrderDetailsDto.CustomerInfo customerInfo = tmmsystem.dto.sales.OrderDetailsDto.CustomerInfo.builder()
-            .customerId(contract.getCustomer().getId())
-            .customerName(contract.getCustomer().getContactPerson())
-            .phoneNumber(contract.getCustomer().getPhoneNumber())
-            .companyName(contract.getCustomer().getCompanyName())
-            .taxCode(contract.getCustomer().getTaxCode())
-            .address(contract.getCustomer().getAddress())
-            .build();
-        
+        tmmsystem.dto.sales.OrderDetailsDto.CustomerInfo customerInfo = tmmsystem.dto.sales.OrderDetailsDto.CustomerInfo
+                .builder()
+                .customerId(contract.getCustomer().getId())
+                .customerName(contract.getCustomer().getContactPerson())
+                .phoneNumber(contract.getCustomer().getPhoneNumber())
+                .companyName(contract.getCustomer().getCompanyName())
+                .taxCode(contract.getCustomer().getTaxCode())
+                .address(contract.getCustomer().getAddress())
+                .build();
+
         // Build order items from quotation details
         List<tmmsystem.dto.sales.OrderDetailsDto.OrderItemDto> orderItems = new ArrayList<>();
         if (contract.getQuotation() != null && contract.getQuotation().getDetails() != null) {
             for (tmmsystem.entity.QuotationDetail detail : contract.getQuotation().getDetails()) {
-                tmmsystem.dto.sales.OrderDetailsDto.OrderItemDto item = tmmsystem.dto.sales.OrderDetailsDto.OrderItemDto.builder()
-                    .productId(detail.getProduct().getId())
-                    .productName(detail.getProduct().getName())
-                    .productSize(detail.getProduct().getStandardDimensions()) // Using standardDimensions field
-                    .quantity(detail.getQuantity())
-                    .unit(detail.getUnit())
-                    .unitPrice(detail.getUnitPrice())
-                    .totalPrice(detail.getTotalPrice())
-                    .noteColor(detail.getNoteColor())
-                    .build();
+                tmmsystem.dto.sales.OrderDetailsDto.OrderItemDto item = tmmsystem.dto.sales.OrderDetailsDto.OrderItemDto
+                        .builder()
+                        .productId(detail.getProduct().getId())
+                        .productName(detail.getProduct().getName())
+                        .productSize(detail.getProduct().getStandardDimensions()) // Using standardDimensions field
+                        .quantity(detail.getQuantity())
+                        .unit(detail.getUnit())
+                        .unitPrice(detail.getUnitPrice())
+                        .totalPrice(detail.getTotalPrice())
+                        .noteColor(detail.getNoteColor())
+                        .build();
                 orderItems.add(item);
             }
         }
-        
+
         return tmmsystem.dto.sales.OrderDetailsDto.builder()
-            .contractId(contract.getId())
-            .contractNumber(contract.getContractNumber())
-            .status(contract.getStatus())
-            .contractDate(contract.getContractDate())
-            .deliveryDate(contract.getDeliveryDate())
-            .totalAmount(contract.getTotalAmount())
-            .filePath(contract.getFilePath())
-            .customerInfo(customerInfo)
-            .orderItems(orderItems)
-            .build();
+                .contractId(contract.getId())
+                .contractNumber(contract.getContractNumber())
+                .status(contract.getStatus())
+                .contractDate(contract.getContractDate())
+                .deliveryDate(contract.getDeliveryDate())
+                .totalAmount(contract.getTotalAmount())
+                .filePath(contract.getFilePath())
+                .customerInfo(customerInfo)
+                .orderItems(orderItems)
+                .build();
     }
-    
+
     /**
      * Create a basic Production Plan for approved contract
-     * This method creates a draft production plan that Planning Department can then customize
+     * This method creates a draft production plan that Planning Department can then
+     * customize
      */
     private void createProductionPlanForContract(Contract contract) {
         try {
@@ -389,42 +427,41 @@ public class ContractService {
                 log.info("Production plan already exists for contract {}", contract.getId());
                 return;
             }
-            
+
             // Create a basic production plan request
-            tmmsystem.dto.production_plan.CreateProductionPlanRequest request = 
-                new tmmsystem.dto.production_plan.CreateProductionPlanRequest();
+            tmmsystem.dto.production_plan.CreateProductionPlanRequest request = new tmmsystem.dto.production_plan.CreateProductionPlanRequest();
             request.setContractId(contract.getId());
             request.setNotes("Auto-generated from approved contract: " + contract.getContractNumber());
-            
+
             // Create basic plan details from quotation details
             if (contract.getQuotation() != null && contract.getQuotation().getDetails() != null) {
                 List<tmmsystem.dto.production_plan.ProductionPlanDetailRequest> details = new ArrayList<>();
-                
+
                 for (tmmsystem.entity.QuotationDetail quotationDetail : contract.getQuotation().getDetails()) {
-                    tmmsystem.dto.production_plan.ProductionPlanDetailRequest detailRequest = 
-                        new tmmsystem.dto.production_plan.ProductionPlanDetailRequest();
-                    
+                    tmmsystem.dto.production_plan.ProductionPlanDetailRequest detailRequest = new tmmsystem.dto.production_plan.ProductionPlanDetailRequest();
+
                     detailRequest.setProductId(quotationDetail.getProduct().getId());
                     detailRequest.setPlannedQuantity(quotationDetail.getQuantity());
                     detailRequest.setRequiredDeliveryDate(contract.getDeliveryDate());
-                    
+
                     // Set proposed dates (can be adjusted by Planning Department)
                     detailRequest.setProposedStartDate(java.time.LocalDate.now().plusDays(7)); // Start in 1 week
-                    detailRequest.setProposedEndDate(contract.getDeliveryDate().minusDays(3)); // End 3 days before delivery
-                    
+                    detailRequest.setProposedEndDate(contract.getDeliveryDate().minusDays(3)); // End 3 days before
+                                                                                               // delivery
+
                     detailRequest.setNotes("Auto-generated from quotation detail");
-                    
+
                     details.add(detailRequest);
                 }
-                
+
                 request.setDetails(details);
             }
-            
+
             // Create the production plan
             productionPlanService.createPlanFromContract(request);
-            
+
             log.info("Successfully created production plan for contract {}", contract.getId());
-            
+
         } catch (Exception e) {
             log.error("Error creating production plan for contract {}: {}", contract.getId(), e.getMessage(), e);
             throw e;
@@ -433,15 +470,23 @@ public class ContractService {
 
     private void mergeLotsForApprovedContracts() {
         List<Contract> approved = repository.findApprovedWithoutPlan();
-        if (approved == null || approved.isEmpty()) return;
-        record Key(String productName, String size, java.time.LocalDate deliveryPivot, java.time.LocalDate contractPivot) {}
+        if (approved == null || approved.isEmpty())
+            return;
+        record Key(String productName, String size, java.time.LocalDate deliveryPivot,
+                java.time.LocalDate contractPivot) {
+        }
         java.util.Map<Key, java.util.List<Contract>> groups = new java.util.HashMap<>();
         for (Contract c : approved) {
-            if (c.getQuotation()==null || c.getQuotation().getDetails()==null || c.getQuotation().getDetails().isEmpty()) continue;
+            if (c.getQuotation() == null || c.getQuotation().getDetails() == null
+                    || c.getQuotation().getDetails().isEmpty())
+                continue;
             var d = c.getQuotation().getDetails().get(0);
             String name = d.getProduct().getName();
             String size = null;
-            try { size = d.getProduct().getStandardDimensions(); } catch (Exception ignore) {}
+            try {
+                size = d.getProduct().getStandardDimensions();
+            } catch (Exception ignore) {
+            }
             java.time.LocalDate del = c.getDeliveryDate();
             java.time.LocalDate con = c.getContractDate();
             Key k = new Key(name, size, del, con);
@@ -461,24 +506,29 @@ public class ContractService {
                     .filter(c -> !c.getDeliveryDate().isBefore(delMin) && !c.getDeliveryDate().isAfter(delMax))
                     .filter(c -> !c.getContractDate().isBefore(conMin) && !c.getContractDate().isAfter(conMax))
                     .toList();
-            if (windowed.isEmpty()) continue;
+            if (windowed.isEmpty())
+                continue;
             Contract base = windowed.get(0);
             var qd0 = base.getQuotation().getDetails().get(0);
             Product product = qd0.getProduct();
             java.math.BigDecimal totalQty = java.math.BigDecimal.ZERO;
             for (Contract c : windowed) {
-                for (var qd : c.getQuotation().getDetails()) totalQty = totalQty.add(qd.getQuantity());
+                for (var qd : c.getQuotation().getDetails())
+                    totalQty = totalQty.add(qd.getQuantity());
             }
             ProductionLot lot = lotRepo.findAll().stream()
-                    .filter(l -> l.getProduct()!=null && l.getProduct().getId().equals(product.getId()))
-                    .filter(l -> baseKey.size()==null || (l.getSizeSnapshot()!=null && l.getSizeSnapshot().equals(baseKey.size())))
+                    .filter(l -> l.getProduct() != null && l.getProduct().getId().equals(product.getId()))
+                    .filter(l -> baseKey.size() == null
+                            || (l.getSizeSnapshot() != null && l.getSizeSnapshot().equals(baseKey.size())))
                     .filter(l -> "READY_FOR_PLANNING".equals(l.getStatus()) || "FORMING".equals(l.getStatus()))
                     .findFirst().orElse(null);
-            if (lot==null) {
+            if (lot == null) {
                 lot = new ProductionLot();
-                lot.setLotCode("LOT-"+java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format("%03d", lotRepo.count()+1));
+                lot.setLotCode(
+                        "LOT-" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+                                + "-" + String.format("%03d", lotRepo.count() + 1));
                 lot.setProduct(product);
-                lot.setSizeSnapshot(baseKey.size()!=null ? baseKey.size() : product.getStandardDimensions());
+                lot.setSizeSnapshot(baseKey.size() != null ? baseKey.size() : product.getStandardDimensions());
                 lot.setDeliveryDateTarget(base.getDeliveryDate());
                 lot.setContractDateMin(base.getContractDate());
                 lot.setContractDateMax(base.getContractDate());
@@ -489,13 +539,18 @@ public class ContractService {
             for (Contract c : windowed) {
                 for (var qd : c.getQuotation().getDetails()) {
                     ProductionLotOrder lo = new ProductionLotOrder();
-                    lo.setLot(lot); lo.setContract(c); lo.setQuotationDetail(qd); lo.setAllocatedQuantity(qd.getQuantity());
+                    lo.setLot(lot);
+                    lo.setContract(c);
+                    lo.setQuotationDetail(qd);
+                    lo.setAllocatedQuantity(qd.getQuantity());
                     lotOrderRepo.save(lo);
                     lot.setTotalQuantity(lot.getTotalQuantity().add(qd.getQuantity()));
                 }
                 // widen contractDate range
-                if (c.getContractDate().isBefore(lot.getContractDateMin())) lot.setContractDateMin(c.getContractDate());
-                if (c.getContractDate().isAfter(lot.getContractDateMax())) lot.setContractDateMax(c.getContractDate());
+                if (c.getContractDate().isBefore(lot.getContractDateMin()))
+                    lot.setContractDateMin(c.getContractDate());
+                if (c.getContractDate().isAfter(lot.getContractDateMax()))
+                    lot.setContractDateMax(c.getContractDate());
             }
             lot.setStatus("READY_FOR_PLANNING");
             lotRepo.save(lot);

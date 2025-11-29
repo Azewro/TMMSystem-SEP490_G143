@@ -95,7 +95,15 @@ public class RfqService {
 
             // Status filter
             if (hasStatus && finalStatus != null) {
-                predicates.add(cb.equal(root.get("status"), finalStatus));
+                if ("WAITING_ASSIGNMENT".equals(finalStatus)) {
+                    predicates.add(cb.equal(root.get("status"), "SENT"));
+                    predicates.add(cb.isNull(root.get("assignedSales")));
+                } else if ("ASSIGNED".equals(finalStatus)) {
+                    predicates.add(cb.equal(root.get("status"), "SENT"));
+                    predicates.add(cb.isNotNull(root.get("assignedSales")));
+                } else {
+                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                }
             }
 
             // Created date filter
@@ -203,6 +211,12 @@ public class RfqService {
             rfq.setAssignedSales(u);
         }
 
+        // Auto-set status to SENT if Sales is assigned and status is DRAFT or null
+        if (rfq.getAssignedSales() != null && (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus()))) {
+            rfq.setStatus("SENT");
+            rfq.setSent(true);
+        }
+
         if (dto.getExpectedDeliveryDate() != null)
             validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
@@ -306,6 +320,11 @@ public class RfqService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
             }
             rfq.setAssignedSales(user);
+            // Auto-set status to SENT if Sales is assigned
+            if (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus())) {
+                rfq.setStatus("SENT");
+                rfq.setSent(true);
+            }
         }
 
         if (dto.getExpectedDeliveryDate() != null)
@@ -350,13 +369,9 @@ public class RfqService {
         rfq.setSourceType("BY_SALES");
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
 
-        // Logic: If employeeCode is provided, status is SENT (auto-assigned).
-        // If not, status is DRAFT (assigned but not sent).
-        if (req.getEmployeeCode() != null && !req.getEmployeeCode().isBlank()) {
-            rfq.setStatus("SENT");
-        } else {
-            rfq.setStatus("DRAFT");
-        }
+        // Logic: If Sales creates it, they are assigned, so status is SENT.
+        rfq.setStatus("SENT");
+        rfq.setSent(true);
 
         rfq.setNotes(req.getNotes());
         User sales = new User();
@@ -794,9 +809,23 @@ public class RfqService {
         return rfqRepository.findByStatusAndAssignedSalesIsNull("DRAFT", pageable);
     }
 
+    @Transactional
+    public int scanAndFixDraftRfqs() {
+        List<Rfq> draftsWithSales = rfqRepository.findByStatusAndAssignedSalesIsNotNull("DRAFT");
+        int count = 0;
+        for (Rfq rfq : draftsWithSales) {
+            rfq.setStatus("SENT");
+            rfq.setSent(true);
+            rfqRepository.save(rfq);
+            count++;
+        }
+        return count;
+    }
+
     private String generateRfqNumber() {
         String dateStr = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
                 .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE); // YYYYMMDD
+
         int attempt = 0;
         while (attempt < 3) {
             Integer maxSeq = rfqRepository.findMaxRfqSeqForToday();
