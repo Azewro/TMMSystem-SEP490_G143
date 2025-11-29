@@ -1,7 +1,8 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -14,9 +15,11 @@ import java.time.Instant;
         @Index(name = "idx_quality_issue_status", columnList = "status"),
         @Index(name = "idx_quality_issue_severity", columnList = "severity")
 })
-@Getter @Setter
+@Getter
+@Setter
 public class QualityIssue {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -60,4 +63,7 @@ public class QualityIssue {
 
     @Column(name = "material_needed")
     private Boolean materialNeeded = false; // NEW: lỗi nặng cần cấp sợi
+
+    @Column(name = "evidence_photo", length = 500)
+    private String evidencePhoto;
 }

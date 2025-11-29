@@ -398,7 +398,14 @@ public class ProductionService {
         if (issue.getProductionStage() != null) {
             dto.setStageId(issue.getProductionStage().getId());
             dto.setStageType(issue.getProductionStage().getStageType());
+            dto.setStageName(issue.getProductionStage().getStageType()); // Use stageType as stageName for now
+            dto.setBatchNumber(issue.getProductionStage().getBatchNumber());
+            if (issue.getProductionStage().getAssignedLeader() != null) {
+                dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
+            }
         }
+        dto.setIssueDescription(issue.getDescription()); // Map description to issueDescription
+        dto.setEvidencePhoto(issue.getEvidencePhoto());
         if (issue.getProductionOrder() != null) {
             dto.setOrderId(issue.getProductionOrder().getId());
             dto.setPoNumber(issue.getProductionOrder().getPoNumber());

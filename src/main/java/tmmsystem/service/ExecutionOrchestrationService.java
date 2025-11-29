@@ -362,6 +362,25 @@ public class ExecutionOrchestrationService {
             issue.setSeverity(defectLevel != null ? defectLevel : "MINOR");
             issue.setIssueType("REWORK");
             issue.setDescription(defectDescription != null ? defectDescription : notes);
+
+            // Populate evidence photo from inspections if available
+            boolean photoFound = false;
+            if (criteriaResults != null) {
+                for (QcInspectionDto dto : criteriaResults) {
+                    if (dto.getPhotoUrl() != null && !dto.getPhotoUrl().isEmpty()) {
+                        issue.setEvidencePhoto(dto.getPhotoUrl());
+                        photoFound = true;
+                        break; // Use the first photo found
+                    }
+                }
+            }
+
+            // NEW: Enforce mandatory photo for FAIL result
+            if (!photoFound) {
+                throw new RuntimeException(
+                        "QC_FAIL_NO_PHOTO: Bắt buộc phải có hình ảnh minh chứng khi đánh giá không đạt (FAIL).");
+            }
+
             issueRepo.save(issue);
 
             // Smart notification based on severity

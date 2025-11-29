@@ -111,4 +111,51 @@ public class QualityIssueDto {
     public void setSize(String size) {
         this.size = size;
     }
+
+    private String stageName;
+    private String batchNumber;
+    private String reportedBy;
+    private String issueDescription;
+
+    public String getStageName() {
+        return stageName;
+    }
+
+    public void setStageName(String stageName) {
+        this.stageName = stageName;
+    }
+
+    public String getBatchNumber() {
+        return batchNumber;
+    }
+
+    public void setBatchNumber(String batchNumber) {
+        this.batchNumber = batchNumber;
+    }
+
+    public String getReportedBy() {
+        return reportedBy;
+    }
+
+    public void setReportedBy(String reportedBy) {
+        this.reportedBy = reportedBy;
+    }
+
+    public String getIssueDescription() {
+        return issueDescription;
+    }
+
+    public void setIssueDescription(String issueDescription) {
+        this.issueDescription = issueDescription;
+    }
+
+    private String evidencePhoto;
+
+    public String getEvidencePhoto() {
+        return evidencePhoto;
+    }
+
+    public void setEvidencePhoto(String evidencePhoto) {
+        this.evidencePhoto = evidencePhoto;
+    }
 }
