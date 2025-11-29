@@ -82,4 +82,33 @@ public class QualityIssueDto {
     public void setPoNumber(String poNumber) {
         this.poNumber = poNumber;
     }
+
+    private java.time.Instant createdAt;
+
+    public java.time.Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(java.time.Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    private String productName;
+    private String size;
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    public String getSize() {
+        return size;
+    }
+
+    public void setSize(String size) {
+        this.size = size;
+    }
 }

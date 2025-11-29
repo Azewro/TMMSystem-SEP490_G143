@@ -97,8 +97,8 @@ public class ExecutionController {
 
     @PostMapping("/material-requisitions/{reqId}/approve")
     public tmmsystem.entity.MaterialRequisition approveMaterialRequest(@PathVariable Long reqId,
-            @RequestParam Long pmUserId) {
-        return orchestrationService.approveMaterialRequest(reqId, pmUserId);
+            @RequestParam Long pmUserId, @RequestParam(defaultValue = "false") boolean force) {
+        return orchestrationService.approveMaterialRequest(reqId, pmUserId, force);
     }
 
     @GetMapping("/leader/stages")

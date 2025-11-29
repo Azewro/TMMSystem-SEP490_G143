@@ -359,6 +359,13 @@ public class ProductionService {
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
+        // Get all defects (Technical sees everything)
+        return issueRepo.findAll().stream()
+                .map(this::mapQualityIssueToDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
     public tmmsystem.dto.qc.QualityIssueDto getDefectDetail(Long defectId) {
         QualityIssue issue = issueRepo.findById(defectId)
                 .orElseThrow(() -> new RuntimeException("Defect not found"));
@@ -395,7 +402,20 @@ public class ProductionService {
         if (issue.getProductionOrder() != null) {
             dto.setOrderId(issue.getProductionOrder().getId());
             dto.setPoNumber(issue.getProductionOrder().getPoNumber());
+
+            // Populate Product Name and Size
+            List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(issue.getProductionOrder().getId());
+            if (!details.isEmpty()) {
+                ProductionOrderDetail firstDetail = details.get(0);
+                if (firstDetail.getProduct() != null) {
+                    dto.setProductName(firstDetail.getProduct().getName());
+                    String size = firstDetail.getProduct().getStandardDimensions();
+                    // Fallback to lot size if needed, but for now just use product size
+                    dto.setSize(size != null ? size : "N/A");
+                }
+            }
         }
+        dto.setCreatedAt(issue.getCreatedAt());
         return dto;
     }
 
@@ -1636,7 +1656,7 @@ public class ProductionService {
 
     @Transactional
     public ProductionOrder approveMaterialRequest(Long requestId, java.math.BigDecimal approvedQuantity,
-            Long directorId) {
+            Long directorId, boolean force) {
         tmmsystem.entity.MaterialRequisition req = reqRepo.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Requisition not found"));
 
@@ -1669,11 +1689,9 @@ public class ProductionService {
         // Round up to nearest half day
         estimatedDays = Math.ceil(estimatedDays * 2) / 2.0;
 
-        if (estimatedDays > 7.0) {
-            // Log warning but allow proceed for now (or throw if strict)
-            // For this requirement, we'll just ensure the calculated date reflects this.
-            System.out.println("WARNING: Material Request " + requestId + " requires " + estimatedDays
-                    + " days, exceeding 7 days.");
+        if (estimatedDays > 7.0 && !force) {
+            throw new RuntimeException("TIME_EXCEEDED_WARNING: Thời gian làm quá lâu (" + estimatedDays
+                    + " ngày) làm cho các đơn hàng sau sẽ bị quá ngày giao hàng. Bạn có chắc chắn muốn phê duyệt không?");
         }
 
         // 2. Update Requisition

@@ -56,6 +56,11 @@ public class ProductionController {
         return service.getLeaderDefects(leaderUserId);
     }
 
+    @GetMapping("/tech/defects")
+    public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
+        return service.getTechnicalDefects();
+    }
+
     @GetMapping("/defects/{id}")
     public tmmsystem.dto.qc.QualityIssueDto getDefectDetail(@PathVariable Long id) {
         return service.getDefectDetail(id);
@@ -628,10 +633,8 @@ public class ProductionController {
     @PostMapping("/material-requests/{id}/approve")
     public ProductionOrderDto approveMaterialRequest(@PathVariable Long id,
             @RequestParam java.math.BigDecimal approvedQuantity,
-            @RequestParam Long directorId) {
-        service.approveMaterialRequest(id, approvedQuantity, directorId);
-        // Return null or updated PO? The service returns the *new* rework PO.
-        // For now, let's return the rework PO dto.
-        return mapper.toDto(service.approveMaterialRequest(id, approvedQuantity, directorId));
+            @RequestParam Long directorId,
+            @RequestParam(defaultValue = "false") boolean force) {
+        return mapper.toDto(service.approveMaterialRequest(id, approvedQuantity, directorId, force));
     }
 }

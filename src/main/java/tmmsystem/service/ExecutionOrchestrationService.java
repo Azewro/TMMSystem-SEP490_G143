@@ -511,14 +511,14 @@ public class ExecutionOrchestrationService {
         return req;
     }
 
-    public MaterialRequisition approveMaterialRequest(Long requisitionId, Long pmUserId) {
+    public MaterialRequisition approveMaterialRequest(Long requisitionId, Long pmUserId, boolean force) {
         // Delegate to ProductionService for full logic (Time validation, Supplementary
         // Order creation)
         MaterialRequisition req = materialReqRepo.findById(requisitionId).orElseThrow();
         java.math.BigDecimal qty = req.getQuantityRequested() != null ? req.getQuantityRequested()
                 : java.math.BigDecimal.ZERO;
 
-        productionService.approveMaterialRequest(requisitionId, qty, pmUserId);
+        productionService.approveMaterialRequest(requisitionId, qty, pmUserId, force);
 
         return materialReqRepo.findById(requisitionId).orElseThrow();
     }
