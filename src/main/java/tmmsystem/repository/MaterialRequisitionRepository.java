@@ -7,5 +7,8 @@ import java.util.List;
 
 public interface MaterialRequisitionRepository extends JpaRepository<MaterialRequisition, Long> {
     List<MaterialRequisition> findByStatus(String status);
+
     List<MaterialRequisition> findByRequestedById(Long requestedById);
+
+    List<MaterialRequisition> findByProductionStageIdAndStatus(Long stageId, String status);
 }

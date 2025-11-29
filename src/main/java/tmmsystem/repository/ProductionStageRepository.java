@@ -53,4 +53,7 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     // REMOVED: findStagesByOrderIdOld - query dùng workOrderDetail không còn hợp lệ
     // NEW: Count active stages for capacity check
     long countByStageTypeAndExecutionStatusIn(String stageType, List<String> executionStatuses);
+
+    // NEW: Find active stages on a specific machine
+    List<ProductionStage> findByMachineIdAndExecutionStatus(Long machineId, String executionStatus);
 }

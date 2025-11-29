@@ -51,6 +51,7 @@ public class ProductionService {
     private final ProductionLotRepository productionLotRepository;
     private final ProductionMapper productionMapper;
     private final tmmsystem.repository.QualityIssueRepository issueRepo;
+    private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -72,7 +73,8 @@ public class ProductionService {
             ProductionPlanRepository productionPlanRepository,
             ProductionLotRepository productionLotRepository,
             ProductionMapper productionMapper,
-            tmmsystem.repository.QualityIssueRepository issueRepo) {
+            tmmsystem.repository.QualityIssueRepository issueRepo,
+            tmmsystem.repository.MaterialRequisitionRepository reqRepo) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -94,6 +96,7 @@ public class ProductionService {
         this.productionLotRepository = productionLotRepository;
         this.productionMapper = productionMapper;
         this.issueRepo = issueRepo;
+        this.reqRepo = reqRepo;
     }
 
     // Production Order
@@ -681,23 +684,58 @@ public class ProductionService {
     public ProductionStage pauseStage(Long stageId, Long leaderUserId, String pauseReason, String pauseNotes) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+
+        // 1. Pause the requested stage
+        pauseSingleStage(s, leaderUserId, pauseReason, pauseNotes);
+
+        // 2. CASCADE PAUSE: Find other IN_PROGRESS stages on the same machine
+        if (s.getMachine() != null) {
+            List<ProductionStage> otherActiveStages = stageRepo.findByMachineIdAndExecutionStatus(
+                    s.getMachine().getId(), "IN_PROGRESS");
+
+            for (ProductionStage otherStage : otherActiveStages) {
+                // Skip the current stage (already paused)
+                if (otherStage.getId().equals(s.getId()))
+                    continue;
+
+                // Pause other stages with a system reason
+                String systemReason = "Tạm dừng do đơn hàng khác (" + s.getProductionOrder().getPoNumber()
+                        + ") gặp sự cố trên cùng máy.";
+                pauseSingleStage(otherStage, leaderUserId, "CASCADE_PAUSE", systemReason);
+
+                // Notify the leader of the other stage
+                if (otherStage.getAssignedLeader() != null) {
+                    notificationService.notifyUser(otherStage.getAssignedLeader(), "PRODUCTION", "WARNING",
+                            "Công đoạn bị tạm dừng",
+                            "Công đoạn của bạn bị tạm dừng do máy " + s.getMachine().getName()
+                                    + " đang xử lý sự cố của đơn hàng khác.",
+                            "PRODUCTION_STAGE", otherStage.getId());
+                }
+            }
+        }
+
+        return s;
+    }
+
+    private void pauseSingleStage(ProductionStage s, Long userId, String reason, String notes) {
         // PAUSED không có trong executionStatus, giữ status riêng
         s.setStatus("PAUSED");
         // executionStatus giữ nguyên để biết đang ở giai đoạn nào
         stageRepo.save(s);
+
         StagePauseLog pl = new StagePauseLog();
         pl.setProductionStage(s);
-        pl.setPausedBy(userRepository.findById(leaderUserId).orElseThrow());
-        pl.setPauseReason(pauseReason);
-        pl.setPauseNotes(pauseNotes);
+        pl.setPausedBy(userRepository.findById(userId).orElseThrow());
+        pl.setPauseReason(reason);
+        pl.setPauseNotes(notes);
         pl.setPausedAt(Instant.now());
         stagePauseLogRepository.save(pl);
+
         StageTracking tr = new StageTracking();
         tr.setProductionStage(s);
         tr.setOperator(pl.getPausedBy());
         tr.setAction("PAUSE");
         stageTrackingRepository.save(tr);
-        return s;
     }
 
     @Transactional
@@ -1304,6 +1342,19 @@ public class ProductionService {
         dto.setExpectedFinishDate(po.getPlannedEndDate());
         dto.setExpectedDeliveryDate(po.getPlannedStartDate()); // Leader dùng expectedDeliveryDate
 
+        // Check for pending material requests
+        Long pendingReqId = null;
+        if (stages != null && !stages.isEmpty()) {
+            for (ProductionStage s : stages) {
+                List<MaterialRequisition> reqs = reqRepo.findByProductionStageIdAndStatus(s.getId(), "PENDING");
+                if (!reqs.isEmpty()) {
+                    pendingReqId = reqs.get(0).getId();
+                    break;
+                }
+            }
+        }
+        dto.setPendingMaterialRequestId(pendingReqId);
+
         return dto;
     }
 
@@ -1556,13 +1607,144 @@ public class ProductionService {
 
     @Transactional
     public void fixDataConsistency() {
-        List<ProductionStage> allStages = stageRepo.findAll();
-        for (ProductionStage stage : allStages) {
-            String execStatus = stage.getExecutionStatus();
-            if (execStatus != null) {
-                syncStageStatus(stage, execStatus);
-                stageRepo.save(stage);
+        // 1. Fix missing QR tokens
+        List<ProductionStage> stages = stageRepo.findAll();
+        for (ProductionStage s : stages) {
+            if (s.getQrToken() == null) {
+                s.setQrToken(generateQrToken());
+                stageRepo.save(s);
             }
         }
+
+        // 2. Fix POs without stages
+        List<ProductionOrder> orders = poRepo.findAll();
+        for (ProductionOrder po : orders) {
+            List<ProductionStage> existingStages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
+            if (existingStages.isEmpty()) {
+                // Create default stages
+                createStagesFromPlan(po.getId(), null);
+                System.out.println("Auto-generated stages for PO: " + po.getPoNumber());
+            }
+        }
+    }
+
+    @Transactional
+    public tmmsystem.entity.MaterialRequisition getMaterialRequest(Long id) {
+        return reqRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Material requisition not found"));
+    }
+
+    @Transactional
+    public ProductionOrder approveMaterialRequest(Long requestId, java.math.BigDecimal approvedQuantity,
+            Long directorId) {
+        tmmsystem.entity.MaterialRequisition req = reqRepo.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Requisition not found"));
+
+        // 1. Time Validation (Standard Capacity Check)
+        // Define standard daily capacities (can be moved to DB/Config later)
+        Map<String, Double> standardDailyCapacity = new HashMap<>();
+        standardDailyCapacity.put("WARPING", 2000.0); // kg
+        standardDailyCapacity.put("WEAVING", 500.0); // meters
+        standardDailyCapacity.put("DYEING", 1000.0); // kg
+        standardDailyCapacity.put("CUTTING", 2000.0); // pcs
+        standardDailyCapacity.put("HEMMING", 1500.0); // pcs
+        standardDailyCapacity.put("PACKAGING", 3000.0); // pcs
+        // Vietnamese aliases
+        standardDailyCapacity.put("CUONG_MAC", 2000.0);
+        standardDailyCapacity.put("DET", 500.0);
+        standardDailyCapacity.put("NHUOM", 1000.0);
+        standardDailyCapacity.put("CAT", 2000.0);
+        standardDailyCapacity.put("MAY", 1500.0);
+        standardDailyCapacity.put("DONG_GOI", 3000.0);
+
+        ProductionStage originalStage = req.getProductionStage();
+        String stageType = originalStage != null ? originalStage.getStageType() : "UNKNOWN";
+
+        // Default to 1000 if unknown
+        double dailyCapacity = standardDailyCapacity.getOrDefault(stageType.toUpperCase(), 1000.0);
+
+        // Calculate estimated days
+        double estimatedDays = approvedQuantity.doubleValue() / dailyCapacity;
+
+        // Round up to nearest half day
+        estimatedDays = Math.ceil(estimatedDays * 2) / 2.0;
+
+        if (estimatedDays > 7.0) {
+            // Log warning but allow proceed for now (or throw if strict)
+            // For this requirement, we'll just ensure the calculated date reflects this.
+            System.out.println("WARNING: Material Request " + requestId + " requires " + estimatedDays
+                    + " days, exceeding 7 days.");
+        }
+
+        // 2. Update Requisition
+        req.setStatus("APPROVED");
+        req.setApprovedBy(userRepository.findById(directorId).orElseThrow());
+        req.setApprovedAt(Instant.now());
+        req.setQuantityApproved(approvedQuantity);
+        reqRepo.save(req);
+
+        // 3. Create Supplementary Order (Rework Order)
+        if (originalStage == null) {
+            throw new RuntimeException("Cannot create rework order: Original stage is missing");
+        }
+        ProductionOrder originalPO = originalStage.getProductionOrder();
+
+        ProductionOrder reworkPO = new ProductionOrder();
+        reworkPO.setPoNumber(originalPO.getPoNumber() + "-REWORK-" + System.currentTimeMillis() % 1000);
+        reworkPO.setContract(originalPO.getContract());
+        reworkPO.setTotalQuantity(approvedQuantity); // Quantity for rework
+        reworkPO.setPlannedStartDate(java.time.LocalDate.now());
+        reworkPO.setPlannedEndDate(java.time.LocalDate.now().plusDays((long) Math.ceil(estimatedDays)));
+        reworkPO.setStatus("WAITING_PRODUCTION");
+        reworkPO.setExecutionStatus("WAITING_PRODUCTION");
+        reworkPO.setPriority(originalPO.getPriority() + 1); // Higher priority
+        reworkPO.setNotes("Supplementary order for " + originalPO.getPoNumber() + ". Reason: " + req.getNotes());
+        reworkPO.setCreatedBy(req.getRequestedBy());
+        reworkPO.setApprovedBy(req.getApprovedBy());
+        reworkPO.setApprovedAt(Instant.now());
+
+        ProductionOrder savedReworkPO = poRepo.save(reworkPO);
+
+        // 4. Clone Stages
+        List<ProductionStage> originalStages = stageRepo
+                .findByProductionOrderIdOrderByStageSequenceAsc(originalPO.getId());
+
+        for (ProductionStage oldStage : originalStages) {
+            ProductionStage newStage = new ProductionStage();
+            newStage.setProductionOrder(savedReworkPO);
+            newStage.setStageType(oldStage.getStageType());
+            newStage.setStageSequence(oldStage.getStageSequence());
+            newStage.setMachine(oldStage.getMachine()); // Retain Machine
+            newStage.setAssignedLeader(oldStage.getAssignedLeader()); // Retain Leader
+            newStage.setAssignedTo(oldStage.getAssignedTo());
+            newStage.setQcAssignee(oldStage.getQcAssignee());
+            newStage.setOutsourced(oldStage.getOutsourced());
+            newStage.setOutsourceVendor(oldStage.getOutsourceVendor());
+
+            // Set Rework Flags
+            newStage.setIsRework(true);
+            newStage.setOriginalStage(oldStage);
+
+            // Status: First stage READY, others PENDING
+            if (newStage.getStageSequence() == 1) {
+                syncStageStatus(newStage, "WAITING"); // Ready to start
+            } else {
+                syncStageStatus(newStage, "PENDING");
+            }
+            newStage.setProgressPercent(0);
+
+            stageRepo.save(newStage);
+
+            // Notify Leader
+            if (newStage.getAssignedLeader() != null) {
+                notificationService.notifyUser(newStage.getAssignedLeader(), "PRODUCTION", "INFO",
+                        "Lệnh sản xuất bổ sung",
+                        "Bạn được phân công lại công đoạn " + newStage.getStageType() + " cho lệnh bổ sung "
+                                + reworkPO.getPoNumber(),
+                        "PRODUCTION_STAGE", newStage.getId());
+            }
+        }
+
+        return savedReworkPO;
     }
 }

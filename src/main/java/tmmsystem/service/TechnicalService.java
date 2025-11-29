@@ -9,16 +9,24 @@ import tmmsystem.repository.ProductionStageRepository;
 public class TechnicalService {
     private final ProductionStageRepository stageRepo;
     private final NotificationService notificationService;
+    private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
+    private final tmmsystem.repository.UserRepository userRepo;
 
     public TechnicalService(ProductionStageRepository stageRepo,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            tmmsystem.repository.MaterialRequisitionRepository reqRepo,
+            tmmsystem.repository.UserRepository userRepo) {
         this.stageRepo = stageRepo;
         this.notificationService = notificationService;
+        this.reqRepo = reqRepo;
+        this.userRepo = userRepo;
     }
 
     @Transactional
-    public void handleDefect(Long stageId, String decision, String notes, Long technicalUserId) {
+    public void handleDefect(Long stageId, String decision, String notes, Long technicalUserId,
+            java.math.BigDecimal quantity) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        // ... (rest of the logic)
 
         if ("REWORK".equalsIgnoreCase(decision)) {
             // Minor defect -> Rework
@@ -38,14 +46,6 @@ public class TechnicalService {
         } else if ("MATERIAL_REQUEST".equalsIgnoreCase(decision)) {
             // Major defect -> Request Material -> Notify PM
             // Stage stays in QC_FAILED or moves to WAITING_MATERIAL_APPROVAL
-            stage.setStatus("WAITING_MATERIAL_APPROVAL");
-            stageRepo.save(stage);
-
-            notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "WARNING", "Yêu cầu cấp sợi/vật tư",
-                    "Công đoạn " + stage.getStageType() + " gặp lỗi nặng, cần cấp vật tư. "
-                            + (notes != null ? notes : ""),
-                    "PRODUCTION_STAGE", stage.getId());
-        } else {
             // Other decisions (e.g. SCRAP, ACCEPT)
             stage.setStatus("COMPLETED"); // Assume accepted with deviation
             stage.setQcLastResult("PASS_WITH_DEVIATION");

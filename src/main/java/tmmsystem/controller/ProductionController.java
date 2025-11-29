@@ -616,4 +616,22 @@ public class ProductionController {
         service.fixDataConsistency();
         return ResponseEntity.ok(Map.of("message", "Data consistency fixed successfully"));
     }
+
+    // Material Requisition APIs
+    @Operation(summary = "Lấy chi tiết yêu cầu cấp sợi")
+    @GetMapping("/material-requests/{id}")
+    public tmmsystem.entity.MaterialRequisition getMaterialRequest(@PathVariable Long id) {
+        return service.getMaterialRequest(id);
+    }
+
+    @Operation(summary = "Phê duyệt yêu cầu cấp sợi")
+    @PostMapping("/material-requests/{id}/approve")
+    public ProductionOrderDto approveMaterialRequest(@PathVariable Long id,
+            @RequestParam java.math.BigDecimal approvedQuantity,
+            @RequestParam Long directorId) {
+        service.approveMaterialRequest(id, approvedQuantity, directorId);
+        // Return null or updated PO? The service returns the *new* rework PO.
+        // For now, let's return the rework PO dto.
+        return mapper.toDto(service.approveMaterialRequest(id, approvedQuantity, directorId));
+    }
 }

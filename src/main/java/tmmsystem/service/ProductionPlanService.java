@@ -297,9 +297,8 @@ public class ProductionPlanService {
 
         // Auto-create ProductionStages directly from planning stages (NEW: không qua
         // WorkOrder)
-        // Map<Long, List<ProductionStage>> stageMapping =
-        // productionService.createStagesFromPlan(po.getId(), planStages); // REMOVED:
-        // Unused
+        // Auto-create ProductionStages directly from planning stages
+        productionService.createStagesFromPlan(po.getId(), planStages);
         if (!planStages.isEmpty()) {
             planStages.forEach(stage -> stage.setStageStatus("RELEASED"));
             stageRepo.saveAll(planStages);

@@ -43,4 +43,6 @@ public class ProductionOrderDto {
     private LocalDate expectedDeliveryDate; // Alias cho plannedStartDate (dùng cho Leader)
 
     private String qrToken; // Token QR của lô (lấy từ stage đầu tiên)
+
+    private Long pendingMaterialRequestId; // NEW: ID của yêu cầu cấp sợi đang chờ duyệt (nếu có)
 }

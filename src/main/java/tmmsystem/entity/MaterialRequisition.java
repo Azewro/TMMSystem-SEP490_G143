@@ -1,23 +1,25 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 
-@Entity @Table(name = "material_requisition",
-        uniqueConstraints = { @UniqueConstraint(columnNames = {"requisition_number"}) },
-        indexes = {
+@Entity
+@Table(name = "material_requisition", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "requisition_number" }) }, indexes = {
                 @Index(name = "idx_requisition_stage", columnList = "production_stage_id"),
                 @Index(name = "idx_requisition_status_time", columnList = "status, requested_at"),
                 @Index(name = "idx_requisition_issue", columnList = "source_issue_id")
-        }
-)
-@Getter @Setter
+        })
+@Getter
+@Setter
 public class MaterialRequisition {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "requisition_number", length = 50, nullable = false)
@@ -54,6 +56,12 @@ public class MaterialRequisition {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_issue_id")
     private QualityIssue sourceIssue; // phát sinh từ lỗi QC mức nặng
+
+    @Column(name = "quantity_requested", precision = 10, scale = 2)
+    private java.math.BigDecimal quantityRequested;
+
+    @Column(name = "quantity_approved", precision = 10, scale = 2)
+    private java.math.BigDecimal quantityApproved;
 
     @Column(name = "requisition_type", length = 30)
     private String requisitionType; // YARN_SUPPLY, OTHER

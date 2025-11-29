@@ -1,3 +1,4 @@
+
 package tmmsystem.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +23,8 @@ public class TechnicalController {
     public void handleDefect(@RequestParam Long stageId,
             @RequestParam String decision, // REWORK, MATERIAL_REQUEST, ACCEPT
             @RequestParam(required = false) String notes,
-            @RequestParam Long technicalUserId) {
-        service.handleDefect(stageId, decision, notes, technicalUserId);
+            @RequestParam Long technicalUserId,
+            @RequestParam(required = false) java.math.BigDecimal quantity) {
+        service.handleDefect(stageId, decision, notes, technicalUserId, quantity);
     }
 }

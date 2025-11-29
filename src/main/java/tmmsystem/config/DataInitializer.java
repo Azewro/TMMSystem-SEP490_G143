@@ -29,6 +29,8 @@ public class DataInitializer implements CommandLineRunner {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private tmmsystem.service.RfqService rfqService;
+    @Autowired
+    private tmmsystem.service.ProductionService productionService;
 
     @Override
     public void run(String... args) {
@@ -42,6 +44,10 @@ public class DataInitializer implements CommandLineRunner {
             if (fixedRfqs > 0) {
                 log.info("Startup: Auto-corrected {} RFQs from DRAFT to SENT (assigned sales found)", fixedRfqs);
             }
+
+            // Fix Production Data Consistency (Missing Stages)
+            productionService.fixDataConsistency();
+            log.info("Startup: Verified and fixed Production Data consistency (Stages/QR Tokens)");
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // seedQcCheckpoints();
             // createSampleMachines();

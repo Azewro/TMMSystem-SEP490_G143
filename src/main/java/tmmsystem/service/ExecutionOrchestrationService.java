@@ -507,45 +507,20 @@ public class ExecutionOrchestrationService {
 
         notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "WARNING", "Yêu cầu cấp sợi",
                 "Có yêu cầu cấp sợi cho công đoạn " + stage.getStageType(), "MATERIAL_REQUISITION", req.getId());
+
         return req;
     }
 
-    @Transactional
     public MaterialRequisition approveMaterialRequest(Long requisitionId, Long pmUserId) {
+        // Delegate to ProductionService for full logic (Time validation, Supplementary
+        // Order creation)
         MaterialRequisition req = materialReqRepo.findById(requisitionId).orElseThrow();
-        if (!"PENDING".equals(req.getStatus()))
-            return req;
-        req.setStatus("APPROVED");
-        req.setApprovedBy(userRepo.findById(pmUserId).orElseThrow());
-        req.setApprovedAt(Instant.now());
-        materialReqRepo.save(req);
-        QualityIssue issue = req.getSourceIssue();
-        if (issue != null) {
-            issue.setStatus("PROCESSED");
-            issue.setProcessedAt(Instant.now());
-            issue.setProcessedBy(req.getApprovedBy());
-            issueRepo.save(issue);
-        }
-        ProductionStage stage = req.getProductionStage();
-        // Khi cấp sợi phê duyệt -> cho phép sửa lại các stage từ đầu tới stage bị lỗi
-        // (đơn giản: set stage WAITING_REWORK)
-        if (stage != null) {
-            stage.setExecutionStatus("WAITING_REWORK");
-            stage.setIsRework(true);
-            stage.setProgressPercent(0);
-            stageRepo.save(stage);
-        }
-        ProductionOrder order = resolveOrder(stage);
-        if (order != null) {
-            order.setExecutionStatus("IN_REWORK");
-            orderRepo.save(order);
-        }
-        if (stage != null && stage.getAssignedLeader() != null) {
-            notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO", "Chờ sửa (cấp sợi)",
-                    "Công đoạn " + stage.getStageType() + " đã được cấp sợi, tiến hành sửa", "PRODUCTION_STAGE",
-                    stage.getId());
-        }
-        return req;
+        java.math.BigDecimal qty = req.getQuantityRequested() != null ? req.getQuantityRequested()
+                : java.math.BigDecimal.ZERO;
+
+        productionService.approveMaterialRequest(requisitionId, qty, pmUserId);
+
+        return materialReqRepo.findById(requisitionId).orElseThrow();
     }
 
     @Transactional(readOnly = true)
