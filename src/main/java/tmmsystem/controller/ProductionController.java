@@ -652,10 +652,8 @@ public class ProductionController {
     @Operation(summary = "Phê duyệt yêu cầu cấp sợi")
     @PostMapping("/material-requests/{id}/approve")
     public ProductionOrderDto approveMaterialRequest(@PathVariable Long id,
-            @RequestParam java.math.BigDecimal approvedQuantity,
-            @RequestParam Long directorId,
-            @RequestParam(defaultValue = "false") boolean force) {
-        return mapper.toDto(service.approveMaterialRequest(id, approvedQuantity, directorId, force));
+            @RequestBody tmmsystem.dto.execution.MaterialRequisitionApprovalDto body) {
+        return mapper.toDto(service.approveMaterialRequest(id, body));
     }
 
     @Operation(summary = "PM: Bắt đầu đơn hàng bổ sung")

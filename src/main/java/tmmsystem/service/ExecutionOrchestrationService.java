@@ -642,11 +642,8 @@ public class ExecutionOrchestrationService {
     public MaterialRequisition approveMaterialRequest(Long requisitionId, Long pmUserId, boolean force) {
         // Delegate to ProductionService for full logic (Time validation, Supplementary
         // Order creation)
-        MaterialRequisition req = materialReqRepo.findById(requisitionId).orElseThrow();
-        java.math.BigDecimal qty = req.getQuantityRequested() != null ? req.getQuantityRequested()
-                : java.math.BigDecimal.ZERO;
-
-        productionService.approveMaterialRequest(requisitionId, qty, pmUserId, force);
+        // Note: Legacy call, auto-approves all details based on requested quantity
+        productionService.approveMaterialRequest(requisitionId, pmUserId, force);
 
         return materialReqRepo.findById(requisitionId).orElseThrow();
     }

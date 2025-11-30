@@ -1824,11 +1824,59 @@ public class ProductionService {
                 .orElseThrow(() -> new RuntimeException("Material requisition not found"));
     }
 
+    // Legacy overload for ExecutionOrchestrationService
     @Transactional
-    public ProductionOrder approveMaterialRequest(Long requestId, java.math.BigDecimal approvedQuantity,
-            Long directorId, boolean force) {
+    public ProductionOrder approveMaterialRequest(Long requestId, Long directorId, boolean force) {
         tmmsystem.entity.MaterialRequisition req = reqRepo.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Requisition not found"));
+
+        tmmsystem.dto.execution.MaterialRequisitionApprovalDto dto = new tmmsystem.dto.execution.MaterialRequisitionApprovalDto();
+        dto.setDirectorId(directorId);
+        dto.setForce(force);
+
+        // Fetch details and approve full amount
+        List<tmmsystem.entity.MaterialRequisitionDetail> details = reqDetailRepo.findByRequisitionId(requestId);
+        List<tmmsystem.dto.execution.MaterialRequisitionDetailDto> detailDtos = new java.util.ArrayList<>();
+
+        for (tmmsystem.entity.MaterialRequisitionDetail d : details) {
+            tmmsystem.dto.execution.MaterialRequisitionDetailDto dd = new tmmsystem.dto.execution.MaterialRequisitionDetailDto();
+            dd.setId(d.getId());
+            dd.setQuantityApproved(d.getQuantityRequested()); // Auto-approve requested amount
+            detailDtos.add(dd);
+        }
+        dto.setDetails(detailDtos);
+
+        return approveMaterialRequest(requestId, dto);
+    }
+
+    @Transactional
+    public ProductionOrder approveMaterialRequest(Long requestId,
+            tmmsystem.dto.execution.MaterialRequisitionApprovalDto dto) {
+        tmmsystem.entity.MaterialRequisition req = reqRepo.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Requisition not found"));
+
+        java.math.BigDecimal totalApproved = java.math.BigDecimal.ZERO;
+
+        // Update Details
+        if (dto.getDetails() != null) {
+            for (tmmsystem.dto.execution.MaterialRequisitionDetailDto detailDto : dto.getDetails()) {
+                if (detailDto.getId() != null) {
+                    tmmsystem.entity.MaterialRequisitionDetail detail = reqDetailRepo.findById(detailDto.getId())
+                            .orElse(null);
+                    if (detail != null && detail.getRequisition().getId().equals(requestId)) {
+                        detail.setQuantityApproved(detailDto.getQuantityApproved());
+                        reqDetailRepo.save(detail);
+                        if (detail.getQuantityApproved() != null) {
+                            totalApproved = totalApproved.add(detail.getQuantityApproved());
+                        }
+                    }
+                }
+            }
+        } else {
+            // Fallback for legacy calls or empty details (should not happen with new UI)
+            // If needed, we could set totalApproved from a field in DTO, but let's rely on
+            // details sum
+        }
 
         // 1. Time Validation (Standard Capacity Check)
         // Define standard daily capacities (can be moved to DB/Config later)
@@ -1854,21 +1902,22 @@ public class ProductionService {
         double dailyCapacity = standardDailyCapacity.getOrDefault(stageType.toUpperCase(), 1000.0);
 
         // Calculate estimated days
-        double estimatedDays = approvedQuantity.doubleValue() / dailyCapacity;
+        double estimatedDays = totalApproved.doubleValue() / dailyCapacity;
 
         // Round up to nearest half day
         estimatedDays = Math.ceil(estimatedDays * 2) / 2.0;
 
-        if (estimatedDays > 7.0 && !force) {
+        if (estimatedDays > 7.0 && !dto.isForce()) {
             throw new RuntimeException("TIME_EXCEEDED_WARNING: Thời gian làm quá lâu (" + estimatedDays
                     + " ngày) làm cho các đơn hàng sau sẽ bị quá ngày giao hàng. Bạn có chắc chắn muốn phê duyệt không?");
         }
 
         // 2. Update Requisition
         req.setStatus("APPROVED");
-        req.setApprovedBy(userRepository.findById(directorId).orElseThrow());
+        req.setApprovedBy(userRepository.findById(dto.getDirectorId()).orElseThrow());
         req.setApprovedAt(Instant.now());
-        req.setQuantityApproved(approvedQuantity);
+        req.setQuantityApproved(totalApproved);
+        req.setNotes(dto.getNotes()); // Update notes if provided
         reqRepo.save(req);
 
         // 3. Create Supplementary Order (Rework Order)
@@ -1883,7 +1932,7 @@ public class ProductionService {
 
         // Convert kg (approvedQuantity) to pcs (totalQuantity)
         // Formula: Pcs = Kg / Weight_per_piece_in_kg
-        BigDecimal reworkQuantityPcs = approvedQuantity;
+        BigDecimal reworkQuantityPcs = totalApproved;
         try {
             List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(originalPO.getId());
             if (!details.isEmpty()) {
@@ -1893,7 +1942,7 @@ public class ProductionService {
                     // Assuming standardWeight is in GRAMS (common for towels).
                     BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
                             java.math.RoundingMode.HALF_UP);
-                    reworkQuantityPcs = approvedQuantity.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
+                    reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
                 }
             }
         } catch (Exception e) {

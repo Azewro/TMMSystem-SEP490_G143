@@ -6,6 +6,12 @@ import tmmsystem.entity.*;
 
 @Component
 public class ExecutionMapper {
+    private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
+
+    public ExecutionMapper(tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo) {
+        this.reqDetailRepo = reqDetailRepo;
+    }
+
     public StageTrackingDto toDto(StageTracking e) {
         if (e == null)
             return null;
@@ -110,6 +116,14 @@ public class ExecutionMapper {
         if (e.getApprovedBy() != null) {
             dto.setApprovedByName(e.getApprovedBy().getName());
         }
+
+        // Map details
+        java.util.List<tmmsystem.entity.MaterialRequisitionDetail> details = reqDetailRepo
+                .findByRequisitionId(e.getId());
+        if (details != null && !details.isEmpty()) {
+            dto.setDetails(details.stream().map(this::toDto).collect(java.util.stream.Collectors.toList()));
+        }
+
         return dto;
     }
 
@@ -120,6 +134,7 @@ public class ExecutionMapper {
         dto.setId(e.getId());
         dto.setRequisitionId(e.getRequisition() != null ? e.getRequisition().getId() : null);
         dto.setMaterialId(e.getMaterial() != null ? e.getMaterial().getId() : null);
+        dto.setMaterialName(e.getMaterial() != null ? e.getMaterial().getName() : null);
         dto.setQuantityRequested(e.getQuantityRequested());
         dto.setQuantityApproved(e.getQuantityApproved());
         dto.setQuantityIssued(e.getQuantityIssued());
