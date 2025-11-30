@@ -47,7 +47,12 @@ public class DataInitializer implements CommandLineRunner {
 
             // Fix Production Data Consistency (Missing Stages)
             productionService.fixDataConsistency();
+            productionService.fixDataConsistency();
             log.info("Startup: Verified and fixed Production Data consistency (Stages/QR Tokens)");
+
+            // Fix Stage Tracking Data (Rework Flag)
+            productionService.migrateStageTrackingData();
+            log.info("Startup: Migrated Stage Tracking data for Rework detection");
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // seedQcCheckpoints();
             // createSampleMachines();

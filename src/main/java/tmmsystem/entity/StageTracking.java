@@ -1,21 +1,23 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Entity @Table(name = "stage_tracking",
-        indexes = {
-                @Index(name = "idx_stage_tracking_stage_time", columnList = "production_stage_id, timestamp"),
-                @Index(name = "idx_stage_tracking_operator_time", columnList = "operator_id, timestamp")
-        }
-)
-@Getter @Setter
+@Entity
+@Table(name = "stage_tracking", indexes = {
+        @Index(name = "idx_stage_tracking_stage_time", columnList = "production_stage_id, timestamp"),
+        @Index(name = "idx_stage_tracking_operator_time", columnList = "operator_id, timestamp")
+})
+@Getter
+@Setter
 public class StageTracking {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -41,4 +43,7 @@ public class StageTracking {
 
     @Column(name = "evidence_photo_url", length = 500)
     private String evidencePhotoUrl;
+
+    @Column(name = "is_rework")
+    private Boolean isRework = false;
 }

@@ -1,11 +1,13 @@
 package tmmsystem.dto.execution;
 
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Getter @Setter
+@Getter
+@Setter
 public class StageTrackingDto {
     private Long id;
     private Long productionStageId;
@@ -16,4 +18,5 @@ public class StageTrackingDto {
     private String notes;
     private Instant timestamp;
     private String evidencePhotoUrl;
+    private Boolean isRework;
 }

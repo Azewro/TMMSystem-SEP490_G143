@@ -7,7 +7,8 @@ import tmmsystem.entity.*;
 @Component
 public class ExecutionMapper {
     public StageTrackingDto toDto(StageTracking e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         StageTrackingDto dto = new StageTrackingDto();
         dto.setId(e.getId());
         dto.setProductionStageId(e.getProductionStage() != null ? e.getProductionStage().getId() : null);
@@ -20,11 +21,13 @@ public class ExecutionMapper {
         dto.setNotes(e.getNotes());
         dto.setTimestamp(e.getTimestamp());
         dto.setEvidencePhotoUrl(e.getEvidencePhotoUrl());
+        dto.setIsRework(e.getIsRework());
         return dto;
     }
 
     public StagePauseLogDto toDto(StagePauseLog e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         StagePauseLogDto dto = new StagePauseLogDto();
         dto.setId(e.getId());
         dto.setProductionStageId(e.getProductionStage() != null ? e.getProductionStage().getId() : null);
@@ -39,7 +42,8 @@ public class ExecutionMapper {
     }
 
     public OutsourcingTaskDto toDto(OutsourcingTask e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         OutsourcingTaskDto dto = new OutsourcingTaskDto();
         dto.setId(e.getId());
         dto.setProductionStageId(e.getProductionStage() != null ? e.getProductionStage().getId() : null);
@@ -64,7 +68,8 @@ public class ExecutionMapper {
     }
 
     public ProductionLossDto toDto(ProductionLoss e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         ProductionLossDto dto = new ProductionLossDto();
         dto.setId(e.getId());
         dto.setProductionOrderId(e.getProductionOrder() != null ? e.getProductionOrder().getId() : null);
@@ -79,7 +84,8 @@ public class ExecutionMapper {
     }
 
     public MaterialRequisitionDto toDto(MaterialRequisition e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         MaterialRequisitionDto dto = new MaterialRequisitionDto();
         dto.setId(e.getId());
         dto.setRequisitionNumber(e.getRequisitionNumber());
@@ -95,7 +101,8 @@ public class ExecutionMapper {
     }
 
     public MaterialRequisitionDetailDto toDto(MaterialRequisitionDetail e) {
-        if (e == null) return null;
+        if (e == null)
+            return null;
         MaterialRequisitionDetailDto dto = new MaterialRequisitionDetailDto();
         dto.setId(e.getId());
         dto.setRequisitionId(e.getRequisition() != null ? e.getRequisition().getId() : null);

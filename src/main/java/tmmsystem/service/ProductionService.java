@@ -397,6 +397,8 @@ public class ProductionService {
         dto.setIssueType(issue.getIssueType());
         dto.setDescription(issue.getDescription());
         dto.setStatus(issue.getStatus());
+        dto.setCreatedAt(issue.getCreatedAt());
+
         if (issue.getProductionStage() != null) {
             dto.setStageId(issue.getProductionStage().getId());
             dto.setStageType(issue.getProductionStage().getStageType());
@@ -456,6 +458,29 @@ public class ProductionService {
         }
         dto.setEvidencePhoto(photo);
 
+        // Populate Rework Progress and History
+        if (issue.getProductionStage() != null) {
+            dto.setReworkProgress(issue.getProductionStage().getProgressPercent());
+
+            List<StageTracking> trackings = stageTrackingRepository
+                    .findByProductionStageIdOrderByTimestampDesc(issue.getProductionStage().getId());
+            List<tmmsystem.dto.production.StageTrackingDto> history = trackings.stream()
+                    .filter(t -> Boolean.TRUE.equals(t.getIsRework()))
+                    .map(t -> {
+                        tmmsystem.dto.production.StageTrackingDto d = new tmmsystem.dto.production.StageTrackingDto();
+                        d.setId(t.getId());
+                        d.setAction(t.getAction());
+                        d.setQuantityCompleted(t.getQuantityCompleted());
+                        d.setNotes(t.getNotes());
+                        d.setTimestamp(t.getTimestamp());
+                        d.setOperatorName(t.getOperator() != null ? t.getOperator().getName() : "Unknown");
+                        d.setIsRework(t.getIsRework());
+                        return d;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            dto.setReworkHistory(history);
+        }
+
         if (issue.getProductionOrder() != null) {
             dto.setOrderId(issue.getProductionOrder().getId());
             dto.setPoNumber(issue.getProductionOrder().getPoNumber());
@@ -472,7 +497,7 @@ public class ProductionService {
                 }
             }
         }
-        dto.setCreatedAt(issue.getCreatedAt());
+
         return dto;
     }
 
@@ -848,6 +873,12 @@ public class ProductionService {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
 
+        // NEW: Block update if status is QC_FAILED (must wait for Tech decision)
+        if ("QC_FAILED".equals(s.getExecutionStatus()) || "QC_FAILED".equals(s.getStatus())) {
+            throw new RuntimeException(
+                    "BLOCKING: Công đoạn đang chờ kỹ thuật xử lý lỗi (QC Failed). Vui lòng đợi chỉ đạo.");
+        }
+
         if (progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0) {
             s.setProgressPercent(100);
             syncStageStatus(s, "WAITING_QC");
@@ -889,6 +920,7 @@ public class ProductionService {
         tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
         tr.setAction(progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0 ? "COMPLETE" : "UPDATE_PROGRESS");
         tr.setQuantityCompleted(progressPercent);
+        tr.setIsRework(Boolean.TRUE.equals(s.getIsRework())); // Set isRework flag
         stageTrackingRepository.save(tr);
 
         return saved;
@@ -1849,5 +1881,39 @@ public class ProductionService {
         // present
 
         return poRepo.save(order);
+    }
+
+    @Transactional
+    public void migrateStageTrackingData() {
+        List<ProductionStage> stages = stageRepo.findAll();
+        int count = 0;
+        for (ProductionStage stage : stages) {
+            List<StageTracking> trackings = stageTrackingRepository
+                    .findByProductionStageIdOrderByTimestampAsc(stage.getId());
+            boolean isReworkMode = false;
+            BigDecimal lastProgress = BigDecimal.ZERO;
+
+            for (StageTracking t : trackings) {
+                // Detect reset: if progress drops significantly (e.g. from >50 to <10)
+                if (t.getQuantityCompleted() != null) {
+                    if (lastProgress.compareTo(BigDecimal.valueOf(50)) > 0
+                            && t.getQuantityCompleted().compareTo(BigDecimal.valueOf(10)) < 0) {
+                        isReworkMode = true;
+                    }
+                    lastProgress = t.getQuantityCompleted();
+                }
+
+                if (isReworkMode) {
+                    t.setIsRework(true);
+                    stageTrackingRepository.save(t);
+                    count++;
+                }
+            }
+        }
+        System.out.println("Migrated " + count + " stage tracking records to isRework=true");
+    }
+
+    public QualityIssue getDefectForStage(Long stageId) {
+        return issueRepo.findByProductionStageId(stageId).stream().findFirst().orElse(null);
     }
 }

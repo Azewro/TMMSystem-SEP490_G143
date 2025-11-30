@@ -458,6 +458,17 @@ public class ProductionController {
             ProductionStageDto stageDto = mapper.toDto(leaderStage);
             java.math.BigDecimal totalHours = service.calculateTotalHoursForStage(leaderStage.getId());
             stageDto.setTotalHours(totalHours);
+
+            // Populate Defect Info for Rework
+            if (Boolean.TRUE.equals(leaderStage.getIsRework())) {
+                tmmsystem.entity.QualityIssue issue = service.getDefectForStage(leaderStage.getId());
+                if (issue != null) {
+                    stageDto.setDefectId(issue.getId());
+                    stageDto.setDefectDescription(issue.getDescription());
+                    stageDto.setDefectSeverity(issue.getSeverity());
+                }
+            }
+
             // Set stage (singular) cho frontend
             dto.setStages(java.util.List.of(stageDto));
         }

@@ -168,4 +168,23 @@ public class QualityIssueDto {
     public void setInspections(java.util.List<QcInspectionDto> inspections) {
         this.inspections = inspections;
     }
+
+    private Integer reworkProgress;
+    private java.util.List<tmmsystem.dto.production.StageTrackingDto> reworkHistory;
+
+    public Integer getReworkProgress() {
+        return reworkProgress;
+    }
+
+    public void setReworkProgress(Integer reworkProgress) {
+        this.reworkProgress = reworkProgress;
+    }
+
+    public java.util.List<tmmsystem.dto.production.StageTrackingDto> getReworkHistory() {
+        return reworkHistory;
+    }
+
+    public void setReworkHistory(java.util.List<tmmsystem.dto.production.StageTrackingDto> reworkHistory) {
+        this.reworkHistory = reworkHistory;
+    }
 }
