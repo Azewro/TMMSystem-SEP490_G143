@@ -140,29 +140,57 @@ public class ExecutionOrchestrationService {
         // NEW: Blocking Logic (Single Lot per Stage)
         // Exception: Outsourced stages (e.g. Dyeing) do not block
         if (stage.getOutsourced() == null || !stage.getOutsourced()) {
-            long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
-                    stage.getStageType(),
-                    java.util.List.of("IN_PROGRESS", "WAITING_REWORK", "REWORK_IN_PROGRESS"));
+            // 1. Check if any Rework Order is IN_PROGRESS at this stage
+            boolean hasActiveRework = stageRepo
+                    .findByStageTypeAndExecutionStatus(stage.getStageType(), "REWORK_IN_PROGRESS").stream()
+                    .anyMatch(s -> !s.getId().equals(stage.getId())); // Exclude self if we are the rework
 
-            if (activeCount > 0) {
-                // Check if the active stage is THIS stage (re-starting a paused stage)
-                // If so, allow. If it's a DIFFERENT stage, block.
-                // Since we are in startStage, we assume we are transitioning TO In Progress.
-                // If activeCount > 0, it means SOME stage is active.
-                // We need to be careful. If we are resuming, this stage might be WAITING_REWORK
-                // (which is counted).
-                // But startStage is usually for fresh start. Resume is separate.
-                // Let's check if we are the one active.
+            // Also check standard IN_PROGRESS if it happens to be a rework order (using
+            // isRework flag)
+            if (!hasActiveRework) {
+                hasActiveRework = stageRepo.findByStageTypeAndExecutionStatus(stage.getStageType(), "IN_PROGRESS")
+                        .stream()
+                        .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()) && !s.getId().equals(stage.getId()));
+            }
 
-                // Actually, simpler: Find WHO is active.
-                java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
+            if (hasActiveRework) {
+                // If WE are also a rework order, we might be allowed if we are the ONE active
+                // rework?
+                // But for now, assume strict serialization.
+                // If we are a rework order, we should have used startRework?
+                // Or if we are using startStage for rework, we should preempt others.
+                if (Boolean.TRUE.equals(stage.getIsRework())) {
+                    // We are rework, so we preempt others!
+                    productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
+                } else {
+                    // We are normal order, so we are blocked.
+                    throw new RuntimeException("BLOCKING: Hệ thống đang ưu tiên xử lý lệnh sửa lỗi. Vui lòng chờ.");
+                }
+            } else {
+                // No rework active. Check for ANY active stage (Strict Serialization for Normal
+                // Orders)
+                long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
+                        stage.getStageType(),
                         java.util.List.of("IN_PROGRESS", "WAITING_REWORK", "REWORK_IN_PROGRESS"));
 
-                for (ProductionStage s : activeStages) {
-                    if (s.getStageType().equals(stage.getStageType()) && !s.getId().equals(stage.getId())) {
-                        throw new RuntimeException("BLOCKING: Công đoạn " + stage.getStageType()
-                                + " đang được sử dụng bởi đơn hàng " + s.getProductionOrder().getPoNumber()
-                                + ". Vui lòng chờ hoàn thành.");
+                if (activeCount > 0) {
+                    // Check if the active stage is THIS stage (re-starting a paused stage)
+                    java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
+                            java.util.List.of("IN_PROGRESS", "WAITING_REWORK", "REWORK_IN_PROGRESS"));
+
+                    for (ProductionStage s : activeStages) {
+                        if (s.getStageType().equals(stage.getStageType()) && !s.getId().equals(stage.getId())) {
+                            // If we are Rework, we preempt.
+                            if (Boolean.TRUE.equals(stage.getIsRework())) {
+                                productionService.pauseOtherOrdersAtStage(stage.getStageType(),
+                                        stage.getProductionOrder().getId());
+                                break; // Proceed
+                            } else {
+                                throw new RuntimeException("BLOCKING: Công đoạn " + stage.getStageType()
+                                        + " đang được sử dụng bởi đơn hàng " + s.getProductionOrder().getPoNumber()
+                                        + ". Vui lòng chờ hoàn thành.");
+                            }
+                        }
                     }
                 }
             }
@@ -292,6 +320,11 @@ public class ExecutionOrchestrationService {
                 if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
                     machineRepository.updateStatusByType(STAGE_TYPE_ALIASES.get(stage.getStageType()), "AVAILABLE");
                 }
+            }
+
+            // NEW: Resume Paused Orders if Rework Completes
+            if (Boolean.TRUE.equals(stage.getIsRework())) {
+                productionService.resumePausedOrdersAtStage(stage.getStageType());
             }
         }
         ProductionStage saved = stageRepo.save(stage);
@@ -504,42 +537,7 @@ public class ExecutionOrchestrationService {
         // NEW: Pre-emption Logic (Auto-Pause other lots)
         // Exception: Outsourced stages do not pre-empt
         if (stage.getOutsourced() == null || !stage.getOutsourced()) {
-            java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                    java.util.List.of("IN_PROGRESS"));
-
-            for (ProductionStage s : activeStages) {
-                if (s.getStageType().equals(stage.getStageType()) && !s.getId().equals(stage.getId())) {
-                    // Auto-Pause this stage
-                    s.setExecutionStatus("PAUSED");
-                    // We should ideally call a pause method to handle machine release properly
-                    // But for now, direct update + machine release here
-
-                    // Release machine
-                    if (s.getStageType() != null) {
-                        machineRepository.updateStatusByType(s.getStageType(), "AVAILABLE");
-                        // Release assignments
-                        java.util.List<tmmsystem.entity.MachineAssignment> assignments = machineAssignmentRepository
-                                .findByProductionStageAndReservationStatus(s, "ACTIVE");
-                        for (tmmsystem.entity.MachineAssignment ma : assignments) {
-                            ma.setReservationStatus("RELEASED");
-                            ma.setReleasedAt(Instant.now());
-                            machineAssignmentRepository.save(ma);
-                        }
-                    }
-
-                    stageRepo.save(s);
-
-                    // Notify Leader of the paused stage
-                    if (s.getAssignedLeader() != null) {
-                        notificationService.notifyUser(s.getAssignedLeader(), "PRODUCTION", "WARNING",
-                                "Công đoạn bị tạm dừng",
-                                "Công đoạn cho Lô " + s.getProductionOrder().getPoNumber()
-                                        + " đã bị tạm dừng để ưu tiên sửa lỗi cho Lô "
-                                        + stage.getProductionOrder().getPoNumber(),
-                                "PRODUCTION_STAGE", s.getId());
-                    }
-                }
-            }
+            productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
         }
 
         stage.setExecutionStatus("REWORK_IN_PROGRESS");

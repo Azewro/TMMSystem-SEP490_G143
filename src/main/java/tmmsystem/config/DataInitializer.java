@@ -53,6 +53,10 @@ public class DataInitializer implements CommandLineRunner {
             // Fix Stage Tracking Data (Rework Flag)
             productionService.migrateStageTrackingData();
             log.info("Startup: Migrated Stage Tracking data for Rework detection");
+
+            // Fix Missing Rework Details (Supplementary Orders)
+            productionService.fixMissingReworkDetails();
+            log.info("Startup: Fixed missing details for Supplementary Orders");
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // seedQcCheckpoints();
             // createSampleMachines();

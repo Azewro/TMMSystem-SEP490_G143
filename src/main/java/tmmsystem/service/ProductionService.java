@@ -1965,6 +1965,24 @@ public class ProductionService {
 
         ProductionOrder savedReworkPO = poRepo.save(reworkPO);
 
+        // 3.1. Clone ProductionOrderDetail
+        try {
+            List<ProductionOrderDetail> originalDetails = podRepo.findByProductionOrderId(originalPO.getId());
+            if (!originalDetails.isEmpty()) {
+                ProductionOrderDetail originalDetail = originalDetails.get(0);
+                ProductionOrderDetail reworkDetail = new ProductionOrderDetail();
+                reworkDetail.setProductionOrder(savedReworkPO);
+                reworkDetail.setProduct(originalDetail.getProduct());
+                reworkDetail.setQuantity(reworkQuantityPcs); // Set quantity in PCS (BigDecimal)
+                reworkDetail.setUnit(originalDetail.getUnit());
+                // reworkDetail.setNotes("Rework detail from " + originalPO.getPoNumber()); //
+                // Removed as setNotes is undefined
+                podRepo.save(reworkDetail);
+            }
+        } catch (Exception e) {
+            System.err.println("Error cloning production order detail: " + e.getMessage());
+        }
+
         // 4. Clone Stages (Only up to the defective stage)
         List<ProductionStage> originalStages = stageRepo
                 .findByProductionOrderIdOrderByStageSequenceAsc(originalPO.getId());
@@ -2068,19 +2086,164 @@ public class ProductionService {
 
                 if (isReworkMode) {
                     t.setIsRework(true);
-                }
-
-                // Always save to ensure nulls are fixed
-                stageTrackingRepository.save(t);
-                if (Boolean.TRUE.equals(t.getIsRework())) {
+                    stageTrackingRepository.save(t);
                     count++;
                 }
             }
         }
-        System.out.println("Migrated " + count + " stage tracking records to isRework=true");
+        if (count > 0) {
+            System.out.println("Migrated " + count + " stage tracking records to Rework mode.");
+        }
+    }
+
+    @Transactional
+    public void fixMissingReworkDetails() {
+        List<ProductionOrder> allOrders = poRepo.findAll();
+        int count = 0;
+        for (ProductionOrder po : allOrders) {
+            if (po.getPoNumber().contains("-REWORK")) {
+                List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(po.getId());
+                if (details.isEmpty()) {
+                    // Found a rework order without details
+                    try {
+                        // Find original PO via stages
+                        List<ProductionStage> stages = stageRepo
+                                .findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
+                        ProductionOrder originalPO = null;
+                        for (ProductionStage stage : stages) {
+                            if (stage.getOriginalStage() != null) {
+                                originalPO = stage.getOriginalStage().getProductionOrder();
+                                break;
+                            }
+                        }
+
+                        if (originalPO != null) {
+                            List<ProductionOrderDetail> originalDetails = podRepo
+                                    .findByProductionOrderId(originalPO.getId());
+                            if (!originalDetails.isEmpty()) {
+                                ProductionOrderDetail originalDetail = originalDetails.get(0);
+                                ProductionOrderDetail reworkDetail = new ProductionOrderDetail();
+                                reworkDetail.setProductionOrder(po);
+                                reworkDetail.setProduct(originalDetail.getProduct());
+                                reworkDetail.setUnit(originalDetail.getUnit());
+
+                                // Calculate Quantity
+                                BigDecimal reworkQty = BigDecimal.ZERO;
+                                for (ProductionStage stage : stages) {
+                                    if (stage.getOriginalStage() != null) {
+                                        List<tmmsystem.entity.MaterialRequisition> reqs = reqRepo
+                                                .findByProductionStageId(stage.getOriginalStage().getId());
+                                        for (tmmsystem.entity.MaterialRequisition req : reqs) {
+                                            if ("APPROVED".equals(req.getStatus())
+                                                    && "YARN_SUPPLY".equals(req.getRequisitionType())) {
+                                                // Found it!
+                                                BigDecimal approvedKg = req.getQuantityApproved();
+                                                if (approvedKg != null && approvedKg.compareTo(BigDecimal.ZERO) > 0) {
+                                                    Product product = originalDetail.getProduct();
+                                                    BigDecimal standardWeight = product.getStandardWeight();
+                                                    if (standardWeight != null
+                                                            && standardWeight.compareTo(BigDecimal.ZERO) > 0) {
+                                                        BigDecimal weightInKg = standardWeight.divide(
+                                                                new BigDecimal(1000), 4,
+                                                                java.math.RoundingMode.HALF_UP);
+                                                        reworkQty = approvedKg.divide(weightInKg, 0,
+                                                                java.math.RoundingMode.HALF_UP);
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (reworkQty.compareTo(BigDecimal.ZERO) > 0)
+                                        break;
+                                }
+
+                                reworkDetail.setQuantity(reworkQty);
+                                podRepo.save(reworkDetail);
+                                count++;
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error fixing rework order " + po.getPoNumber() + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
+        if (count > 0) {
+            System.out.println("Fixed " + count + " rework orders with missing details.");
+        }
     }
 
     public QualityIssue getDefectForStage(Long stageId) {
         return issueRepo.findByProductionStageId(stageId).stream().findFirst().orElse(null);
+    }
+
+    @Transactional
+    public void pauseOtherOrdersAtStage(String stageType, Long excludeOrderId) {
+        // Dyeing (NHUOM) is outsourced/parallel, so we don't pause it.
+        if ("NHUOM".equalsIgnoreCase(stageType) || "DYEING".equalsIgnoreCase(stageType)) {
+            return;
+        }
+
+        List<ProductionStage> activeStages = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS");
+        for (ProductionStage stage : activeStages) {
+            // Skip the current rework order
+            if (stage.getProductionOrder().getId().equals(excludeOrderId)) {
+                continue;
+            }
+
+            // Pause the stage
+            stage.setStatus("PAUSED");
+            stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
+                    + "System: Paused due to priority Rework Order.");
+            stageRepo.save(stage);
+
+            // Notify Leader
+            if (stage.getAssignedLeader() != null) {
+                notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "WARNING",
+                        "Tạm dừng sản xuất",
+                        "Công đoạn " + stageType + " của lệnh " + stage.getProductionOrder().getPoNumber()
+                                + " bị tạm dừng để ưu tiên lệnh sửa lỗi.",
+                        "PRODUCTION_ORDER", stage.getProductionOrder().getId());
+            }
+        }
+    }
+
+    @Transactional
+    public void resumePausedOrdersAtStage(String stageType) {
+        // Dyeing (NHUOM) is outsourced/parallel, so we don't pause it.
+        if ("NHUOM".equalsIgnoreCase(stageType) || "DYEING".equalsIgnoreCase(stageType)) {
+            return;
+        }
+
+        List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndStatus(stageType, "PAUSED");
+        for (ProductionStage stage : pausedStages) {
+            // Check if there are any OTHER rework orders still running?
+            // For simplicity, we assume strict serialization means if one finishes, we can
+            // resume.
+            // But ideally we should check if ANY rework is active.
+            // Let's check if any Rework is IN_PROGRESS at this stage.
+            boolean hasActiveRework = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS").stream()
+                    .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()));
+
+            if (hasActiveRework) {
+                continue; // Still blocked by another rework
+            }
+
+            // Resume the stage
+            stage.setStatus("IN_PROGRESS");
+            stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
+                    + "System: Resumed after Rework Order completion.");
+            stageRepo.save(stage);
+
+            // Notify Leader
+            if (stage.getAssignedLeader() != null) {
+                notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
+                        "Tiếp tục sản xuất",
+                        "Công đoạn " + stageType + " của lệnh " + stage.getProductionOrder().getPoNumber()
+                                + " đã được tiếp tục.",
+                        "PRODUCTION_ORDER", stage.getProductionOrder().getId());
+            }
+        }
     }
 }
