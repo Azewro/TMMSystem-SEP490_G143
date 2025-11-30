@@ -23,10 +23,13 @@ import java.util.stream.Collectors;
 @Tag(name = "Production")
 public class ProductionController {
     private final ProductionService service;
+    private final tmmsystem.service.ExecutionOrchestrationService executionService;
     private final ProductionMapper mapper;
 
-    public ProductionController(ProductionService service, ProductionMapper mapper) {
+    public ProductionController(ProductionService service,
+            tmmsystem.service.ExecutionOrchestrationService executionService, ProductionMapper mapper) {
         this.service = service;
+        this.executionService = executionService;
         this.mapper = mapper;
     }
 
@@ -568,6 +571,12 @@ public class ProductionController {
         return mapper.toDto(service.pauseStage(id, leaderUserId, pauseReason, pauseNotes));
     }
 
+    @Operation(summary = "Leader bắt đầu sửa lỗi (Pre-emption)")
+    @PostMapping("/stages/{id}/start-rework")
+    public ProductionStageDto leaderStartRework(@PathVariable Long id, @RequestParam Long leaderUserId) {
+        return mapper.toDto(executionService.startRework(id, leaderUserId));
+    }
+
     @Operation(summary = "Leader tiếp tục công đoạn")
     @PostMapping("/stages/{id}/resume")
     public ProductionStageDto leaderResume(@PathVariable Long id, @RequestParam Long leaderUserId) {
@@ -636,5 +645,11 @@ public class ProductionController {
             @RequestParam Long directorId,
             @RequestParam(defaultValue = "false") boolean force) {
         return mapper.toDto(service.approveMaterialRequest(id, approvedQuantity, directorId, force));
+    }
+
+    @Operation(summary = "PM: Bắt đầu đơn hàng bổ sung")
+    @PostMapping("/orders/{id}/start-supplementary")
+    public ProductionOrderDto startSupplementaryOrder(@PathVariable Long id) {
+        return mapper.toDto(service.startSupplementaryOrder(id));
     }
 }

@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.context.annotation.Lazy;
+
 @Service
 public class ProductionService {
     private final ProductionOrderRepository poRepo;
@@ -64,7 +66,7 @@ public class ProductionService {
             ContractRepository contractRepository,
             BomRepository bomRepository,
             ProductionOrderDetailRepository productionOrderDetailRepository,
-            ProductionPlanService productionPlanService,
+            @Lazy ProductionPlanService productionPlanService,
             StageTrackingRepository stageTrackingRepository,
             StagePauseLogRepository stagePauseLogRepository,
             OutsourcingTaskRepository outsourcingTaskRepository,
@@ -399,7 +401,23 @@ public class ProductionService {
             dto.setStageId(issue.getProductionStage().getId());
             dto.setStageType(issue.getProductionStage().getStageType());
             dto.setStageName(issue.getProductionStage().getStageType()); // Use stageType as stageName for now
-            dto.setBatchNumber(issue.getProductionStage().getBatchNumber());
+
+            // Populate Batch Number (Lot Code)
+            String batchNumber = issue.getProductionStage().getBatchNumber();
+            if (batchNumber == null && issue.getProductionOrder().getContract() != null) {
+                // Fallback: Get from ProductionPlan -> ProductionLot
+                List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                        .findByContractId(issue.getProductionOrder().getContract().getId());
+                tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+                        .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
+                        .findFirst()
+                        .orElse(null);
+                if (currentPlan != null && currentPlan.getLot() != null) {
+                    batchNumber = currentPlan.getLot().getLotCode();
+                }
+            }
+            dto.setBatchNumber(batchNumber);
+
             if (issue.getProductionStage().getAssignedLeader() != null) {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
             }
@@ -1730,11 +1748,18 @@ public class ProductionService {
 
         ProductionOrder savedReworkPO = poRepo.save(reworkPO);
 
-        // 4. Clone Stages
+        // 4. Clone Stages (Only up to the defective stage)
         List<ProductionStage> originalStages = stageRepo
                 .findByProductionOrderIdOrderByStageSequenceAsc(originalPO.getId());
 
+        Integer defectiveStageSequence = originalStage.getStageSequence();
+
         for (ProductionStage oldStage : originalStages) {
+            // Only clone stages up to and including the defective stage
+            if (oldStage.getStageSequence() > defectiveStageSequence) {
+                continue;
+            }
+
             ProductionStage newStage = new ProductionStage();
             newStage.setProductionOrder(savedReworkPO);
             newStage.setStageType(oldStage.getStageType());
@@ -1765,11 +1790,32 @@ public class ProductionService {
                 notificationService.notifyUser(newStage.getAssignedLeader(), "PRODUCTION", "INFO",
                         "Lệnh sản xuất bổ sung",
                         "Bạn được phân công lại công đoạn " + newStage.getStageType() + " cho lệnh bổ sung "
-                                + reworkPO.getPoNumber(),
-                        "PRODUCTION_STAGE", newStage.getId());
+                                + savedReworkPO.getPoNumber(),
+                        "PRODUCTION_ORDER", savedReworkPO.getId());
             }
         }
 
         return savedReworkPO;
+    }
+
+    @Transactional
+    public ProductionOrder startSupplementaryOrder(Long orderId) {
+        ProductionOrder order = poRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!order.getPoNumber().contains("-REWORK")) {
+            throw new RuntimeException("Not a supplementary order");
+        }
+
+        if (!"WAITING_PRODUCTION".equals(order.getStatus())) {
+            throw new RuntimeException("Order is not in WAITING_PRODUCTION status");
+        }
+
+        order.setStatus("IN_PROGRESS");
+        order.setExecutionStatus("IN_PROGRESS");
+        // order.setActualStartDate(java.time.LocalDate.now()); // Field removed/not
+        // present
+
+        return poRepo.save(order);
     }
 }
