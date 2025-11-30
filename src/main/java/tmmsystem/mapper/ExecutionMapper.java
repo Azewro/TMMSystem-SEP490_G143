@@ -97,6 +97,19 @@ public class ExecutionMapper {
         dto.setApprovedAt(e.getApprovedAt());
         dto.setIssuedAt(e.getIssuedAt());
         dto.setNotes(e.getNotes());
+        dto.setQuantityRequested(e.getQuantityRequested());
+        dto.setQuantityApproved(e.getQuantityApproved());
+        dto.setRequisitionType(e.getRequisitionType());
+
+        if (e.getProductionStage() != null) {
+            dto.setStageType(e.getProductionStage().getStageType());
+        }
+        if (e.getRequestedBy() != null) {
+            dto.setRequestedByName(e.getRequestedBy().getName());
+        }
+        if (e.getApprovedBy() != null) {
+            dto.setApprovedByName(e.getApprovedBy().getName());
+        }
         return dto;
     }
 

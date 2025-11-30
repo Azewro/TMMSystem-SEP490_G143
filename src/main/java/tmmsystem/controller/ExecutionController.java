@@ -151,9 +151,11 @@ public class ExecutionController {
     }
 
     @GetMapping("/material-requisitions")
-    public java.util.List<tmmsystem.entity.MaterialRequisition> listMaterialRequisitions(
+    public java.util.List<tmmsystem.dto.execution.MaterialRequisitionDto> listMaterialRequisitions(
             @RequestParam(required = false) String status) {
-        return orchestrationService.listMaterialRequisitions(status);
+        return orchestrationService.listMaterialRequisitions(status).stream()
+                .map(executionMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/material-requisitions/{reqId}")

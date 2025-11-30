@@ -1,23 +1,24 @@
 package tmmsystem.dto.execution;
 
-import lombok.Getter; import lombok.Setter;
-
+import lombok.Data;
 import java.time.Instant;
-import java.util.List;
+import java.math.BigDecimal;
 
-@Getter @Setter
+@Data
 public class MaterialRequisitionDto {
     private Long id;
     private String requisitionNumber;
     private Long productionStageId;
+    private String stageType; // Useful for display
+    private String requestedByName;
     private Long requestedById;
-    private Long approvedById;
+    private String approvedByName;
     private String status;
     private Instant requestedAt;
     private Instant approvedAt;
     private Instant issuedAt;
     private String notes;
-    private List<MaterialRequisitionDetailDto> details;
+    private BigDecimal quantityRequested;
+    private BigDecimal quantityApproved;
+    private String requisitionType;
 }
-
-
