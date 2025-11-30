@@ -920,7 +920,14 @@ public class ProductionService {
         tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
         tr.setAction(progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0 ? "COMPLETE" : "UPDATE_PROGRESS");
         tr.setQuantityCompleted(progressPercent);
-        tr.setIsRework(Boolean.TRUE.equals(s.getIsRework())); // Set isRework flag
+        tr.setQuantityCompleted(progressPercent);
+
+        // Robustly determine isRework: Check flag OR status
+        boolean isRework = Boolean.TRUE.equals(s.getIsRework()) ||
+                "REWORK_IN_PROGRESS".equals(s.getExecutionStatus()) ||
+                "WAITING_REWORK".equals(s.getExecutionStatus());
+        tr.setIsRework(isRework);
+
         stageTrackingRepository.save(tr);
 
         return saved;
@@ -1894,18 +1901,32 @@ public class ProductionService {
             BigDecimal lastProgress = BigDecimal.ZERO;
 
             for (StageTracking t : trackings) {
-                // Detect reset: if progress drops significantly (e.g. from >50 to <10)
+                // Initialize if null
+                if (t.getIsRework() == null) {
+                    t.setIsRework(false);
+                }
+
+                // Detect reset: if progress drops significantly (e.g. from >=90 to <=20)
+                // This usually indicates a rework start after completion
                 if (t.getQuantityCompleted() != null) {
-                    if (lastProgress.compareTo(BigDecimal.valueOf(50)) > 0
-                            && t.getQuantityCompleted().compareTo(BigDecimal.valueOf(10)) < 0) {
+                    if (lastProgress.compareTo(BigDecimal.valueOf(90)) >= 0
+                            && t.getQuantityCompleted().compareTo(BigDecimal.valueOf(20)) <= 0) {
                         isReworkMode = true;
                     }
                     lastProgress = t.getQuantityCompleted();
                 }
 
+                // Also check if the stage itself is currently in rework,
+                // and this is a recent tracking (heuristic)
+                // But relying on progress drop is safer for historical data.
+
                 if (isReworkMode) {
                     t.setIsRework(true);
-                    stageTrackingRepository.save(t);
+                }
+
+                // Always save to ensure nulls are fixed
+                stageTrackingRepository.save(t);
+                if (Boolean.TRUE.equals(t.getIsRework())) {
                     count++;
                 }
             }
