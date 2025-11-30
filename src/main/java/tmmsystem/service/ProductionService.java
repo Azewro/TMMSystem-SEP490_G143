@@ -2141,6 +2141,18 @@ public class ProductionService {
                                                     && "YARN_SUPPLY".equals(req.getRequisitionType())) {
                                                 // Found it!
                                                 BigDecimal approvedKg = req.getQuantityApproved();
+
+                                                // Fallback: If parent quantity is null/zero, sum from details
+                                                if (approvedKg == null || approvedKg.compareTo(BigDecimal.ZERO) == 0) {
+                                                    List<tmmsystem.entity.MaterialRequisitionDetail> reqDetails = reqDetailRepo
+                                                            .findByRequisitionId(req.getId());
+                                                    approvedKg = reqDetails.stream()
+                                                            .map(d -> d.getQuantityApproved() != null
+                                                                    ? d.getQuantityApproved()
+                                                                    : BigDecimal.ZERO)
+                                                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                                }
+
                                                 if (approvedKg != null && approvedKg.compareTo(BigDecimal.ZERO) > 0) {
                                                     Product product = originalDetail.getProduct();
                                                     BigDecimal standardWeight = product.getStandardWeight();
