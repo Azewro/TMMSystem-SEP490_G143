@@ -62,6 +62,20 @@ public class ExecutionController {
         return orchestrationService.getCheckpointsForStage(stageId);
     }
 
+    @GetMapping("/stages/{stageId}/inspections")
+    public java.util.List<tmmsystem.dto.qc.QcInspectionDto> getStageInspections(@PathVariable Long stageId) {
+        return orchestrationService.getStageInspections(stageId).stream()
+                .map(i -> {
+                    tmmsystem.dto.qc.QcInspectionDto dto = new tmmsystem.dto.qc.QcInspectionDto();
+                    dto.setQcCheckpointId(i.getQcCheckpoint().getId());
+                    dto.setResult(i.getResult());
+                    dto.setNotes(i.getNotes());
+                    dto.setPhotoUrl(i.getPhotoUrl());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
     @PostMapping("/qc-sessions/{sessionId}/submit")
     public java.util.Map<String, Object> submitQc(@PathVariable Long sessionId, @RequestParam String result,
             @RequestParam(required = false) String notes, @RequestParam Long qcUserId,

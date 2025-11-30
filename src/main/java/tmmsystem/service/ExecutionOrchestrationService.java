@@ -704,4 +704,10 @@ public class ExecutionOrchestrationService {
         return materialReqRepo.findById(reqId)
                 .orElseThrow(() -> new RuntimeException("Material requisition not found: " + reqId));
     }
+
+    @Transactional(readOnly = true)
+    public java.util.List<QcInspection> getStageInspections(Long stageId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        return qcInspectionRepository.findByProductionStageId(stage.getId());
+    }
 }
