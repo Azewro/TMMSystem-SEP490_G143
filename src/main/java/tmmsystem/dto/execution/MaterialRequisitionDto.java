@@ -13,6 +13,7 @@ public class MaterialRequisitionDto {
     private String requestedByName;
     private Long requestedById;
     private String approvedByName;
+    private Long approvedById;
     private String status;
     private Instant requestedAt;
     private Instant approvedAt;
