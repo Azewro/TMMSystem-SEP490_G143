@@ -187,4 +187,14 @@ public class QualityIssueDto {
     public void setReworkHistory(java.util.List<tmmsystem.dto.production.StageTrackingDto> reworkHistory) {
         this.reworkHistory = reworkHistory;
     }
+
+    private tmmsystem.dto.execution.MaterialRequisitionDto materialRequisition;
+
+    public tmmsystem.dto.execution.MaterialRequisitionDto getMaterialRequisition() {
+        return materialRequisition;
+    }
+
+    public void setMaterialRequisition(tmmsystem.dto.execution.MaterialRequisitionDto materialRequisition) {
+        this.materialRequisition = materialRequisition;
+    }
 }

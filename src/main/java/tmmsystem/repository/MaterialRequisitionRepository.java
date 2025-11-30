@@ -11,4 +11,6 @@ public interface MaterialRequisitionRepository extends JpaRepository<MaterialReq
     List<MaterialRequisition> findByRequestedById(Long requestedById);
 
     List<MaterialRequisition> findByProductionStageIdAndStatus(Long stageId, String status);
+
+    List<MaterialRequisition> findByProductionStageId(Long stageId);
 }

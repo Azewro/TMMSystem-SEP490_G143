@@ -52,6 +52,7 @@ public class ProductionService {
     private final ProductionMapper productionMapper;
     private final tmmsystem.repository.QualityIssueRepository issueRepo;
     private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
+    private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
     private final tmmsystem.repository.QcInspectionRepository qcInspectionRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
@@ -75,6 +76,7 @@ public class ProductionService {
             ProductionMapper productionMapper,
             tmmsystem.repository.QualityIssueRepository issueRepo,
             tmmsystem.repository.MaterialRequisitionRepository reqRepo,
+            tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo,
             tmmsystem.repository.QcInspectionRepository qcInspectionRepository) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
@@ -97,6 +99,7 @@ public class ProductionService {
         this.productionMapper = productionMapper;
         this.issueRepo = issueRepo;
         this.reqRepo = reqRepo;
+        this.reqDetailRepo = reqDetailRepo;
         this.qcInspectionRepository = qcInspectionRepository;
     }
 
@@ -494,6 +497,47 @@ public class ProductionService {
                     // Fallback to lot size if needed, but for now just use product size
                     dto.setSize(size != null ? size : "N/A");
                 }
+            }
+        }
+
+        // Populate Material Requisition Info
+        if (issue.getProductionStage() != null) {
+            List<tmmsystem.entity.MaterialRequisition> reqs = reqRepo
+                    .findByProductionStageId(issue.getProductionStage().getId());
+            // Get the latest one if multiple (though usually one per defect/stage cycle)
+            if (!reqs.isEmpty()) {
+                tmmsystem.entity.MaterialRequisition req = reqs.get(0);
+                tmmsystem.dto.execution.MaterialRequisitionDto reqDto = new tmmsystem.dto.execution.MaterialRequisitionDto();
+                reqDto.setId(req.getId());
+                reqDto.setRequisitionNumber(req.getRequisitionNumber());
+                reqDto.setStatus(req.getStatus());
+                reqDto.setQuantityRequested(req.getQuantityRequested());
+                reqDto.setQuantityApproved(req.getQuantityApproved());
+                reqDto.setNotes(req.getNotes());
+                reqDto.setRequestedAt(req.getRequestedAt());
+                reqDto.setApprovedAt(req.getApprovedAt());
+                if (req.getRequestedBy() != null) {
+                    reqDto.setRequestedByName(req.getRequestedBy().getName());
+                }
+                if (req.getApprovedBy() != null) {
+                    reqDto.setApprovedByName(req.getApprovedBy().getName());
+                }
+
+                // Map Details
+                List<tmmsystem.entity.MaterialRequisitionDetail> details = reqDetailRepo
+                        .findByRequisitionId(req.getId());
+                List<tmmsystem.dto.execution.MaterialRequisitionDetailDto> detailDtos = details.stream().map(d -> {
+                    tmmsystem.dto.execution.MaterialRequisitionDetailDto dd = new tmmsystem.dto.execution.MaterialRequisitionDetailDto();
+                    dd.setId(d.getId());
+                    dd.setMaterialId(d.getMaterial() != null ? d.getMaterial().getId() : null);
+                    dd.setMaterialName(d.getMaterial() != null ? d.getMaterial().getName() : null);
+                    dd.setQuantityRequested(d.getQuantityRequested());
+                    dd.setQuantityApproved(d.getQuantityApproved());
+                    return dd;
+                }).collect(java.util.stream.Collectors.toList());
+                reqDto.setDetails(detailDtos);
+
+                dto.setMaterialRequisition(reqDto);
             }
         }
 

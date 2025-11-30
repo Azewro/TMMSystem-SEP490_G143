@@ -10,21 +10,28 @@ public class TechnicalService {
     private final ProductionStageRepository stageRepo;
     private final NotificationService notificationService;
     private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
+    private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
+    private final tmmsystem.repository.MaterialRepository materialRepo;
     private final tmmsystem.repository.UserRepository userRepo;
 
     public TechnicalService(ProductionStageRepository stageRepo,
             NotificationService notificationService,
             tmmsystem.repository.MaterialRequisitionRepository reqRepo,
+            tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo,
+            tmmsystem.repository.MaterialRepository materialRepo,
             tmmsystem.repository.UserRepository userRepo) {
         this.stageRepo = stageRepo;
         this.notificationService = notificationService;
         this.reqRepo = reqRepo;
+        this.reqDetailRepo = reqDetailRepo;
+        this.materialRepo = materialRepo;
         this.userRepo = userRepo;
     }
 
     @Transactional
     public void handleDefect(Long stageId, String decision, String notes, Long technicalUserId,
-            java.math.BigDecimal quantity) {
+            java.math.BigDecimal quantity,
+            java.util.List<tmmsystem.dto.execution.MaterialRequisitionDetailDto> details) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         // ... (rest of the logic)
 
@@ -54,7 +61,25 @@ public class TechnicalService {
             req.setStatus("PENDING");
             req.setRequisitionType("YARN_SUPPLY");
 
-            reqRepo.save(req);
+            tmmsystem.entity.MaterialRequisition savedReq = reqRepo.save(req);
+
+            // Save Details
+            if (details != null && !details.isEmpty()) {
+                for (tmmsystem.dto.execution.MaterialRequisitionDetailDto dDto : details) {
+                    if (dDto.getQuantityRequested() != null
+                            && dDto.getQuantityRequested().compareTo(java.math.BigDecimal.ZERO) > 0) {
+                        tmmsystem.entity.MaterialRequisitionDetail detail = new tmmsystem.entity.MaterialRequisitionDetail();
+                        detail.setRequisition(savedReq);
+                        if (dDto.getMaterialId() != null) {
+                            detail.setMaterial(materialRepo.findById(dDto.getMaterialId()).orElse(null));
+                        }
+                        detail.setQuantityRequested(dDto.getQuantityRequested());
+                        detail.setUnit(dDto.getUnit());
+                        detail.setNotes(dDto.getNotes());
+                        reqDetailRepo.save(detail);
+                    }
+                }
+            }
 
             // Update Stage Status to block production
             stage.setExecutionStatus("WAITING_MATERIAL");

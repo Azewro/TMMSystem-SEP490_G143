@@ -20,11 +20,8 @@ public class TechnicalController {
 
     @Operation(summary = "Xử lý lỗi (Technical decision)")
     @PostMapping("/defects/handle")
-    public void handleDefect(@RequestParam Long stageId,
-            @RequestParam String decision, // REWORK, MATERIAL_REQUEST, ACCEPT
-            @RequestParam(required = false) String notes,
-            @RequestParam Long technicalUserId,
-            @RequestParam(required = false) java.math.BigDecimal quantity) {
-        service.handleDefect(stageId, decision, notes, technicalUserId, quantity);
+    public void handleDefect(@RequestBody tmmsystem.dto.technical.TechnicalDefectActionDto body) {
+        service.handleDefect(body.getStageId(), body.getDecision(), body.getNotes(), body.getTechnicalUserId(),
+                body.getQuantity(), body.getDetails());
     }
 }

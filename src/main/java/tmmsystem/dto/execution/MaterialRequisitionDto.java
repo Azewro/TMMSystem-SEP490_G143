@@ -22,4 +22,5 @@ public class MaterialRequisitionDto {
     private BigDecimal quantityRequested;
     private BigDecimal quantityApproved;
     private String requisitionType;
+    private java.util.List<MaterialRequisitionDetailDto> details;
 }
