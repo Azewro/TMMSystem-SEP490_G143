@@ -2126,6 +2126,9 @@ public class ProductionService {
                                 reworkDetail.setProductionOrder(po);
                                 reworkDetail.setProduct(originalDetail.getProduct());
                                 reworkDetail.setUnit(originalDetail.getUnit());
+                                reworkDetail.setBom(originalDetail.getBom()); // Fix: Copy BOM
+                                reworkDetail.setBomVersion(originalDetail.getBomVersion()); // Fix: Copy BOM Version
+                                reworkDetail.setNoteColor(originalDetail.getNoteColor()); // Fix: Copy Note Color too
 
                                 // Calculate Quantity
                                 BigDecimal reworkQty = BigDecimal.ZERO;
