@@ -1914,7 +1914,9 @@ public class ProductionService {
 
         // 2. Update Requisition
         req.setStatus("APPROVED");
-        req.setApprovedBy(userRepository.findById(dto.getDirectorId()).orElseThrow());
+        Long directorId = dto.getDirectorId() != null ? dto.getDirectorId() : 1L;
+        req.setApprovedBy(
+                userRepository.findById(directorId).orElseThrow(() -> new RuntimeException("Director not found")));
         req.setApprovedAt(Instant.now());
         req.setQuantityApproved(totalApproved);
         req.setNotes(dto.getNotes()); // Update notes if provided
