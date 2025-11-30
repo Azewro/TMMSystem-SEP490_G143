@@ -3,7 +3,6 @@ package tmmsystem.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.*;
-import tmmsystem.entity.ProductionPlanStage;
 import tmmsystem.repository.*;
 import tmmsystem.dto.production.ProductionOrderDto;
 import tmmsystem.dto.production.ProductionStageDto;
@@ -642,10 +641,25 @@ public class ProductionService {
 
     // Dyeing hook on start/complete
     @Transactional
+    public ProductionStage startStage(Long stageId, Long leaderUserId) {
+        return startStage(stageId, leaderUserId, null, BigDecimal.ZERO);
+    }
+
+    @Transactional
     public ProductionStage startStage(Long stageId, Long leaderUserId, String evidencePhotoUrl,
             BigDecimal qtyCompleted) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
+
+        // Validation (Merged from duplicate method)
+        // Allow start if READY_TO_PRODUCE or WAITING (fallback)
+        if (!"READY_TO_PRODUCE".equals(s.getExecutionStatus()) && !"WAITING".equals(s.getExecutionStatus())) {
+            // Allow re-start if it was PAUSED?
+            if (!"PAUSED".equals(s.getStatus())) {
+                throw new RuntimeException("Công đoạn chưa sẵn sàng hoặc đã bắt đầu.");
+            }
+        }
+
         if (s.getStartAt() == null)
             s.setStartAt(Instant.now());
         syncStageStatus(s, "IN_PROGRESS");
@@ -684,6 +698,39 @@ public class ProductionService {
             ma.setReservationStatus("ACTIVE");
             ma.setReservationType("LOG");
             machineAssignmentRepository.save(ma);
+        }
+
+        // NEW: Rework Preemption Logic
+        // If this is a Rework Stage, PAUSE all other IN_PROGRESS stages of the same
+        // type (except DYEING)
+        if (Boolean.TRUE.equals(s.getIsRework()) && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
+                    "IN_PROGRESS");
+            for (ProductionStage active : activeStages) {
+                if (!active.getId().equals(s.getId())) {
+                    active.setExecutionStatus("PAUSED");
+                    active.setStatus("PAUSED"); // Sync status
+                    stageRepo.save(active);
+
+                    // Log tracking
+                    StageTracking pauseTr = new StageTracking();
+                    pauseTr.setProductionStage(active);
+                    pauseTr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+                    pauseTr.setAction("PAUSED_BY_PRIORITY");
+                    pauseTr.setNotes("Tạm dừng do ưu tiên đơn hàng bù: " + s.getProductionOrder().getPoNumber());
+                    stageTrackingRepository.save(pauseTr);
+
+                    // Notify Leader of paused stage
+                    if (active.getAssignedLeader() != null) {
+                        notificationService.notifyUser(active.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                "Tạm dừng sản xuất",
+                                "Công đoạn " + active.getStageType() + " của đơn "
+                                        + active.getProductionOrder().getPoNumber() +
+                                        " bị tạm dừng để ưu tiên đơn hàng bù " + s.getProductionOrder().getPoNumber(),
+                                "PRODUCTION_STAGE", active.getId());
+                    }
+                }
+            }
         }
 
         return s;
@@ -908,6 +955,36 @@ public class ProductionService {
                         "Công đoạn " + s.getStageType() + " đã hoàn thành 100%, chờ kiểm tra.", "PRODUCTION_STAGE",
                         s.getId());
             }
+
+            // NEW: Rework Preemption Logic - Resume Paused Stages
+            // If this Rework Stage is completed, RESUME all PAUSED stages of the same type
+            if (Boolean.TRUE.equals(s.getIsRework()) && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+                List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
+                        "PAUSED");
+                for (ProductionStage paused : pausedStages) {
+                    paused.setExecutionStatus("IN_PROGRESS");
+                    paused.setStatus("IN_PROGRESS");
+                    stageRepo.save(paused);
+
+                    // Log tracking
+                    StageTracking resumeTr = new StageTracking();
+                    resumeTr.setProductionStage(paused);
+                    resumeTr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
+                    resumeTr.setAction("RESUMED_FROM_PRIORITY");
+                    resumeTr.setNotes("Tiếp tục sản xuất sau khi đơn hàng bù hoàn thành.");
+                    stageTrackingRepository.save(resumeTr);
+
+                    // Notify Leader
+                    if (paused.getAssignedLeader() != null) {
+                        notificationService.notifyUser(paused.getAssignedLeader(), "PRODUCTION", "INFO",
+                                "Tiếp tục sản xuất",
+                                "Công đoạn " + paused.getStageType() + " của đơn "
+                                        + paused.getProductionOrder().getPoNumber() +
+                                        " đã được tiếp tục.",
+                                "PRODUCTION_STAGE", paused.getId());
+                    }
+                }
+            }
         } else {
             s.setProgressPercent(progressPercent.intValue());
             syncStageStatus(s, "IN_PROGRESS");
@@ -919,7 +996,6 @@ public class ProductionService {
         tr.setProductionStage(saved);
         tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
         tr.setAction(progressPercent.compareTo(BigDecimal.valueOf(100)) >= 0 ? "COMPLETE" : "UPDATE_PROGRESS");
-        tr.setQuantityCompleted(progressPercent);
         tr.setQuantityCompleted(progressPercent);
 
         // Robustly determine isRework: Check flag OR status
@@ -1010,52 +1086,6 @@ public class ProductionService {
         }
 
         return stages;
-    }
-
-    @Transactional
-    public ProductionStage startStage(Long stageId, Long userId) {
-        ProductionStage s = stageRepo.findById(stageId)
-                .orElseThrow(() -> new RuntimeException("Stage not found"));
-
-        // Allow start if READY_TO_PRODUCE or WAITING (fallback)
-        if (!"READY_TO_PRODUCE".equals(s.getExecutionStatus()) && !"WAITING".equals(s.getExecutionStatus())) {
-            // Allow re-start if it was PAUSED?
-            if (!"PAUSED".equals(s.getStatus())) {
-                throw new RuntimeException("Công đoạn chưa sẵn sàng hoặc đã bắt đầu.");
-            }
-        }
-
-        s.setStartAt(Instant.now());
-        s.setExecutionStatus("IN_PROGRESS");
-        syncStageStatus(s, "IN_PROGRESS");
-
-        // Log tracking
-        StageTracking tr = new StageTracking();
-        tr.setProductionStage(s);
-        tr.setOperator(userRepository.findById(userId).orElse(null));
-        tr.setAction("START");
-        // Removed setCreatedAt as it is handled by @CreationTimestamp
-        stageTrackingRepository.save(tr);
-
-        // Machine Status Update & Assignment Log (Reused from existing logic)
-        machineRepository.updateStatusByType(s.getStageType(), "IN_USE");
-
-        // Create MachineAssignment
-        List<Machine> machines = machineRepository.findAll().stream()
-                .filter(m -> s.getStageType().equals(m.getType()))
-                .toList();
-
-        for (Machine m : machines) {
-            MachineAssignment ma = new MachineAssignment();
-            ma.setMachine(m);
-            ma.setProductionStage(s);
-            ma.setAssignedAt(Instant.now());
-            ma.setReservationStatus("ACTIVE");
-            ma.setReservationType("LOG");
-            machineAssignmentRepository.save(ma);
-        }
-
-        return stageRepo.save(s);
     }
 
     @Transactional
@@ -1806,7 +1836,28 @@ public class ProductionService {
         ProductionOrder reworkPO = new ProductionOrder();
         reworkPO.setPoNumber(originalPO.getPoNumber() + "-REWORK-" + System.currentTimeMillis() % 1000);
         reworkPO.setContract(originalPO.getContract());
-        reworkPO.setTotalQuantity(approvedQuantity); // Quantity for rework
+
+        // Convert kg (approvedQuantity) to pcs (totalQuantity)
+        // Formula: Pcs = Kg / Weight_per_piece_in_kg
+        BigDecimal reworkQuantityPcs = approvedQuantity;
+        try {
+            List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(originalPO.getId());
+            if (!details.isEmpty()) {
+                Product product = details.get(0).getProduct();
+                BigDecimal standardWeight = product.getStandardWeight();
+                if (standardWeight != null && standardWeight.compareTo(BigDecimal.ZERO) > 0) {
+                    // Assuming standardWeight is in GRAMS (common for towels).
+                    BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
+                            java.math.RoundingMode.HALF_UP);
+                    reworkQuantityPcs = approvedQuantity.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
+                }
+            }
+        } catch (Exception e) {
+            // Fallback or log error
+            System.err.println("Error converting unit: " + e.getMessage());
+        }
+        reworkPO.setTotalQuantity(reworkQuantityPcs); // Quantity for rework in PCS
+
         reworkPO.setPlannedStartDate(java.time.LocalDate.now());
         reworkPO.setPlannedEndDate(java.time.LocalDate.now().plusDays((long) Math.ceil(estimatedDays)));
         reworkPO.setStatus("WAITING_PRODUCTION");

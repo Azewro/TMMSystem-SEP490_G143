@@ -58,4 +58,7 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
 
     // NEW: Find active stages on a specific machine
     List<ProductionStage> findByMachineIdAndExecutionStatus(Long machineId, String executionStatus);
+
+    // NEW: Find stages by type and execution status (for Rework Preemption)
+    List<ProductionStage> findByStageTypeAndExecutionStatus(String stageType, String executionStatus);
 }
