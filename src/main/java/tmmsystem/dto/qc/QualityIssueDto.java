@@ -158,4 +158,14 @@ public class QualityIssueDto {
     public void setEvidencePhoto(String evidencePhoto) {
         this.evidencePhoto = evidencePhoto;
     }
+
+    private java.util.List<QcInspectionDto> inspections;
+
+    public java.util.List<QcInspectionDto> getInspections() {
+        return inspections;
+    }
+
+    public void setInspections(java.util.List<QcInspectionDto> inspections) {
+        this.inspections = inspections;
+    }
 }

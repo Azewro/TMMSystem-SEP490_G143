@@ -50,10 +50,10 @@ public class ProductionService {
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final MachineRepository machineRepository;
     private final ProductionPlanRepository productionPlanRepository;
-    private final ProductionLotRepository productionLotRepository;
     private final ProductionMapper productionMapper;
     private final tmmsystem.repository.QualityIssueRepository issueRepo;
     private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
+    private final tmmsystem.repository.QcInspectionRepository qcInspectionRepository;
 
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
@@ -73,10 +73,10 @@ public class ProductionService {
             MachineAssignmentRepository machineAssignmentRepository,
             MachineRepository machineRepository,
             ProductionPlanRepository productionPlanRepository,
-            ProductionLotRepository productionLotRepository,
             ProductionMapper productionMapper,
             tmmsystem.repository.QualityIssueRepository issueRepo,
-            tmmsystem.repository.MaterialRequisitionRepository reqRepo) {
+            tmmsystem.repository.MaterialRequisitionRepository reqRepo,
+            tmmsystem.repository.QcInspectionRepository qcInspectionRepository) {
         this.poRepo = poRepo;
         this.podRepo = podRepo;
         this.techRepo = techRepo;
@@ -95,10 +95,10 @@ public class ProductionService {
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.machineRepository = machineRepository;
         this.productionPlanRepository = productionPlanRepository;
-        this.productionLotRepository = productionLotRepository;
         this.productionMapper = productionMapper;
         this.issueRepo = issueRepo;
         this.reqRepo = reqRepo;
+        this.qcInspectionRepository = qcInspectionRepository;
     }
 
     // Production Order
@@ -422,8 +422,40 @@ public class ProductionService {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
             }
         }
-        dto.setIssueDescription(issue.getDescription()); // Map description to issueDescription
-        dto.setEvidencePhoto(issue.getEvidencePhoto());
+        dto.setIssueDescription(issue.getDescription());
+
+        // Fallback for evidence photo if missing in QualityIssue
+        String photo = issue.getEvidencePhoto();
+
+        // Fetch inspections
+        if (issue.getProductionStage() != null) {
+            List<tmmsystem.entity.QcInspection> inspections = qcInspectionRepository
+                    .findByProductionStageId(issue.getProductionStage().getId());
+
+            // Map to DTO
+            List<tmmsystem.dto.qc.QcInspectionDto> inspectionDtos = inspections.stream().map(ins -> {
+                tmmsystem.dto.qc.QcInspectionDto d = new tmmsystem.dto.qc.QcInspectionDto();
+                d.setId(ins.getId());
+                d.setResult(ins.getResult());
+                d.setNotes(ins.getNotes());
+                d.setPhotoUrl(ins.getPhotoUrl());
+                d.setCheckpointName(ins.getQcCheckpoint() != null ? ins.getQcCheckpoint().getCheckpointName() : null);
+                return d;
+            }).collect(java.util.stream.Collectors.toList());
+            dto.setInspections(inspectionDtos);
+
+            // Fallback photo logic
+            if (photo == null || photo.isEmpty()) {
+                for (tmmsystem.entity.QcInspection ins : inspections) {
+                    if ("FAIL".equals(ins.getResult()) && ins.getPhotoUrl() != null && !ins.getPhotoUrl().isEmpty()) {
+                        photo = ins.getPhotoUrl();
+                        break;
+                    }
+                }
+            }
+        }
+        dto.setEvidencePhoto(photo);
+
         if (issue.getProductionOrder() != null) {
             dto.setOrderId(issue.getProductionOrder().getId());
             dto.setPoNumber(issue.getProductionOrder().getPoNumber());

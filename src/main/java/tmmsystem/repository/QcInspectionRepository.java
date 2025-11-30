@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface QcInspectionRepository extends JpaRepository<QcInspection, Long> {
     List<QcInspection> findByProductionStageId(Long productionStageId);
+
+    List<QcInspection> findByProductionStageIdAndResult(Long productionStageId, String result);
 }
-
-
