@@ -45,11 +45,27 @@ public class TechnicalService {
             }
         } else if ("MATERIAL_REQUEST".equalsIgnoreCase(decision)) {
             // Major defect -> Request Material -> Notify PM
-            // Stage stays in QC_FAILED or moves to WAITING_MATERIAL_APPROVAL
-            // Other decisions (e.g. SCRAP, ACCEPT)
-            stage.setStatus("COMPLETED"); // Assume accepted with deviation
-            stage.setQcLastResult("PASS_WITH_DEVIATION");
+            tmmsystem.entity.MaterialRequisition req = new tmmsystem.entity.MaterialRequisition();
+            req.setRequisitionNumber("REQ-" + stage.getId() + "-" + System.currentTimeMillis());
+            req.setProductionStage(stage);
+            req.setRequestedBy(userRepo.findById(technicalUserId).orElseThrow());
+            req.setQuantityRequested(quantity);
+            req.setNotes(notes);
+            req.setStatus("PENDING");
+            req.setRequisitionType("YARN_SUPPLY");
+
+            reqRepo.save(req);
+
+            // Update Stage Status to block production
+            stage.setExecutionStatus("WAITING_MATERIAL");
+            stage.setStatus("WAITING_MATERIAL");
             stageRepo.save(stage);
+
+            // Notify Production Manager
+            notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "WARNING",
+                    "Yêu cầu cấp sợi mới",
+                    "Có yêu cầu cấp sợi từ công đoạn " + stage.getStageType() + " cần phê duyệt.",
+                    "MATERIAL_REQUISITION", req.getId());
         }
     }
 }
