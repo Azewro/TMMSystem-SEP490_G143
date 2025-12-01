@@ -2241,10 +2241,11 @@ public class ProductionService {
 
     @Transactional
     public void pauseOtherOrdersAtStage(String stageType, Long excludeOrderId) {
-        // Dyeing (NHUOM) is outsourced/parallel, so we don't pause it.
-        if ("NHUOM".equalsIgnoreCase(stageType) || "DYEING".equalsIgnoreCase(stageType)) {
-            return;
-        }
+        // Allow pausing Dyeing (NHUOM) as well if needed for Rework priority
+        // if ("NHUOM".equalsIgnoreCase(stageType) ||
+        // "DYEING".equalsIgnoreCase(stageType)) {
+        // return;
+        // }
 
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS");
         for (ProductionStage stage : activeStages) {
@@ -2258,6 +2259,28 @@ public class ProductionService {
             stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
                     + "System: Paused due to priority Rework Order.");
             stageRepo.save(stage);
+
+            // Release Machine
+            try {
+                // Update machine status to AVAILABLE
+                machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
+
+                // Release assignments
+                List<MachineAssignment> assignments = machineAssignmentRepository
+                        .findByProductionStageAndReservationStatus(stage, "ACTIVE");
+                for (MachineAssignment ma : assignments) {
+                    ma.setReservationStatus("RELEASED");
+                    ma.setReleasedAt(Instant.now());
+                    machineAssignmentRepository.save(ma);
+                }
+
+                // Also update for alias if exists
+                if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
+                    machineRepository.updateStatusByType(STAGE_TYPE_ALIASES.get(stage.getStageType()), "AVAILABLE");
+                }
+            } catch (Exception e) {
+                System.err.println("Error releasing machine for paused stage " + stage.getId() + ": " + e.getMessage());
+            }
 
             // Notify Leader
             if (stage.getAssignedLeader() != null) {
