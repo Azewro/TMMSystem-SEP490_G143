@@ -271,6 +271,10 @@ public class ProductionPlanService {
         if (plan.getStatus() != ProductionPlan.PlanStatus.DRAFT &&
                 plan.getStatus() != ProductionPlan.PlanStatus.REJECTED)
             throw new RuntimeException("Only draft or rejected plans can be submitted");
+
+        // Validate completeness before submission
+        validatePlanCompleteness(planId);
+
         plan.setStatus(ProductionPlan.PlanStatus.PENDING_APPROVAL);
         plan.setApprovalNotes(request.getNotes());
         ProductionPlan saved = planRepo.save(plan);
@@ -283,6 +287,10 @@ public class ProductionPlanService {
         ProductionPlan plan = planRepo.findById(planId).orElseThrow();
         if (plan.getStatus() != ProductionPlan.PlanStatus.PENDING_APPROVAL)
             throw new RuntimeException("Only pending approval plans can be approved");
+
+        // Validate completeness before approval (double check)
+        validatePlanCompleteness(planId);
+
         plan.setStatus(ProductionPlan.PlanStatus.APPROVED);
         plan.setApprovedBy(getCurrentUser());
         plan.setApprovedAt(Instant.now());
@@ -643,5 +651,35 @@ public class ProductionPlanService {
             sport = quantity;
         }
         return new QuantityBreakdown(face, bath, sport);
+    }
+
+    private void validatePlanCompleteness(Long planId) {
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
+        if (stages.isEmpty()) {
+            throw new RuntimeException("Kế hoạch chưa có công đoạn nào.");
+        }
+        for (ProductionPlanStage stage : stages) {
+            if (stage.getInChargeUser() == null) {
+                throw new RuntimeException("Công đoạn " + stage.getStageType() + " chưa có Người phụ trách.");
+            }
+            if (stage.getQcUser() == null) {
+                throw new RuntimeException("Công đoạn " + stage.getStageType() + " chưa có Người kiểm tra (QC).");
+            }
+            if (stage.getPlannedStartTime() == null) {
+                throw new RuntimeException("Công đoạn " + stage.getStageType() + " chưa có Thời gian bắt đầu.");
+            }
+            if (stage.getPlannedEndTime() == null) {
+                throw new RuntimeException("Công đoạn " + stage.getStageType() + " chưa có Thời gian kết thúc.");
+            }
+            // Duration is implicit from start/end, but minRequiredDurationMinutes is
+            // optional if dates are set.
+            // However, user asked for "thời lượng" (duration). If dates are set, duration
+            // is calculable.
+            // We can check if dates are valid (end > start).
+            if (!stage.getPlannedEndTime().isAfter(stage.getPlannedStartTime())) {
+                throw new RuntimeException(
+                        "Công đoạn " + stage.getStageType() + ": Thời gian kết thúc phải sau thời gian bắt đầu.");
+            }
+        }
     }
 }
