@@ -55,6 +55,20 @@ public class ProductionService {
     private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
     private final tmmsystem.repository.QcInspectionRepository qcInspectionRepository;
 
+    private static final java.util.Map<String, String> STAGE_TYPE_ALIASES = java.util.Map.ofEntries(
+            java.util.Map.entry("WARPING", "CUONG_MAC"),
+            java.util.Map.entry("CUONG_MAC", "WARPING"),
+            java.util.Map.entry("WEAVING", "DET"),
+            java.util.Map.entry("DET", "WEAVING"),
+            java.util.Map.entry("DYEING", "NHUOM"),
+            java.util.Map.entry("NHUOM", "DYEING"),
+            java.util.Map.entry("CUTTING", "CAT"),
+            java.util.Map.entry("CAT", "CUTTING"),
+            java.util.Map.entry("HEMMING", "MAY"),
+            java.util.Map.entry("MAY", "HEMMING"),
+            java.util.Map.entry("PACKAGING", "DONG_GOI"),
+            java.util.Map.entry("DONG_GOI", "PACKAGING"));
+
     public ProductionService(ProductionOrderRepository poRepo,
             ProductionOrderDetailRepository podRepo,
             TechnicalSheetRepository techRepo,
@@ -1831,6 +1845,35 @@ public class ProductionService {
                         System.out.println("Fixed stuck stage " + next.getId() + " (" + next.getStageType()
                                 + ") for PO " + po.getPoNumber());
                     }
+                }
+            }
+        }
+
+        // 4. Fix Inconsistent QC Statuses (Self-Healing)
+        // If stage is WAITING/READY but has a PENDING/PROCESSED issue, revert it.
+        List<tmmsystem.entity.QualityIssue> issues = issueRepo.findAll();
+        for (tmmsystem.entity.QualityIssue issue : issues) {
+            ProductionStage stage = issue.getProductionStage();
+            if (stage == null)
+                continue;
+
+            String stageStatus = stage.getExecutionStatus();
+            if ("WAITING".equals(stageStatus) || "READY_TO_PRODUCE".equals(stageStatus)
+                    || "PENDING".equals(stageStatus)) {
+                if ("PENDING".equals(issue.getStatus())) {
+                    // Issue is pending (Tech hasn't processed), so stage should be QC_FAILED
+                    System.out.println("Self-healing: Reverting stage " + stage.getId()
+                            + " to QC_FAILED due to PENDING issue " + issue.getId());
+                    stage.setExecutionStatus("QC_FAILED");
+                    syncStageStatus(stage, "QC_FAILED");
+                    stageRepo.save(stage);
+                } else if ("PROCESSED".equals(issue.getStatus()) && "REWORK".equals(issue.getIssueType())) {
+                    // Issue is processed for REWORK, so stage should be WAITING_REWORK
+                    System.out.println("Self-healing: Setting stage " + stage.getId()
+                            + " to WAITING_REWORK due to PROCESSED REWORK issue " + issue.getId());
+                    stage.setExecutionStatus("WAITING_REWORK");
+                    syncStageStatus(stage, "WAITING_REWORK");
+                    stageRepo.save(stage);
                 }
             }
         }
