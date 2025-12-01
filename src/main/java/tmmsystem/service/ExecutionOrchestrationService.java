@@ -138,8 +138,13 @@ public class ExecutionOrchestrationService {
         }
 
         // NEW: Blocking Logic (Single Lot per Stage)
-        // Exception: Outsourced stages (e.g. Dyeing) do not block
-        if (stage.getOutsourced() == null || !stage.getOutsourced()) {
+        // Exception: Outsourced stages (e.g. Dyeing) and Packaging do not block
+        boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
+                "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
+                "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
+                "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+
+        if (!isParallelStage) {
             // 1. Check if any Rework Order is IN_PROGRESS at this stage
             boolean hasActiveRework = stageRepo
                     .findByStageTypeAndExecutionStatus(stage.getStageType(), "REWORK_IN_PROGRESS").stream()
@@ -197,7 +202,9 @@ public class ExecutionOrchestrationService {
         }
 
         // Check machine availability
-        if (stage.getStageType() != null) {
+        // Exception: Parallel stages // Check machine availability (SKIP for Parallel
+        // Stages)
+        if (!isParallelStage && stage.getStageType() != null) {
             java.util.List<tmmsystem.entity.Machine> availableMachines = machineRepository
                     .findByTypeAndStatus(stage.getStageType(), "AVAILABLE");
             if (availableMachines.isEmpty()) {
@@ -211,8 +218,9 @@ public class ExecutionOrchestrationService {
         stage.setExecutionStatus("IN_PROGRESS");
         productionService.syncStageStatus(stage, "IN_PROGRESS"); // NEW: Sync status
 
-        // Update machine status to IN_USE and create MachineAssignment
-        if (stage.getStageType() != null) {
+        // Update machine status to IN_USE and create MachineAssignment (SKIP for
+        // Parallel Stages)
+        if (!isParallelStage && stage.getStageType() != null) {
             // Update status
             machineRepository.updateStatusByType(stage.getStageType(), "IN_USE");
 
@@ -303,8 +311,14 @@ public class ExecutionOrchestrationService {
                         "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
             }
 
-            // Update machine status to AVAILABLE and release MachineAssignment
-            if (stage.getStageType() != null) {
+            // Update machine status to AVAILABLE and release MachineAssignment (SKIP for
+            // Parallel Stages)
+            boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
+                    "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
+                    "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
+                    "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+
+            if (!isParallelStage && stage.getStageType() != null) {
                 machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
 
                 // Release assignments
@@ -540,8 +554,13 @@ public class ExecutionOrchestrationService {
             throw new RuntimeException("Không có quyền sửa");
 
         // NEW: Pre-emption Logic (Auto-Pause other lots)
-        // Exception: Outsourced stages do not pre-empt
-        if (stage.getOutsourced() == null || !stage.getOutsourced()) {
+        // Exception: Parallel stages do not pre-empt
+        boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
+                "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
+                "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
+                "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+
+        if (!isParallelStage) {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
         }
 
