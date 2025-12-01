@@ -142,7 +142,11 @@ public class ExecutionOrchestrationService {
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
                 "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+                "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
+                "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
+                "CAT".equalsIgnoreCase(stage.getStageType()) ||
+                "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
+                "MAY".equalsIgnoreCase(stage.getStageType());
 
         if (!isParallelStage) {
             // 1. Check if any Rework Order is IN_PROGRESS at this stage
@@ -323,7 +327,11 @@ public class ExecutionOrchestrationService {
             boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                     "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
                     "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                    "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+                    "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
+                    "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
+                    "CAT".equalsIgnoreCase(stage.getStageType()) ||
+                    "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
+                    "MAY".equalsIgnoreCase(stage.getStageType());
 
             if (!isParallelStage && stage.getStageType() != null) {
                 machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
@@ -565,7 +573,11 @@ public class ExecutionOrchestrationService {
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
                 "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                "DONG_GOI".equalsIgnoreCase(stage.getStageType());
+                "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
+                "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
+                "CAT".equalsIgnoreCase(stage.getStageType()) ||
+                "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
+                "MAY".equalsIgnoreCase(stage.getStageType());
 
         if (!isParallelStage) {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
