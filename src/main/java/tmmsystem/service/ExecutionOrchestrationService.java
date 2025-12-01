@@ -396,14 +396,24 @@ public class ExecutionOrchestrationService {
     @Transactional(readOnly = true)
     public List<QcCheckpoint> getCheckpointsForStage(Long stageId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        List<QcCheckpoint> checkpoints = qcCheckpointRepository
+        List<QcCheckpoint> checkpoints = new java.util.ArrayList<>();
+
+        // 1. Get checkpoints for the exact stage type
+        List<QcCheckpoint> primary = qcCheckpointRepository
                 .findByStageTypeOrderByDisplayOrderAsc(stage.getStageType());
-        if ((checkpoints == null || checkpoints.isEmpty()) && stage.getStageType() != null) {
+        if (primary != null) {
+            checkpoints.addAll(primary);
+        }
+
+        // 2. Get checkpoints for the alias type (if any)
+        if (stage.getStageType() != null && STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
             String alias = STAGE_TYPE_ALIASES.get(stage.getStageType());
-            if (alias != null) {
-                checkpoints = qcCheckpointRepository.findByStageTypeOrderByDisplayOrderAsc(alias);
+            List<QcCheckpoint> secondary = qcCheckpointRepository.findByStageTypeOrderByDisplayOrderAsc(alias);
+            if (secondary != null) {
+                checkpoints.addAll(secondary);
             }
         }
+
         return checkpoints;
     }
 

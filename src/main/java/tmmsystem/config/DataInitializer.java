@@ -100,43 +100,34 @@ public class DataInitializer implements CommandLineRunner {
     private void seedQcCheckpoints() {
         List<QcSeed> seeds = new java.util.ArrayList<>();
         // Cuồng mắc / Warping
-        addSeed(seeds, "CUONG_MAC", "Chất lượng sợi", "Đối chiếu thông số BOM", "AQL", true, 1);
-        addSeed(seeds, "CUONG_MAC", "Độ căng sợi", "Quan sát & đo", "AQL", true, 2);
-        addSeed(seeds, "CUONG_MAC", "Sợi mắc đều", "Quan sát", "AQL", false, 3);
-        addSeed(seeds, "CUONG_MAC", "Khổ & chiều dài cây sợi", "Đo khổ/cây", "AQL", false, 4);
-        addSeed(seeds, "WARPING", "Yarn quality", "Match BOM specification", "AQL", true, 1);
-        addSeed(seeds, "WARPING", "Consistent tension", "Visual & measure", "AQL", true, 2);
-        addSeed(seeds, "WARPING", "Even warping", "Visual", "AQL", false, 3);
+        addSeed(seeds, "WARPING", "Chất lượng sợi", "Đối chiếu thông số BOM", "AQL", true, 1);
+        addSeed(seeds, "WARPING", "Độ căng sợi", "Quan sát & đo", "AQL", true, 2);
+        addSeed(seeds, "WARPING", "Sợi mắc đều", "Quan sát", "AQL", false, 3);
+        addSeed(seeds, "WARPING", "Khổ & chiều dài cây sợi", "Đo khổ/cây", "AQL", false, 4);
 
         // Dệt / Weaving
-        addSeed(seeds, "DET", "Độ bền sợi nền", "Thử kéo", "AQL", true, 1);
-        addSeed(seeds, "DET", "Hình dáng khăn", "Quan sát", "AQL", false, 2);
-        addSeed(seeds, "DET", "Bề mặt vải", "Quan sát", "AQL", false, 3);
-        addSeed(seeds, "WEAVING", "Fabric density", "Measure", "AQL", true, 1);
-        addSeed(seeds, "WEAVING", "Fabric width", "Measure", "AQL", true, 2);
+        addSeed(seeds, "WEAVING", "Độ bền sợi nền", "Thử kéo", "AQL", true, 1);
+        addSeed(seeds, "WEAVING", "Hình dáng khăn", "Quan sát", "AQL", false, 2);
+        addSeed(seeds, "WEAVING", "Bề mặt vải", "Quan sát", "AQL", false, 3);
 
         // Nhuộm / Dyeing
-        addSeed(seeds, "NHUOM", "Màu sắc chuẩn", "So màu mẫu chuẩn", "100%", true, 1);
-        addSeed(seeds, "NHUOM", "Độ bền màu", "Thử ma sát/giặt", "AQL", true, 2);
-        addSeed(seeds, "NHUOM", "Vết loang/đốm", "Quan sát", "AQL", false, 3);
-        addSeed(seeds, "DYEING", "Color evenness", "Visual inspect", "AQL", true, 1);
-        addSeed(seeds, "DYEING", "Color fastness", "Rub/wash test", "AQL", true, 2);
+        addSeed(seeds, "DYEING", "Màu sắc chuẩn", "So màu mẫu chuẩn", "100%", true, 1);
+        addSeed(seeds, "DYEING", "Độ bền màu", "Thử ma sát/giặt", "AQL", true, 2);
+        addSeed(seeds, "DYEING", "Vết loang/đốm", "Quan sát", "AQL", false, 3);
 
         // Cắt / Cutting
-        addSeed(seeds, "CAT", "Kích thước chuẩn", "Đo từng chi tiết", "100%", true, 1);
-        addSeed(seeds, "CAT", "Đường cắt sạch", "Quan sát", "AQL", true, 2);
-        addSeed(seeds, "CUTTING", "Dimension accuracy", "Measure", "100%", true, 1);
+        addSeed(seeds, "CUTTING", "Kích thước chuẩn", "Đo từng chi tiết", "100%", true, 1);
+        addSeed(seeds, "CUTTING", "Đường cắt sạch", "Quan sát", "AQL", true, 2);
+        addSeed(seeds, "CUTTING", "Độ chính xác về kích thước", "Measure", "100%", true, 1);
 
         // May / Hemming
-        addSeed(seeds, "MAY", "Đường may thẳng", "Quan sát", "AQL", true, 1);
-        addSeed(seeds, "MAY", "Mật độ mũi chỉ", "Đếm/đo", "AQL", true, 2);
-        addSeed(seeds, "HEMMING", "Seam straightness", "Visual", "AQL", true, 1);
-        addSeed(seeds, "HEMMING", "Stitch density", "Count", "AQL", true, 2);
+        addSeed(seeds, "HEMMING", "Đường may thẳng", "Quan sát", "AQL", true, 1);
+        addSeed(seeds, "HEMMING", "Mật độ mũi chỉ", "Đếm/đo", "AQL", true, 2);
 
         // Đóng gói / Packaging
-        addSeed(seeds, "DONG_GOI", "Đủ phụ kiện kèm", "Đếm", "AQL", true, 1);
-        addSeed(seeds, "DONG_GOI", "Tem/nhãn đúng chuẩn", "Đối chiếu", "AQL", true, 2);
-        addSeed(seeds, "PACKAGING", "Accessories completeness", "Count", "AQL", true, 1);
+        addSeed(seeds, "PACKAGING", "Đủ phụ kiện kèm", "Đếm", "AQL", true, 1);
+        addSeed(seeds, "PACKAGING", "Tem/nhãn đúng chuẩn", "Đối chiếu", "AQL", true, 2);
+        addSeed(seeds, "PACKAGING", "Phụ kiện đầy đủ", "Đếm", "AQL", true, 1);
 
         int inserted = 0;
         for (QcSeed seed : seeds) {
