@@ -19,6 +19,7 @@ public class ProductionOrderDto {
     private LocalDate plannedStartDate;
     private LocalDate plannedEndDate;
     private String status;
+    private String executionStatus; // NEW: Trạng thái thực thi chi tiết
     private Integer priority;
     private String notes;
     private Long createdById;

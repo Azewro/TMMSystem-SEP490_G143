@@ -1814,6 +1814,22 @@ public class ProductionService {
                 // Create default stages
                 createStagesFromPlan(po.getId(), null);
                 System.out.println("Auto-generated stages for PO: " + po.getPoNumber());
+            } else {
+                // 3. Fix Stuck Stages (e.g. Previous is QC_PASSED but Next is PENDING)
+                for (int i = 0; i < existingStages.size() - 1; i++) {
+                    ProductionStage current = existingStages.get(i);
+                    ProductionStage next = existingStages.get(i + 1);
+
+                    if ("QC_PASSED".equals(current.getExecutionStatus())
+                            && "PENDING".equals(next.getExecutionStatus())) {
+                        // Fix stuck stage
+                        syncStageStatus(next, "READY_TO_PRODUCE"); // Or WAITING
+                        next.setExecutionStatus("READY_TO_PRODUCE");
+                        stageRepo.save(next);
+                        System.out.println("Fixed stuck stage " + next.getId() + " (" + next.getStageType()
+                                + ") for PO " + po.getPoNumber());
+                    }
+                }
             }
         }
     }
@@ -1932,6 +1948,11 @@ public class ProductionService {
         reworkPO.setPoNumber(originalPO.getPoNumber() + "-REWORK-" + System.currentTimeMillis() % 1000);
         reworkPO.setContract(originalPO.getContract());
 
+        // Calculate total approved quantity
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0 && req.getQuantityApproved() != null) {
+            totalApproved = req.getQuantityApproved();
+        }
+
         // Convert kg (approvedQuantity) to pcs (totalQuantity)
         // Formula: Pcs = Kg / Weight_per_piece_in_kg
         BigDecimal reworkQuantityPcs = totalApproved;
@@ -1944,12 +1965,18 @@ public class ProductionService {
                     // Assuming standardWeight is in GRAMS (common for towels).
                     BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
                             java.math.RoundingMode.HALF_UP);
-                    reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
+                    if (weightInKg.compareTo(BigDecimal.ZERO) > 0) {
+                        reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
+                    }
                 }
             }
         } catch (Exception e) {
             // Fallback or log error
             System.err.println("Error converting unit: " + e.getMessage());
+        }
+
+        if (reworkQuantityPcs.compareTo(BigDecimal.ZERO) <= 0) {
+            reworkQuantityPcs = BigDecimal.ONE; // Default to 1 if calculation fails
         }
         reworkPO.setTotalQuantity(reworkQuantityPcs); // Quantity for rework in PCS
 

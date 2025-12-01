@@ -18,6 +18,7 @@ public class ProductionMapper {
         dto.setPlannedStartDate(e.getPlannedStartDate());
         dto.setPlannedEndDate(e.getPlannedEndDate());
         dto.setStatus(e.getStatus());
+        dto.setExecutionStatus(e.getExecutionStatus()); // Map executionStatus
         dto.setPriority(e.getPriority());
         dto.setAssignedTechnicianId(e.getAssignedTechnician() != null ? e.getAssignedTechnician().getId() : null);
         dto.setAssignedAt(e.getAssignedAt());
@@ -108,7 +109,8 @@ public class ProductionMapper {
         ProductionStageDto dto = new ProductionStageDto();
         dto.setId(s.getId());
         dto.setProductionOrderId(s.getProductionOrder() != null ? s.getProductionOrder().getId() : null); // NEW
-        // REMOVED: dto.setWorkOrderDetailId() - field workOrderDetail đã bị xóa khỏi entity
+        // REMOVED: dto.setWorkOrderDetailId() - field workOrderDetail đã bị xóa khỏi
+        // entity
         dto.setStageType(s.getStageType());
         dto.setStageSequence(s.getStageSequence());
         dto.setMachineId(s.getMachine() != null ? s.getMachine().getId() : null);
@@ -135,13 +137,13 @@ public class ProductionMapper {
         dto.setExecutionStatus(s.getExecutionStatus());
         dto.setProgressPercent(s.getProgressPercent());
         dto.setIsRework(s.getIsRework());
-        
+
         // Enrich fields for frontend
         dto.setStageCode(s.getStageType()); // stageType là mã công đoạn
         dto.setStageName(mapStageTypeToName(s.getStageType())); // Map mã sang tên
         dto.setAssigneeName(getAssigneeName(s)); // Lấy tên người phụ trách
         dto.setStatusLabel(mapStageStatusToLabel(s.getExecutionStatus(), s.getStatus())); // Map status sang label
-        
+
         // Format start and end times for Leader
         if (s.getStartAt() != null) {
             dto.setStartTimeFormatted(formatInstant(s.getStartAt()));
@@ -149,25 +151,27 @@ public class ProductionMapper {
         if (s.getCompleteAt() != null) {
             dto.setEndTimeFormatted(formatInstant(s.getCompleteAt()));
         }
-        
+
         return dto;
     }
-    
+
     /**
      * Format Instant to Vietnamese datetime string
      */
     private String formatInstant(Instant instant) {
-        if (instant == null) return null;
+        if (instant == null)
+            return null;
         return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-            .withZone(java.time.ZoneId.systemDefault())
-            .format(instant);
+                .withZone(java.time.ZoneId.systemDefault())
+                .format(instant);
     }
-    
+
     /**
      * Map stageType sang tên công đoạn để hiển thị
      */
     private String mapStageTypeToName(String stageType) {
-        if (stageType == null) return "Không xác định";
+        if (stageType == null)
+            return "Không xác định";
         switch (stageType.toUpperCase()) {
             case "WARPING":
             case "CUONG_MAC":
@@ -191,21 +195,19 @@ public class ProductionMapper {
                 return stageType;
         }
     }
-    
+
     /**
      * Lấy tên người phụ trách
      */
     private String getAssigneeName(ProductionStage s) {
         // Ưu tiên assignedLeader, nếu không có thì lấy assignedTo
         if (s.getAssignedLeader() != null) {
-            return s.getAssignedLeader().getName() != null ? 
-                s.getAssignedLeader().getName() : 
-                (s.getAssignedLeader().getEmail() != null ? s.getAssignedLeader().getEmail() : "N/A");
+            return s.getAssignedLeader().getName() != null ? s.getAssignedLeader().getName()
+                    : (s.getAssignedLeader().getEmail() != null ? s.getAssignedLeader().getEmail() : "N/A");
         }
         if (s.getAssignedTo() != null) {
-            return s.getAssignedTo().getName() != null ? 
-                s.getAssignedTo().getName() : 
-                (s.getAssignedTo().getEmail() != null ? s.getAssignedTo().getEmail() : "N/A");
+            return s.getAssignedTo().getName() != null ? s.getAssignedTo().getName()
+                    : (s.getAssignedTo().getEmail() != null ? s.getAssignedTo().getEmail() : "N/A");
         }
         // Nếu là công đoạn nhuộm và outsourced, trả về "Production Manager"
         if ("DYEING".equalsIgnoreCase(s.getStageType()) || "NHUOM".equalsIgnoreCase(s.getStageType())) {
@@ -215,7 +217,7 @@ public class ProductionMapper {
         }
         return "Chưa phân công";
     }
-    
+
     /**
      * Map executionStatus và status sang statusLabel để hiển thị
      */
