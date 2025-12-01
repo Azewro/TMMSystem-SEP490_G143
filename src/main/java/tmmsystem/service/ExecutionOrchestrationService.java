@@ -532,7 +532,8 @@ public class ExecutionOrchestrationService {
         if (!"WAITING_REWORK".equals(stage.getExecutionStatus())
                 && !"WAITING".equals(stage.getExecutionStatus())
                 && !"READY".equals(stage.getExecutionStatus())
-                && !"READY_TO_PRODUCE".equals(stage.getExecutionStatus()))
+                && !"READY_TO_PRODUCE".equals(stage.getExecutionStatus())
+                && !"PENDING".equals(stage.getExecutionStatus())) // Allow PENDING for Rework to jump queue
             throw new RuntimeException(
                     "Không ở trạng thái chờ sửa hoặc chờ làm (Current: " + stage.getExecutionStatus() + ")");
         if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(leaderUserId))
