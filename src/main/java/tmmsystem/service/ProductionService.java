@@ -1660,6 +1660,7 @@ public class ProductionService {
         switch (execStatus) {
             case "WAITING":
             case "READY":
+            case "READY_TO_PRODUCE": // NEW
                 return "Chờ " + stageTypeName + " làm";
             case "IN_PROGRESS":
                 return stageTypeName + " đang làm";
@@ -1683,7 +1684,7 @@ public class ProductionService {
                     String nextStageName = getStageTypeName(nextStage.getStageType());
                     String nextStatus = nextStage.getExecutionStatus();
                     if (nextStatus != null && (nextStatus.equals("WAITING") || nextStatus.equals("READY")
-                            || nextStatus.equals("PENDING"))) {
+                            || nextStatus.equals("PENDING") || nextStatus.equals("READY_TO_PRODUCE"))) { // NEW
                         return "Chờ " + nextStageName + " làm";
                     }
                 }
@@ -1704,7 +1705,8 @@ public class ProductionService {
                     String nextStatus = next.getExecutionStatus();
                     if (nextStatus != null && !nextStatus.equals("COMPLETED") && !nextStatus.equals("QC_PASSED")) {
                         String nextStageName = getStageTypeName(next.getStageType());
-                        if (nextStatus.equals("WAITING") || nextStatus.equals("READY")) {
+                        if (nextStatus.equals("WAITING") || nextStatus.equals("READY")
+                                || nextStatus.equals("READY_TO_PRODUCE")) { // NEW
                             return "Chờ " + nextStageName + " làm";
                         }
                         return getStageTypeName(next.getStageType()) + " "
