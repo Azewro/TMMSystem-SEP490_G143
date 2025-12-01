@@ -529,8 +529,12 @@ public class ExecutionOrchestrationService {
     @Transactional
     public ProductionStage startRework(Long stageId, Long leaderUserId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        if (!"WAITING_REWORK".equals(stage.getExecutionStatus()) && !"WAITING".equals(stage.getExecutionStatus()))
-            throw new RuntimeException("Không ở trạng thái chờ sửa hoặc chờ làm");
+        if (!"WAITING_REWORK".equals(stage.getExecutionStatus())
+                && !"WAITING".equals(stage.getExecutionStatus())
+                && !"READY".equals(stage.getExecutionStatus())
+                && !"READY_TO_PRODUCE".equals(stage.getExecutionStatus()))
+            throw new RuntimeException(
+                    "Không ở trạng thái chờ sửa hoặc chờ làm (Current: " + stage.getExecutionStatus() + ")");
         if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(leaderUserId))
             throw new RuntimeException("Không có quyền sửa");
 

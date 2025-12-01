@@ -2103,8 +2103,22 @@ public class ProductionService {
         for (ProductionOrder po : allOrders) {
             if (po.getPoNumber().contains("-REWORK")) {
                 List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(po.getId());
-                if (details.isEmpty()) {
-                    // Found a rework order without details
+                // Fix if details missing OR quantity is 0
+                boolean needsFix = details.isEmpty();
+                ProductionOrderDetail detailToFix = null;
+                if (!details.isEmpty()) {
+                    detailToFix = details.get(0);
+                    if (detailToFix.getQuantity() == null
+                            || detailToFix.getQuantity().compareTo(BigDecimal.ZERO) == 0) {
+                        needsFix = true;
+                    } else {
+                        // Already has quantity, skip
+                        needsFix = false;
+                    }
+                }
+
+                if (needsFix) {
+                    // Found a rework order needing fix
                     try {
                         // Find original PO via stages
                         List<ProductionStage> stages = stageRepo
@@ -2122,8 +2136,11 @@ public class ProductionService {
                                     .findByProductionOrderId(originalPO.getId());
                             if (!originalDetails.isEmpty()) {
                                 ProductionOrderDetail originalDetail = originalDetails.get(0);
-                                ProductionOrderDetail reworkDetail = new ProductionOrderDetail();
-                                reworkDetail.setProductionOrder(po);
+                                ProductionOrderDetail reworkDetail = (detailToFix != null) ? detailToFix
+                                        : new ProductionOrderDetail();
+                                if (reworkDetail.getId() == null) {
+                                    reworkDetail.setProductionOrder(po);
+                                }
                                 reworkDetail.setProduct(originalDetail.getProduct());
                                 reworkDetail.setUnit(originalDetail.getUnit());
                                 reworkDetail.setBom(originalDetail.getBom()); // Fix: Copy BOM
