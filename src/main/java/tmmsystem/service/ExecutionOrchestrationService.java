@@ -202,8 +202,7 @@ public class ExecutionOrchestrationService {
         }
 
         // Check machine availability
-        // Exception: Parallel stages // Check machine availability (SKIP for Parallel
-        // Stages)
+        // Exception: Parallel // Check machine availability (SKIP for Parallel Stages)
         if (!isParallelStage && stage.getStageType() != null) {
             java.util.List<tmmsystem.entity.Machine> availableMachines = machineRepository
                     .findByTypeAndStatus(stage.getStageType(), "AVAILABLE");
@@ -227,12 +226,16 @@ public class ExecutionOrchestrationService {
             // Create assignment for main type
             List<Machine> machines = machineRepository.findByTypeAndStatus(stage.getStageType(), "IN_USE");
             for (Machine m : machines) {
-                MachineAssignment ma = new MachineAssignment();
+                // Check if assignment already exists (to avoid Duplicate Entry)
+                MachineAssignment ma = machineAssignmentRepository.findByMachineAndProductionStage(m, stage)
+                        .orElse(new MachineAssignment());
+
                 ma.setMachine(m);
                 ma.setProductionStage(stage);
                 ma.setAssignedAt(Instant.now());
                 ma.setReservationStatus("ACTIVE");
                 ma.setReservationType("PRODUCTION");
+                ma.setReleasedAt(null); // Clear released date if re-using
                 machineAssignmentRepository.save(ma);
             }
 
@@ -244,12 +247,16 @@ public class ExecutionOrchestrationService {
                 // Create assignment for alias type
                 List<Machine> aliasMachines = machineRepository.findByTypeAndStatus(aliasType, "IN_USE");
                 for (Machine m : aliasMachines) {
-                    MachineAssignment ma = new MachineAssignment();
+                    // Check if assignment already exists
+                    MachineAssignment ma = machineAssignmentRepository.findByMachineAndProductionStage(m, stage)
+                            .orElse(new MachineAssignment());
+
                     ma.setMachine(m);
                     ma.setProductionStage(stage);
                     ma.setAssignedAt(Instant.now());
                     ma.setReservationStatus("ACTIVE");
                     ma.setReservationType("PRODUCTION");
+                    ma.setReleasedAt(null);
                     machineAssignmentRepository.save(ma);
                 }
             }

@@ -7,7 +7,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "machine_assignment", indexes = {
-        @Index(name = "idx_machine_assignment_unique", columnList = "machine_id, production_stage_id", unique = true),
+        @Index(name = "idx_machine_assignment_unique", columnList = "machine_id, production_stage_id"),
         @Index(name = "idx_machine_assignment_plan_stage", columnList = "plan_stage_id"),
         @Index(name = "idx_machine_assignment_time", columnList = "machine_id, assigned_at")
 })
