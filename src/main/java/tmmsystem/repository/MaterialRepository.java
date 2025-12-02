@@ -5,6 +5,6 @@ import tmmsystem.entity.Material;
 
 public interface MaterialRepository extends JpaRepository<Material, Long> {
     boolean existsByCode(String code);
+
+    java.util.Optional<Material> findByCode(String code);
 }
-
-

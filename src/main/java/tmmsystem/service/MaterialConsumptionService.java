@@ -13,13 +13,16 @@ public class MaterialConsumptionService {
     private final BomRepository bomRepository;
     private final BomDetailRepository bomDetailRepository;
     private final ProductionPlanRepository productionPlanRepository;
+    private final BomService bomService;
 
     public MaterialConsumptionService(BomRepository bomRepository,
-                                     BomDetailRepository bomDetailRepository,
-                                     ProductionPlanRepository productionPlanRepository) {
+            BomDetailRepository bomDetailRepository,
+            ProductionPlanRepository productionPlanRepository,
+            BomService bomService) {
         this.bomRepository = bomRepository;
         this.bomDetailRepository = bomDetailRepository;
         this.productionPlanRepository = productionPlanRepository;
+        this.bomService = bomService;
     }
 
     /**
@@ -30,25 +33,27 @@ public class MaterialConsumptionService {
     }
 
     /**
-     * Tính toán nguyên vật liệu tiêu hao cho một Production Plan với tỷ lệ hao hụt mặc định 10%
-     * Logic: Tính theo Lot.totalQuantity (đã gộp các orders lại) thay vì tính từng order riêng lẻ
+     * Tính toán nguyên vật liệu tiêu hao cho một Production Plan với tỷ lệ hao hụt
+     * mặc định 10%
+     * Logic: Tính theo Lot.totalQuantity (đã gộp các orders lại) thay vì tính từng
+     * order riêng lẻ
      */
     public MaterialConsumptionResult calculateMaterialConsumption(Long planId, BigDecimal wastePercentage) {
         ProductionPlan plan = productionPlanRepository.findById(planId)
-            .orElseThrow(() -> new RuntimeException("Production plan not found"));
+                .orElseThrow(() -> new RuntimeException("Production plan not found"));
 
         // Lấy Lot từ Plan
         ProductionLot lot = plan.getLot();
         if (lot == null) {
             MaterialConsumptionResult empty = new MaterialConsumptionResult();
-            empty.setPlanId(planId); 
-            empty.setPlanCode(plan.getPlanCode()); 
-            empty.setTotalProducts(0); 
+            empty.setPlanId(planId);
+            empty.setPlanCode(plan.getPlanCode());
+            empty.setTotalProducts(0);
             empty.setWastePercentage(wastePercentage);
-            empty.setProductConsumptions(java.util.List.of()); 
+            empty.setProductConsumptions(java.util.List.of());
             empty.setMaterialSummaries(java.util.List.of());
-            empty.setTotalMaterialValue(BigDecimal.ZERO); 
-            empty.setTotalBasicQuantity(BigDecimal.ZERO); 
+            empty.setTotalMaterialValue(BigDecimal.ZERO);
+            empty.setTotalBasicQuantity(BigDecimal.ZERO);
             empty.setTotalWasteAmount(BigDecimal.ZERO);
             return empty;
         }
@@ -63,21 +68,20 @@ public class MaterialConsumptionService {
         BigDecimal lotTotalQuantity = lot.getTotalQuantity();
         if (lotTotalQuantity == null || lotTotalQuantity.compareTo(BigDecimal.ZERO) <= 0) {
             MaterialConsumptionResult empty = new MaterialConsumptionResult();
-            empty.setPlanId(planId); 
-            empty.setPlanCode(plan.getPlanCode()); 
-            empty.setTotalProducts(1); 
+            empty.setPlanId(planId);
+            empty.setPlanCode(plan.getPlanCode());
+            empty.setTotalProducts(1);
             empty.setWastePercentage(wastePercentage);
-            empty.setProductConsumptions(java.util.List.of()); 
+            empty.setProductConsumptions(java.util.List.of());
             empty.setMaterialSummaries(java.util.List.of());
-            empty.setTotalMaterialValue(BigDecimal.ZERO); 
-            empty.setTotalBasicQuantity(BigDecimal.ZERO); 
+            empty.setTotalMaterialValue(BigDecimal.ZERO);
+            empty.setTotalBasicQuantity(BigDecimal.ZERO);
             empty.setTotalWasteAmount(BigDecimal.ZERO);
             return empty;
         }
 
-        // Lấy BOM active của product
-        Bom activeBom = bomRepository.findActiveBomByProductId(product.getId())
-            .orElseThrow(() -> new RuntimeException("No active BOM found for product: " + product.getName()));
+        // Lấy BOM active của product, nếu chưa có thì tự động tạo
+        Bom activeBom = bomService.ensureBomExists(product);
         java.util.List<BomDetail> bomDetails = bomDetailRepository.findByBomId(activeBom.getId());
 
         MaterialConsumptionResult result = new MaterialConsumptionResult();
@@ -102,12 +106,12 @@ public class MaterialConsumptionService {
         for (BomDetail bomDetail : bomDetails) {
             Material material = bomDetail.getMaterial();
             BigDecimal materialQuantityPerUnit = bomDetail.getQuantity();
-            
+
             // Tính theo totalQuantity của Lot (đã gộp)
             BigDecimal basicMaterialQuantity = materialQuantityPerUnit.multiply(lotTotalQuantity);
             BigDecimal wasteAmount = basicMaterialQuantity.multiply(wastePercentage);
             BigDecimal totalMaterialQuantity = basicMaterialQuantity.add(wasteAmount);
-            
+
             MaterialConsumptionResult.MaterialConsumptionDetail materialDetail = new MaterialConsumptionResult.MaterialConsumptionDetail();
             materialDetail.setMaterialId(material.getId());
             materialDetail.setMaterialCode(material.getCode());
@@ -126,7 +130,7 @@ public class MaterialConsumptionService {
             materialDetail.setUnitPrice(unitPrice);
             materialDetail.setTotalValue(totalMaterialQuantity.multiply(unitPrice));
             materialDetails.add(materialDetail);
-            
+
             // Tổng hợp vào MaterialSummary
             MaterialConsumptionResult.MaterialSummary summary = materialSummaryMap.get(material.getId());
             if (summary == null) {
@@ -148,31 +152,31 @@ public class MaterialConsumptionService {
             summary.setTotalQuantityRequired(summary.getTotalQuantityRequired().add(totalMaterialQuantity));
             summary.setTotalValue(summary.getTotalValue().add(totalMaterialQuantity.multiply(unitPrice)));
         }
-        
+
         productConsumption.setMaterialDetails(materialDetails);
         result.setProductConsumptions(java.util.List.of(productConsumption)); // Chỉ có 1 product trong Lot
         result.setMaterialSummaries(new java.util.ArrayList<>(materialSummaryMap.values()));
-        
+
         BigDecimal totalMaterialValue = materialSummaryMap.values().stream()
-            .map(MaterialConsumptionResult.MaterialSummary::getTotalValue)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(MaterialConsumptionResult.MaterialSummary::getTotalValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         result.setTotalMaterialValue(totalMaterialValue);
-        
+
         BigDecimal totalBasicQuantity = materialSummaryMap.values().stream()
-            .map(MaterialConsumptionResult.MaterialSummary::getBasicQuantityRequired)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(MaterialConsumptionResult.MaterialSummary::getBasicQuantityRequired)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalWasteAmount = materialSummaryMap.values().stream()
-            .map(MaterialConsumptionResult.MaterialSummary::getWasteAmount)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(MaterialConsumptionResult.MaterialSummary::getWasteAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         result.setTotalBasicQuantity(totalBasicQuantity);
         result.setTotalWasteAmount(totalWasteAmount);
-        
+
         return result;
     }
 
-
     // DTOs for API responses
-    @lombok.Getter @lombok.Setter
+    @lombok.Getter
+    @lombok.Setter
     public static class MaterialConsumptionResult {
         private Long planId;
         private String planCode;
@@ -184,7 +188,8 @@ public class MaterialConsumptionService {
         private List<ProductMaterialConsumption> productConsumptions;
         private List<MaterialSummary> materialSummaries;
 
-        @lombok.Getter @lombok.Setter
+        @lombok.Getter
+        @lombok.Setter
         public static class ProductMaterialConsumption {
             private Long productId;
             private String productCode;
@@ -194,7 +199,8 @@ public class MaterialConsumptionService {
             private List<MaterialConsumptionDetail> materialDetails;
         }
 
-        @lombok.Getter @lombok.Setter
+        @lombok.Getter
+        @lombok.Setter
         public static class MaterialConsumptionDetail {
             private Long materialId;
             private String materialCode;
@@ -213,7 +219,8 @@ public class MaterialConsumptionService {
             private BigDecimal totalValue;
         }
 
-        @lombok.Getter @lombok.Setter
+        @lombok.Getter
+        @lombok.Setter
         public static class MaterialSummary {
             private Long materialId;
             private String materialCode;

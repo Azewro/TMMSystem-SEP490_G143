@@ -9,7 +9,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/v1/system/notifications")
-@CrossOrigin(origins = "*")
+@CrossOrigin(originPatterns = "*")
 public class NotificationController {
 
     private final NotificationService notificationService;

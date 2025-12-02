@@ -34,18 +34,18 @@ public class QuotationService {
     // NEW: inject CustomerService to provision password when needed
     private final CustomerService customerService;
 
-    public QuotationService(QuotationRepository quotationRepository, 
-                           QuotationDetailRepository quotationDetailRepository,
-                           RfqRepository rfqRepository,
-                           RfqDetailRepository rfqDetailRepository,
-                           ProductRepository productRepository,
-                           MaterialRepository materialRepository,
-                           MaterialStockRepository materialStockRepository,
-                           ContractRepository contractRepository,
-                           NotificationService notificationService,
-                           EmailService emailService,
-                           FileStorageService fileStorageService,
-                           CustomerService customerService) {
+    public QuotationService(QuotationRepository quotationRepository,
+            QuotationDetailRepository quotationDetailRepository,
+            RfqRepository rfqRepository,
+            RfqDetailRepository rfqDetailRepository,
+            ProductRepository productRepository,
+            MaterialRepository materialRepository,
+            MaterialStockRepository materialStockRepository,
+            ContractRepository contractRepository,
+            NotificationService notificationService,
+            EmailService emailService,
+            FileStorageService fileStorageService,
+            CustomerService customerService) {
         this.quotationRepository = quotationRepository;
         this.quotationDetailRepository = quotationDetailRepository;
         this.rfqRepository = rfqRepository;
@@ -60,34 +60,33 @@ public class QuotationService {
         this.customerService = customerService;
     }
 
-    public List<Quotation> findAll() { 
-        return quotationRepository.findAll(); 
+    public List<Quotation> findAll() {
+        return quotationRepository.findAll();
     }
-    
+
     public Page<Quotation> findAll(Pageable pageable) {
         return quotationRepository.findAll(pageable);
     }
-    
+
     public Page<Quotation> findAll(Pageable pageable, String search, String status) {
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             return quotationRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -95,23 +94,31 @@ public class QuotationService {
         }
     }
 
-    public Quotation findById(Long id) { 
-        return quotationRepository.findById(id).orElseThrow(); 
+    public Quotation findById(Long id) {
+        return quotationRepository.findById(id).orElseThrow();
     }
 
     @Transactional
-    public Quotation create(Quotation quotation) { 
+    public Quotation create(Quotation quotation) {
         // Auto populate from RFQ if provided
         if (quotation.getRfq() != null && quotation.getRfq().getId() != null) {
             Rfq rfq = rfqRepository.findById(quotation.getRfq().getId()).orElseThrow();
-            if (quotation.getCustomer() == null) quotation.setCustomer(rfq.getCustomer());
-            if (quotation.getAssignedSales() == null && rfq.getAssignedSales() != null) quotation.setAssignedSales(rfq.getAssignedSales());
-            if (quotation.getAssignedPlanning() == null && rfq.getAssignedPlanning() != null) quotation.setAssignedPlanning(rfq.getAssignedPlanning());
-            if (quotation.getContactPersonSnapshot() == null) quotation.setContactPersonSnapshot(rfq.getContactPersonSnapshot());
-            if (quotation.getContactEmailSnapshot() == null) quotation.setContactEmailSnapshot(rfq.getContactEmailSnapshot());
-            if (quotation.getContactPhoneSnapshot() == null) quotation.setContactPhoneSnapshot(rfq.getContactPhoneSnapshot());
-            if (quotation.getContactAddressSnapshot() == null) quotation.setContactAddressSnapshot(rfq.getContactAddressSnapshot());
-            if (quotation.getContactMethod() == null) quotation.setContactMethod(rfq.getContactMethod());
+            if (quotation.getCustomer() == null)
+                quotation.setCustomer(rfq.getCustomer());
+            if (quotation.getAssignedSales() == null && rfq.getAssignedSales() != null)
+                quotation.setAssignedSales(rfq.getAssignedSales());
+            if (quotation.getAssignedPlanning() == null && rfq.getAssignedPlanning() != null)
+                quotation.setAssignedPlanning(rfq.getAssignedPlanning());
+            if (quotation.getContactPersonSnapshot() == null)
+                quotation.setContactPersonSnapshot(rfq.getContactPersonSnapshot());
+            if (quotation.getContactEmailSnapshot() == null)
+                quotation.setContactEmailSnapshot(rfq.getContactEmailSnapshot());
+            if (quotation.getContactPhoneSnapshot() == null)
+                quotation.setContactPhoneSnapshot(rfq.getContactPhoneSnapshot());
+            if (quotation.getContactAddressSnapshot() == null)
+                quotation.setContactAddressSnapshot(rfq.getContactAddressSnapshot());
+            if (quotation.getContactMethod() == null)
+                quotation.setContactMethod(rfq.getContactMethod());
         }
         return quotationRepository.save(quotation);
     }
@@ -139,14 +146,14 @@ public class QuotationService {
         return existing;
     }
 
-    public void delete(Long id) { 
-        quotationRepository.deleteById(id); 
+    public void delete(Long id) {
+        quotationRepository.deleteById(id);
     }
 
     // Planning Department: Tính giá báo giá từ RFQ (xem trước)
     public PriceCalculationDto calculateQuotationPrice(Long rfqId, BigDecimal profitMargin) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
-        
+
         // Kiểm tra trạng thái RFQ
         if (!"RECEIVED_BY_PLANNING".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be received by planning to calculate price");
@@ -158,16 +165,17 @@ public class QuotationService {
         BigDecimal totalProcessCost = BigDecimal.ZERO;
         BigDecimal totalBaseCost = BigDecimal.ZERO;
         BigDecimal finalTotalPrice = BigDecimal.ZERO;
-        
+
         List<PriceCalculationDto.ProductPriceDetailDto> productDetails = new java.util.ArrayList<>();
 
         for (RfqDetail rfqDetail : rfqDetails) {
             Product product = productRepository.findById(rfqDetail.getProduct().getId()).orElseThrow();
-            
+
             // Tính giá theo công thức
-            PriceCalculationDto.ProductPriceDetailDto detail = calculateProductPriceDetail(product, rfqDetail.getQuantity(), profitMargin);
+            PriceCalculationDto.ProductPriceDetailDto detail = calculateProductPriceDetail(product,
+                    rfqDetail.getQuantity(), profitMargin);
             productDetails.add(detail);
-            
+
             totalMaterialCost = totalMaterialCost.add(detail.getMaterialCostPerUnit().multiply(detail.getQuantity()));
             totalProcessCost = totalProcessCost.add(detail.getProcessCostPerUnit().multiply(detail.getQuantity()));
             totalBaseCost = totalBaseCost.add(detail.getBaseCostPerUnit().multiply(detail.getQuantity()));
@@ -185,15 +193,17 @@ public class QuotationService {
 
         return result;
     }
-    
+
     // Planning Department: Tính lại giá khi thay đổi profit margin
     public PriceCalculationDto recalculateQuotationPrice(Long rfqId, BigDecimal profitMargin) {
-        // Sử dụng cùng logic với calculateQuotationPrice nhưng không cần kiểm tra trạng thái RFQ
+        // Sử dụng cùng logic với calculateQuotationPrice nhưng không cần kiểm tra trạng
+        // thái RFQ
         // vì đã được gọi từ form đang mở
         return calculateQuotationPrice(rfqId, profitMargin);
     }
-    
-    private PriceCalculationDto.ProductPriceDetailDto calculateProductPriceDetail(Product product, BigDecimal quantity, BigDecimal profitMargin) {
+
+    private PriceCalculationDto.ProductPriceDetailDto calculateProductPriceDetail(Product product, BigDecimal quantity,
+            BigDecimal profitMargin) {
         PriceCalculationDto.ProductPriceDetailDto detail = new PriceCalculationDto.ProductPriceDetailDto();
         detail.setProductId(product.getId());
         detail.setProductName(product.getName());
@@ -205,7 +215,8 @@ public class QuotationService {
         if (productName.contains("cotton") && productName.contains("bambo")) {
             BigDecimal cottonAvgPrice = getAverageMaterialPrice("Ne 32/1CD");
             BigDecimal bambooAvgPrice = getAverageMaterialPrice("Ne 30/1");
-            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2,
+                    RoundingMode.HALF_UP);
         } else if (productName.contains("bambo")) {
             materialPricePerKg = getAverageMaterialPrice("Ne 30/1");
         } else {
@@ -225,7 +236,8 @@ public class QuotationService {
 
     // Planning Department: Tạo báo giá từ RFQ
     @Transactional
-    public Quotation createQuotationFromRfq(Long rfqId, java.lang.Long planningUserId, java.math.BigDecimal profitMargin, String capacityCheckNotes) {
+    public Quotation createQuotationFromRfq(Long rfqId, java.lang.Long planningUserId,
+            java.math.BigDecimal profitMargin, String capacityCheckNotes) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
         if (!"RECEIVED_BY_PLANNING".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be received by planning to create quotation");
@@ -235,13 +247,15 @@ public class QuotationService {
             throw new IllegalStateException("Capacity evaluation not performed yet (capacityStatus is null)");
         }
         if (!"SUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
-            // Allow INS UFFICIENT only if proposedNewDeliveryDate accepted by updating expectedDeliveryDate
+            // Allow INS UFFICIENT only if proposedNewDeliveryDate accepted by updating
+            // expectedDeliveryDate
             if ("INSUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
                 if (rfq.getProposedNewDeliveryDate() == null) {
                     throw new IllegalStateException("Capacity insufficient. Proposed new delivery date missing");
                 }
                 if (!rfq.getProposedNewDeliveryDate().equals(rfq.getExpectedDeliveryDate())) {
-                    throw new IllegalStateException("Capacity insufficient. Please update expectedDeliveryDate to proposedNewDeliveryDate before creating quotation");
+                    throw new IllegalStateException(
+                            "Capacity insufficient. Please update expectedDeliveryDate to proposedNewDeliveryDate before creating quotation");
                 }
             } else {
                 throw new IllegalStateException("RFQ capacityStatus must be SUFFICIENT to create quotation");
@@ -253,14 +267,18 @@ public class QuotationService {
         quotation.setCustomer(rfq.getCustomer());
         quotation.setValidUntil(LocalDate.now().plusDays(30));
         quotation.setStatus("DRAFT");
-        User planningUser = new User(); planningUser.setId(planningUserId);
+        User planningUser = new User();
+        planningUser.setId(planningUserId);
         quotation.setCapacityCheckedBy(planningUser);
         quotation.setCapacityCheckedAt(java.time.Instant.now());
-        quotation.setCapacityCheckNotes(capacityCheckNotes != null ? capacityCheckNotes : "Khả năng sản xuất đã được kiểm tra - Kho đủ nguyên liệu, máy móc sẵn sàng");
+        quotation.setCapacityCheckNotes(capacityCheckNotes != null ? capacityCheckNotes
+                : "Khả năng sản xuất đã được kiểm tra - Kho đủ nguyên liệu, máy móc sẵn sàng");
         quotation.setCreatedBy(planningUser);
         // NEW: carry over assignees from RFQ
-        if (rfq.getAssignedSales() != null) quotation.setAssignedSales(rfq.getAssignedSales());
-        if (rfq.getAssignedPlanning() != null) quotation.setAssignedPlanning(rfq.getAssignedPlanning());
+        if (rfq.getAssignedSales() != null)
+            quotation.setAssignedSales(rfq.getAssignedSales());
+        if (rfq.getAssignedPlanning() != null)
+            quotation.setAssignedPlanning(rfq.getAssignedPlanning());
         // NEW: copy contact snapshot fields from RFQ
         quotation.setContactPersonSnapshot(rfq.getContactPersonSnapshot());
         quotation.setContactEmailSnapshot(rfq.getContactEmailSnapshot());
@@ -286,25 +304,30 @@ public class QuotationService {
         rfqRepository.save(rfq);
         notificationService.notifyQuotationCreated(savedQuotation);
 
-        // NEW: nếu customer chưa có mật khẩu, cấp mật khẩu tạm và gửi email kèm URL báo giá
+        // NEW: nếu customer chưa có mật khẩu, cấp mật khẩu tạm và gửi email kèm URL báo
+        // giá
         Customer customer = rfq.getCustomer();
         String tempPassword = null;
-        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank())) {
-            try { 
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
+                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+            try {
                 tempPassword = customerService.provisionTemporaryPassword(customer.getId());
-                log.info("Temporary password provisioned for customer {}: {}", customer.getId(), tempPassword != null ? "***" : "null");
+                log.info("Temporary password provisioned for customer {}: {}", customer.getId(),
+                        tempPassword != null ? "***" : "null");
             } catch (Exception e) {
-                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(), e.getMessage(), e);
+                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(),
+                        e.getMessage(), e);
             }
         } else if (customer != null) {
             log.info("Customer {} already has password, skipping temporary password provision", customer.getId());
         }
-        try { 
+        try {
             emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
-            log.info("Quotation email with login sent to customer {} (tempPassword provided: {})", 
-                customer != null ? customer.getId() : "null", tempPassword != null && !tempPassword.isBlank());
+            log.info("Quotation email with login sent to customer {} (tempPassword provided: {})",
+                    customer != null ? customer.getId() : "null", tempPassword != null && !tempPassword.isBlank());
         } catch (Exception e) {
-            log.error("Failed to send quotation email with login for quotation {}: {}", savedQuotation.getId(), e.getMessage(), e);
+            log.error("Failed to send quotation email with login for quotation {}: {}", savedQuotation.getId(),
+                    e.getMessage(), e);
         }
         return savedQuotation;
     }
@@ -319,7 +342,8 @@ public class QuotationService {
         if (productName.contains("cotton") && productName.contains("bambo")) {
             BigDecimal cottonAvgPrice = getAverageMaterialPrice("Ne 32/1CD");
             BigDecimal bambooAvgPrice = getAverageMaterialPrice("Ne 30/1");
-            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+            materialPricePerKg = cottonAvgPrice.add(bambooAvgPrice).divide(new BigDecimal("2"), 2,
+                    RoundingMode.HALF_UP);
         } else if (productName.contains("bambo")) {
             materialPricePerKg = getAverageMaterialPrice("Ne 30/1");
         } else {
@@ -344,14 +368,15 @@ public class QuotationService {
 
     /**
      * Tính giá trung bình của nguyên liệu dựa trên các batch nhập khác nhau
-     * Công thức: (quantity1 * price1 + quantity2 * price2 + ...) / (quantity1 + quantity2 + ...)
+     * Công thức: (quantity1 * price1 + quantity2 * price2 + ...) / (quantity1 +
+     * quantity2 + ...)
      */
     private BigDecimal getAverageMaterialPrice(String materialCode) {
         Material material = materialRepository.findAll().stream()
                 .filter(m -> materialCode.equals(m.getCode()))
                 .findFirst()
                 .orElse(null);
-        
+
         if (material == null) {
             // Fallback về giá chuẩn nếu không tìm thấy
             return "Ne 32/1CD".equals(materialCode) ? new BigDecimal("68000") : new BigDecimal("78155");
@@ -359,7 +384,7 @@ public class QuotationService {
 
         // Lấy tất cả stock của material này
         List<MaterialStock> stocks = materialStockRepository.findByMaterialId(material.getId());
-        
+
         if (stocks.isEmpty()) {
             // Fallback về giá chuẩn nếu không có stock
             return "Ne 32/1CD".equals(materialCode) ? new BigDecimal("68000") : new BigDecimal("78155");
@@ -368,7 +393,7 @@ public class QuotationService {
         // Tính giá trung bình có trọng số
         BigDecimal totalValue = BigDecimal.ZERO;
         BigDecimal totalQuantity = BigDecimal.ZERO;
-        
+
         for (MaterialStock stock : stocks) {
             if (stock.getUnitPrice() != null && stock.getQuantity() != null) {
                 BigDecimal batchValue = stock.getQuantity().multiply(stock.getUnitPrice());
@@ -376,7 +401,7 @@ public class QuotationService {
                 totalQuantity = totalQuantity.add(stock.getQuantity());
             }
         }
-        
+
         if (totalQuantity.compareTo(BigDecimal.ZERO) > 0) {
             return totalValue.divide(totalQuantity, 2, RoundingMode.HALF_UP);
         } else {
@@ -389,29 +414,31 @@ public class QuotationService {
     public List<Quotation> findPendingQuotations() {
         return quotationRepository.findByStatus("DRAFT");
     }
-    
+
     public Page<Quotation> findPendingQuotations(Pageable pageable) {
         return quotationRepository.findByStatus("DRAFT", pageable);
     }
 
-    // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation được gán cho Sales này
+    // Sale Staff: Lấy báo giá chờ gửi nhưng chỉ những quotation được gán cho Sales
+    // này
     public List<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId) {
         return quotationRepository.findByStatusAndAssignedSales_Id("DRAFT", salesUserId);
     }
-    
+
     public Page<Quotation> findPendingQuotationsByAssignedSales(Long salesUserId, Pageable pageable) {
         return quotationRepository.findByStatusAndAssignedSales_Id("DRAFT", salesUserId, pageable);
     }
-    
+
     public List<Quotation> findByCustomerId(Long customerId) {
         return quotationRepository.findByCustomer_Id(customerId);
     }
-    
+
     public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable) {
         return quotationRepository.findByCustomer_Id(customerId, pageable);
     }
-    
-    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable, String search, String status, String selectedDate) {
+
+    public Page<Quotation> findByCustomerId(Long customerId, Pageable pageable, String search, String status,
+            String selectedDate) {
         // Parse selectedDate if provided
         java.time.LocalDate targetDate = null;
         if (selectedDate != null && !selectedDate.trim().isEmpty()) {
@@ -422,8 +449,9 @@ public class QuotationService {
             }
         }
         final java.time.LocalDate finalTargetDate = targetDate; // Make effectively final for lambda
-        
-        // If selectedDate is provided and we're sorting by validUntil, we need to fetch all and sort by distance
+
+        // If selectedDate is provided and we're sorting by validUntil, we need to fetch
+        // all and sort by distance
         if (finalTargetDate != null && pageable.getSort().getOrderFor("validUntil") != null) {
             // Fetch all quotations matching criteria (without pagination)
             List<Quotation> allQuotations;
@@ -433,47 +461,48 @@ public class QuotationService {
                 allQuotations = quotationRepository.findAll((root, query, cb) -> {
                     var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                     predicates.add(cb.equal(root.get("customer").get("id"), customerId));
-                    
+
                     if (search != null && !search.trim().isEmpty()) {
                         var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
                         predicates.add(searchPredicate);
                     }
-                    
+
                     if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                         predicates.add(cb.equal(root.get("status"), finalStatus));
                     }
-                    
+
                     return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
                 });
             } else {
                 allQuotations = quotationRepository.findByCustomer_Id(customerId);
             }
-            
+
             // Sort by distance from selected date
             allQuotations.sort((a, b) -> {
-                long distanceA = a.getValidUntil() != null 
-                    ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, a.getValidUntil()))
-                    : Long.MAX_VALUE;
-                long distanceB = b.getValidUntil() != null 
-                    ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, b.getValidUntil()))
-                    : Long.MAX_VALUE;
-                
+                long distanceA = a.getValidUntil() != null
+                        ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, a.getValidUntil()))
+                        : Long.MAX_VALUE;
+                long distanceB = b.getValidUntil() != null
+                        ? Math.abs(java.time.temporal.ChronoUnit.DAYS.between(finalTargetDate, b.getValidUntil()))
+                        : Long.MAX_VALUE;
+
                 int comparison = Long.compare(distanceA, distanceB);
                 // If sorting desc, reverse the order
-                if (pageable.getSort().getOrderFor("validUntil").getDirection() == org.springframework.data.domain.Sort.Direction.DESC) {
+                if (pageable.getSort().getOrderFor("validUntil")
+                        .getDirection() == org.springframework.data.domain.Sort.Direction.DESC) {
                     return -comparison;
                 }
                 return comparison;
             });
-            
+
             // Apply pagination
             int start = (int) pageable.getOffset();
             int end = Math.min(start + pageable.getPageSize(), allQuotations.size());
             List<Quotation> pagedContent = allQuotations.subList(start, end);
-            
+
             return new org.springframework.data.domain.PageImpl<>(pagedContent, pageable, allQuotations.size());
         }
-        
+
         // Normal pagination without date-based sorting
         Page<Quotation> quotationPage;
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
@@ -482,29 +511,29 @@ public class QuotationService {
             quotationPage = quotationRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("customer").get("id"), customerId));
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%");
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
             quotationPage = quotationRepository.findByCustomer_Id(customerId, pageable);
         }
-        
+
         return quotationPage;
     }
-    
+
     public Page<Quotation> findByAssignedSales(Long salesId, Pageable pageable) {
         return quotationRepository.findByAssignedSales_Id(salesId, pageable);
     }
-    
+
     public Page<Quotation> findByAssignedSales(Long salesId, Pageable pageable, String search, String status) {
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
@@ -512,31 +541,30 @@ public class QuotationService {
             return quotationRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("assignedSales").get("id"), salesId));
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
             return quotationRepository.findByAssignedSales_Id(salesId, pageable);
         }
     }
-    
+
     public Page<Quotation> findByAssignedPlanning(Long planningId, Pageable pageable) {
         return quotationRepository.findByAssignedPlanning_Id(planningId, pageable);
     }
-    
+
     public Page<Quotation> findByAssignedPlanning(Long planningId, Pageable pageable, String search, String status) {
         if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
@@ -544,20 +572,19 @@ public class QuotationService {
             return quotationRepository.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
                 predicates.add(cb.equal(root.get("assignedPlanning").get("id"), planningId));
-                
+
                 if (search != null && !search.trim().isEmpty()) {
                     var searchPredicate = cb.or(
-                        cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
-                        cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%")
-                    );
+                            cb.like(cb.lower(root.get("quotationNumber")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("companyName")), "%" + searchLower + "%"),
+                            cb.like(cb.lower(root.get("customer").get("contactPerson")), "%" + searchLower + "%"));
                     predicates.add(searchPredicate);
                 }
-                
+
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -572,14 +599,14 @@ public class QuotationService {
         if (!"DRAFT".equals(quotation.getStatus())) {
             throw new IllegalStateException("Quotation must be in DRAFT status to send");
         }
-        
+
         quotation.setStatus("SENT");
         quotation.setSentAt(java.time.Instant.now());
         Quotation savedQuotation = quotationRepository.save(quotation);
 
         // Gửi thông báo cho Customer
         notificationService.notifyQuotationSentToCustomer(savedQuotation);
-        
+
         // Gửi email cho Customer
         emailService.sendQuotationEmail(savedQuotation);
 
@@ -600,7 +627,7 @@ public class QuotationService {
         if (!"SENT".equals(quotation.getStatus())) {
             throw new IllegalStateException("Quotation must be SENT to approve");
         }
-        
+
         quotation.setStatus("ACCEPTED");
         quotation.setAccepted(true);
         quotation.setAcceptedAt(java.time.Instant.now());
@@ -609,8 +636,10 @@ public class QuotationService {
         // Gửi thông báo cho Sale Staff
         notificationService.notifyQuotationApproved(savedQuotation);
 
-        // Tự động tạo đơn hàng từ báo giá đã được duyệt và gửi thông báo "Order created"
-        // (createOrderFromQuotation() sẽ chịu trách nhiệm gửi notification và email xác nhận đơn hàng)
+        // Tự động tạo đơn hàng từ báo giá đã được duyệt và gửi thông báo "Order
+        // created"
+        // (createOrderFromQuotation() sẽ chịu trách nhiệm gửi notification và email xác
+        // nhận đơn hàng)
         createOrderFromQuotation(quotationId);
 
         return savedQuotation;
@@ -623,7 +652,7 @@ public class QuotationService {
         if (!"SENT".equals(quotation.getStatus())) {
             throw new IllegalStateException("Quotation must be SENT to reject");
         }
-        
+
         quotation.setStatus("REJECTED");
         quotation.setRejectedAt(java.time.Instant.now());
         Quotation savedQuotation = quotationRepository.save(quotation);
@@ -652,7 +681,7 @@ public class QuotationService {
     @Transactional
     public Object createOrderFromQuotation(Long quotationId) {
         Quotation quotation = quotationRepository.findById(quotationId).orElseThrow();
-        
+
         if (!"ACCEPTED".equals(quotation.getStatus())) {
             throw new IllegalStateException("Quotation must be ACCEPTED to create order");
         }
@@ -701,7 +730,8 @@ public class QuotationService {
             quotation.setFilePath(path);
             Quotation saved = quotationRepository.save(quotation);
 
-            // NEW: If a contract exists for this quotation and currently waiting for upload, move to pending approval
+            // NEW: If a contract exists for this quotation and currently waiting for
+            // upload, move to pending approval
             Contract contract = contractRepository.findFirstByQuotation_Id(quotationId);
             if (contract != null && "PENDING_UPLOAD".equals(contract.getStatus())) {
                 contract.setStatus("PENDING_APPROVAL");
@@ -732,7 +762,8 @@ public class QuotationService {
             Product product = productRepository.findById(rfqDetail.getProduct().getId()).orElseThrow();
 
             // Tính toán khả năng cung ứng dựa trên tồn kho nguyên liệu và năng lực sản xuất
-            BigDecimal requiredMaterialQty = rfqDetail.getQuantity().multiply(product.getStandardWeight()).divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
+            BigDecimal requiredMaterialQty = rfqDetail.getQuantity().multiply(product.getStandardWeight())
+                    .divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
             BigDecimal availableMaterialQty = materialStockRepository.findByMaterialId(product.getId()).stream()
                     .map(MaterialStock::getQuantity)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -748,10 +779,20 @@ public class QuotationService {
     public String getQuotationFileUrl(Long quotationId) {
         return fileStorageService.getQuotationFileUrl(quotationId);
     }
+
     public byte[] downloadQuotationFile(Long quotationId) {
-        try { return fileStorageService.downloadQuotationFile(quotationId); } catch (Exception e) { throw new RuntimeException(e); }
+        try {
+            return fileStorageService.downloadQuotationFile(quotationId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
+
     public String getQuotationFileName(Long quotationId) {
-        try { return fileStorageService.getQuotationFileName(quotationId); } catch (Exception e) { throw new RuntimeException(e); }
+        try {
+            return fileStorageService.getQuotationFileName(quotationId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

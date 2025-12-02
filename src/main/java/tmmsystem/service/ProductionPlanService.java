@@ -43,6 +43,7 @@ public class ProductionPlanService {
     private final PlanningTimelineCalculator timelineCalculator;
     private final SequentialCapacityCalculator sequentialCapacityCalculator;
     private final MachineAssignmentRepository machineAssignmentRepository;
+    private final BomService bomService;
     private final ProductionService productionService;
 
     @Value("${planning.autoInitStages:true}")
@@ -67,6 +68,7 @@ public class ProductionPlanService {
             MachineAssignmentRepository machineAssignmentRepository,
             PlanningTimelineCalculator timelineCalculator,
             SequentialCapacityCalculator sequentialCapacityCalculator,
+            BomService bomService,
             @Lazy ProductionService productionService) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
@@ -87,6 +89,7 @@ public class ProductionPlanService {
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.timelineCalculator = timelineCalculator;
         this.sequentialCapacityCalculator = sequentialCapacityCalculator;
+        this.bomService = bomService;
         this.productionService = productionService;
     }
 
@@ -119,6 +122,9 @@ public class ProductionPlanService {
         LocalDate contractDate = contract.getContractDate();
         LocalDate deliveryMin = delivery.minusDays(1), deliveryMax = delivery.plusDays(1);
         LocalDate contractMin = contractDate.minusDays(1), contractMax = contractDate.plusDays(1);
+        // Auto-create BOM if missing
+        bomService.ensureBomExists(product);
+
         ProductionLot lot = lotRepo.findAll().stream()
                 .filter(l -> l.getProduct() != null && l.getProduct().getId().equals(productId))
                 .filter(l -> List.of("FORMING", "READY_FOR_PLANNING").contains(l.getStatus()))

@@ -36,8 +36,8 @@ public class DataInitializer implements CommandLineRunner {
     public void run(String... args) {
         try {
             // Chỉ thực thi đổi mật khẩu cho tất cả User/Customer thành "Abcd1234"
-            resetAllUserPasswords();
-            resetAllCustomerPasswords();
+            // resetAllUserPasswords();
+            // resetAllCustomerPasswords();
 
             // Fix RFQ status on startup
             int fixedRfqs = rfqService.scanAndFixDraftRfqs();
@@ -59,7 +59,7 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Startup: Fixed missing details for Supplementary Orders");
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
-            seedQcCheckpoints();
+            // seedQcCheckpoints();
             // createSampleMachines();
             // createSampleCategoriesAndProducts();
             // createSampleMaterials();
