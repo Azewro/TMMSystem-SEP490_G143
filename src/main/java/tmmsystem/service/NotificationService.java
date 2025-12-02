@@ -660,7 +660,7 @@ public class NotificationService {
 
     @Transactional
     public void markAllAsRead(Long userId) {
-        List<Notification> unreadNotifications = notificationRepository.findByUserIdAndIsReadFalse(userId);
+        List<Notification> unreadNotifications = notificationRepository.findByUserIdAndReadFalse(userId);
         for (Notification notification : unreadNotifications) {
             notification.setRead(true);
         }
@@ -668,6 +668,6 @@ public class NotificationService {
     }
 
     public long getUnreadCount(Long userId) {
-        return notificationRepository.countByUserIdAndIsReadFalse(userId);
+        return notificationRepository.countByUserIdAndReadFalse(userId);
     }
 }
