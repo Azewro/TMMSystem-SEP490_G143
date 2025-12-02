@@ -12,7 +12,8 @@ public class SequentialCapacityCalculator {
     private final MachineRepository machineRepository;
 
     private static final BigDecimal WORKING_HOURS_PER_DAY = new BigDecimal("8");
-    private static final BigDecimal VENDOR_DYEING_DAYS = new BigDecimal("2.0");
+    // Dyeing: 5000 items / 8 hours = 625 items/hour
+    private static final BigDecimal DYEING_CAPACITY_PER_HOUR = new BigDecimal("625");
     private static final BigDecimal PACKAGING_CAPACITY_PER_HOUR = new BigDecimal("2500");
 
     public SequentialCapacityCalculator(MachineRepository machineRepository) {
@@ -36,7 +37,12 @@ public class SequentialCapacityCalculator {
 
         result.setWarpingDays(divide(totalWeightKg, warpingCapacity));
         result.setWeavingDays(divide(totalWeightKg, weavingCapacity));
-        result.setDyeingDays(VENDOR_DYEING_DAYS);
+
+        // Dyeing: 5000 items/day
+        BigDecimal totalQty = faceQty.add(bathQty).add(sportQty);
+        BigDecimal dyeingCapacityPerDay = DYEING_CAPACITY_PER_HOUR.multiply(WORKING_HOURS_PER_DAY);
+        result.setDyeingDays(divide(totalQty, dyeingCapacityPerDay));
+
         result.setCuttingDays(max(
                 divide(faceQty, cuttingCapacityFace),
                 divide(bathQty, cuttingCapacityBath),
@@ -47,7 +53,7 @@ public class SequentialCapacityCalculator {
                 divide(sportQty, sewingCapacitySport)));
 
         // Packaging: 2500 items/hour * 8 hours = 20000 items/day
-        BigDecimal totalQty = faceQty.add(bathQty).add(sportQty);
+        // totalQty is already calculated above
         BigDecimal packagingCapacityPerDay = PACKAGING_CAPACITY_PER_HOUR.multiply(WORKING_HOURS_PER_DAY);
         result.setPackagingDays(divide(totalQty, packagingCapacityPerDay));
 
