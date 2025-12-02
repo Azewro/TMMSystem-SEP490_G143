@@ -14,7 +14,7 @@ public class SequentialCapacityCalculator {
     private static final BigDecimal WORKING_HOURS_PER_DAY = new BigDecimal("8");
     // Dyeing: 5000 items / 8 hours = 625 items/hour
     private static final BigDecimal DYEING_CAPACITY_PER_HOUR = new BigDecimal("625");
-    private static final BigDecimal PACKAGING_CAPACITY_PER_HOUR = new BigDecimal("2500");
+    private static final BigDecimal PACKAGING_CAPACITY_PER_HOUR = new BigDecimal("2000");
 
     public SequentialCapacityCalculator(MachineRepository machineRepository) {
         this.machineRepository = machineRepository;
