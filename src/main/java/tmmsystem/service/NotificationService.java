@@ -34,21 +34,21 @@ public class NotificationService {
     public void notifyNewRfq(Rfq rfq) {
         // Tìm tất cả Sale Staff
         List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
+
         for (User user : saleStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
             notification.setCategory("ORDER");
             notification.setTitle("RFQ mới từ khách hàng");
-            notification.setMessage("Có RFQ mới từ khách hàng " + 
-                (rfq.getCustomer() != null ? rfq.getCustomer().getCompanyName() : "N/A") + 
-                " - RFQ #" + rfq.getRfqNumber());
+            notification.setMessage("Có RFQ mới từ khách hàng " +
+                    (rfq.getCustomer() != null ? rfq.getCustomer().getCompanyName() : "N/A") +
+                    " - RFQ #" + rfq.getRfqNumber());
             notification.setReferenceType("RFQ");
             notification.setReferenceId(rfq.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
@@ -57,19 +57,20 @@ public class NotificationService {
     public void notifyRfqForwardedToPlanning(Rfq rfq) {
         // Tìm tất cả Planning Staff
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
-        
+
         for (User user : planningStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
             notification.setCategory("ORDER");
             notification.setTitle("RFQ chuyển đến Planning");
-            notification.setMessage("RFQ #" + rfq.getRfqNumber() + " đã được chuyển đến phòng kế hoạch để kiểm tra khả năng sản xuất");
+            notification.setMessage(
+                    "RFQ #" + rfq.getRfqNumber() + " đã được chuyển đến phòng kế hoạch để kiểm tra khả năng sản xuất");
             notification.setReferenceType("RFQ");
             notification.setReferenceId(rfq.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
@@ -78,7 +79,7 @@ public class NotificationService {
     public void notifyRfqReceivedByPlanning(Rfq rfq) {
         // Thông báo cho Sale Staff rằng Planning đã nhận RFQ
         List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
+
         for (User user : saleStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
@@ -90,7 +91,7 @@ public class NotificationService {
             notification.setReferenceId(rfq.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
@@ -99,7 +100,7 @@ public class NotificationService {
     public void notifyRfqCanceled(Rfq rfq) {
         // Thông báo cho tất cả người liên quan
         List<User> allUsers = userRepository.findAll();
-        
+
         for (User user : allUsers) {
             Notification notification = new Notification();
             notification.setUser(user);
@@ -111,14 +112,15 @@ public class NotificationService {
             notification.setReferenceId(rfq.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
 
     @Transactional
     public void notifyQuotationCreated(Quotation quotation) {
-        // Nếu có assignedSales thì chỉ gửi cho Sales đó; nếu không, gửi cho tất cả Sale Staff như cũ
+        // Nếu có assignedSales thì chỉ gửi cho Sales đó; nếu không, gửi cho tất cả Sale
+        // Staff như cũ
         List<User> targets;
         if (quotation.getAssignedSales() != null) {
             targets = java.util.Collections.singletonList(quotation.getAssignedSales());
@@ -131,8 +133,8 @@ public class NotificationService {
             notification.setType("INFO");
             notification.setCategory("ORDER");
             notification.setTitle("Báo giá đã được tạo");
-            notification.setMessage("Báo giá #" + quotation.getQuotationNumber() + " đã được Planning tạo từ RFQ #" + 
-                (quotation.getRfq() != null ? quotation.getRfq().getRfqNumber() : "N/A"));
+            notification.setMessage("Báo giá #" + quotation.getQuotationNumber() + " đã được Planning tạo từ RFQ #" +
+                    (quotation.getRfq() != null ? quotation.getRfq().getRfqNumber() : "N/A"));
             notification.setReferenceType("QUOTATION");
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
@@ -155,9 +157,9 @@ public class NotificationService {
             notification.setType("INFO");
             notification.setCategory("ORDER");
             notification.setTitle("Báo giá đã gửi cho khách hàng");
-            notification.setMessage("Báo giá #" + quotation.getQuotationNumber() + " đã được gửi cho khách hàng " + 
-                (quotation.getCustomer() != null ? quotation.getCustomer().getCompanyName() : "N/A") + 
-                " với tổng giá trị " + quotation.getTotalAmount() + " VND");
+            notification.setMessage("Báo giá #" + quotation.getQuotationNumber() + " đã được gửi cho khách hàng " +
+                    (quotation.getCustomer() != null ? quotation.getCustomer().getCompanyName() : "N/A") +
+                    " với tổng giá trị " + quotation.getTotalAmount() + " VND");
             notification.setReferenceType("QUOTATION");
             notification.setReferenceId(quotation.getId());
             notification.setRead(false);
@@ -216,96 +218,99 @@ public class NotificationService {
     public void notifyOrderCreated(Contract contract) {
         // Thông báo cho Sale Staff
         List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
+
         for (User user : saleStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("SUCCESS");
             notification.setCategory("ORDER");
             notification.setTitle("Đơn hàng mới được tạo");
-            notification.setMessage("Đơn hàng #" + contract.getContractNumber() + " đã được tạo từ báo giá #" + 
-                (contract.getQuotation() != null ? contract.getQuotation().getQuotationNumber() : "N/A"));
+            notification.setMessage("Đơn hàng #" + contract.getContractNumber() + " đã được tạo từ báo giá #" +
+                    (contract.getQuotation() != null ? contract.getQuotation().getQuotationNumber() : "N/A"));
             notification.setReferenceType("CONTRACT");
             notification.setReferenceId(contract.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
 
     // ===== GIAI ĐOẠN 3: CONTRACT UPLOAD & APPROVAL NOTIFICATIONS =====
-    
+
     @Transactional
     public void notifyContractUploaded(Contract contract) {
         // Thông báo cho Director
         List<User> directors = userRepository.findByRoleName("DIRECTOR");
-        
+
         for (User user : directors) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
             notification.setCategory("CONTRACT");
             notification.setTitle("Hợp đồng mới được upload");
-            notification.setMessage("Hợp đồng #" + contract.getContractNumber() + " đã được Sale Staff upload và chờ duyệt");
+            notification.setMessage(
+                    "Hợp đồng #" + contract.getContractNumber() + " đã được Sale Staff upload và chờ duyệt");
             notification.setReferenceType("CONTRACT");
             notification.setReferenceId(contract.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyContractApproved(Contract contract) {
         // Thông báo cho Planning Department
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
-        
+
         for (User user : planningStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("SUCCESS");
             notification.setCategory("CONTRACT");
             notification.setTitle("Hợp đồng đã được duyệt");
-            notification.setMessage("Hợp đồng #" + contract.getContractNumber() + " đã được Director duyệt, có thể tạo lệnh sản xuất");
+            notification.setMessage(
+                    "Hợp đồng #" + contract.getContractNumber() + " đã được Director duyệt, có thể tạo lệnh sản xuất");
             notification.setReferenceType("CONTRACT");
             notification.setReferenceId(contract.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyContractRejected(Contract contract) {
         // Thông báo cho Sale Staff
         List<User> saleStaff = userRepository.findByRoleName("SALE_STAFF");
-        
+
         for (User user : saleStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("WARNING");
             notification.setCategory("CONTRACT");
             notification.setTitle("Hợp đồng bị từ chối");
-            notification.setMessage("Hợp đồng #" + contract.getContractNumber() + " đã bị Director từ chối, cần upload lại");
+            notification.setMessage(
+                    "Hợp đồng #" + contract.getContractNumber() + " đã bị Director từ chối, cần upload lại");
             notification.setReferenceType("CONTRACT");
             notification.setReferenceId(contract.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
 
     // ===== GIAI ĐOẠN 4: PRODUCTION ORDER CREATION & APPROVAL NOTIFICATIONS =====
-    
+
     @Transactional
     public void notifyProductionOrderCreated(ProductionOrder po) {
         // Thông báo cho Director
         List<User> directors = userRepository.findByRoleName("DIRECTOR");
-        
+
         for (User user : directors) {
             Notification notification = new Notification();
             notification.setUser(user);
@@ -317,37 +322,38 @@ public class NotificationService {
             notification.setReferenceId(po.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyProductionOrderApproved(ProductionOrder po) {
         // Thông báo cho Production Team
         List<User> productionStaff = userRepository.findByRoleName("PRODUCTION_STAFF");
-        
+
         for (User user : productionStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("SUCCESS");
             notification.setCategory("PRODUCTION");
             notification.setTitle("Lệnh sản xuất đã được duyệt");
-            notification.setMessage("Lệnh sản xuất #" + po.getPoNumber() + " đã được Director duyệt, có thể bắt đầu sản xuất");
+            notification.setMessage(
+                    "Lệnh sản xuất #" + po.getPoNumber() + " đã được Director duyệt, có thể bắt đầu sản xuất");
             notification.setReferenceType("PRODUCTION_ORDER");
             notification.setReferenceId(po.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyProductionOrderRejected(ProductionOrder po) {
         // Thông báo cho Planning Department
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
-        
+
         for (User user : planningStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
@@ -359,39 +365,40 @@ public class NotificationService {
             notification.setReferenceId(po.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     // ===== PRODUCTION PLAN WORKFLOW NOTIFICATIONS =====
-    
+
     @Transactional
     public void notifyProductionPlanCreated(tmmsystem.entity.ProductionPlan plan) {
         // Thông báo cho Director
         List<User> directors = userRepository.findByRoleName("DIRECTOR");
-        
+
         for (User user : directors) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
             notification.setCategory("PRODUCTION");
             notification.setTitle("Kế hoạch sản xuất mới được tạo");
-            notification.setMessage("Kế hoạch sản xuất #" + plan.getPlanCode() + " đã được Planning tạo và sẵn sàng để duyệt");
+            notification.setMessage(
+                    "Kế hoạch sản xuất #" + plan.getPlanCode() + " đã được Planning tạo và sẵn sàng để duyệt");
             notification.setReferenceType("PRODUCTION_PLAN");
             notification.setReferenceId(plan.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyProductionPlanSubmittedForApproval(tmmsystem.entity.ProductionPlan plan) {
         // Thông báo cho Director
         List<User> directors = userRepository.findByRoleName("DIRECTOR");
-        
+
         for (User user : directors) {
             Notification notification = new Notification();
             notification.setUser(user);
@@ -403,67 +410,70 @@ public class NotificationService {
             notification.setReferenceId(plan.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyProductionPlanApproved(tmmsystem.entity.ProductionPlan plan) {
         // Thông báo cho Planning Department
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
-        
+
         for (User user : planningStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("SUCCESS");
             notification.setCategory("PRODUCTION");
             notification.setTitle("Kế hoạch sản xuất đã được duyệt");
-            notification.setMessage("Kế hoạch sản xuất #" + plan.getPlanCode() + " đã được Director duyệt và Production Order đã được tạo tự động");
+            notification.setMessage("Kế hoạch sản xuất #" + plan.getPlanCode()
+                    + " đã được Director duyệt và Production Order đã được tạo tự động");
             notification.setReferenceType("PRODUCTION_PLAN");
             notification.setReferenceId(plan.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
-        
+
         // Thông báo cho Production Team về Production Order mới
         List<User> productionStaff = userRepository.findByRoleName("PRODUCTION_STAFF");
-        
+
         for (User user : productionStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("INFO");
             notification.setCategory("PRODUCTION");
             notification.setTitle("Production Order mới từ kế hoạch đã duyệt");
-            notification.setMessage("Production Order đã được tạo từ kế hoạch sản xuất #" + plan.getPlanCode() + " đã được duyệt");
+            notification.setMessage(
+                    "Production Order đã được tạo từ kế hoạch sản xuất #" + plan.getPlanCode() + " đã được duyệt");
             notification.setReferenceType("PRODUCTION_PLAN");
             notification.setReferenceId(plan.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
-    
+
     @Transactional
     public void notifyProductionPlanRejected(tmmsystem.entity.ProductionPlan plan) {
         // Thông báo cho Planning Department
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
-        
+
         for (User user : planningStaff) {
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setType("WARNING");
             notification.setCategory("PRODUCTION");
             notification.setTitle("Kế hoạch sản xuất bị từ chối");
-            notification.setMessage("Kế hoạch sản xuất #" + plan.getPlanCode() + " đã bị Director từ chối, cần chỉnh sửa");
+            notification
+                    .setMessage("Kế hoạch sản xuất #" + plan.getPlanCode() + " đã bị Director từ chối, cần chỉnh sửa");
             notification.setReferenceType("PRODUCTION_PLAN");
             notification.setReferenceId(plan.getId());
             notification.setRead(false);
             notification.setCreatedAt(Instant.now());
-            
+
             notificationRepository.save(notification);
         }
     }
@@ -498,8 +508,11 @@ public class NotificationService {
                 n.setType("WARNING");
                 n.setCategory("ORDER");
                 n.setTitle("Không đủ năng lực sản xuất");
-                n.setMessage("RFQ #" + rfq.getRfqNumber() + ": " + (rfq.getCapacityReason()!=null? rfq.getCapacityReason():"Không đủ công suất") +
-                        (rfq.getProposedNewDeliveryDate()!=null? ". Đề xuất ngày: "+rfq.getProposedNewDeliveryDate(): ""));
+                n.setMessage("RFQ #" + rfq.getRfqNumber() + ": "
+                        + (rfq.getCapacityReason() != null ? rfq.getCapacityReason() : "Không đủ công suất") +
+                        (rfq.getProposedNewDeliveryDate() != null
+                                ? ". Đề xuất ngày: " + rfq.getProposedNewDeliveryDate()
+                                : ""));
                 n.setReferenceType("RFQ");
                 n.setReferenceId(rfq.getId());
                 n.setRead(false);
@@ -554,7 +567,8 @@ public class NotificationService {
             n.setType("WARNING");
             n.setCategory("WORK_ORDER");
             n.setTitle("Work Order bị PM từ chối");
-            n.setMessage("WO #" + wo.getWoNumber() + " đã bị từ chối. Lý do: " + (wo.getSendStatus() != null ? wo.getSendStatus() : "N/A"));
+            n.setMessage("WO #" + wo.getWoNumber() + " đã bị từ chối. Lý do: "
+                    + (wo.getSendStatus() != null ? wo.getSendStatus() : "N/A"));
             n.setReferenceType("WORK_ORDER");
             n.setReferenceId(wo.getId());
             n.setRead(false);
@@ -588,7 +602,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public void notifyPlanningNewLotsCreated(int count){
+    public void notifyPlanningNewLotsCreated(int count) {
         List<User> planningStaff = userRepository.findByRoleName("PLANNING_STAFF");
         for (User user : planningStaff) {
             Notification n = new Notification();
@@ -606,15 +620,54 @@ public class NotificationService {
     }
 
     @Transactional
-    public void notifyUser(User user, String category, String type, String title, String message, String referenceType, Long referenceId){
-        if (user==null) return;
+    public void notifyUser(User user, String category, String type, String title, String message, String referenceType,
+            Long referenceId) {
+        if (user == null)
+            return;
         Notification n = new Notification();
-        n.setUser(user); n.setCategory(category); n.setType(type); n.setTitle(title); n.setMessage(message); n.setReferenceType(referenceType); n.setReferenceId(referenceId); n.setRead(false); n.setCreatedAt(Instant.now());
+        n.setUser(user);
+        n.setCategory(category);
+        n.setType(type);
+        n.setTitle(title);
+        n.setMessage(message);
+        n.setReferenceType(referenceType);
+        n.setReferenceId(referenceId);
+        n.setRead(false);
+        n.setCreatedAt(Instant.now());
         notificationRepository.save(n);
     }
+
     @Transactional
-    public void notifyRole(String roleName, String category, String type, String title, String message, String referenceType, Long referenceId){
+    public void notifyRole(String roleName, String category, String type, String title, String message,
+            String referenceType, Long referenceId) {
         List<User> users = userRepository.findByRoleName(roleName);
-        for (User u: users){ notifyUser(u, category, type, title, message, referenceType, referenceId); }
+        for (User u : users) {
+            notifyUser(u, category, type, title, message, referenceType, referenceId);
+        }
+    }
+
+    public List<Notification> getNotificationsForUser(Long userId) {
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    @Transactional
+    public void markAsRead(Long notificationId) {
+        Notification notification = notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new RuntimeException("Notification not found"));
+        notification.setRead(true);
+        notificationRepository.save(notification);
+    }
+
+    @Transactional
+    public void markAllAsRead(Long userId) {
+        List<Notification> unreadNotifications = notificationRepository.findByUserIdAndIsReadFalse(userId);
+        for (Notification notification : unreadNotifications) {
+            notification.setRead(true);
+        }
+        notificationRepository.saveAll(unreadNotifications);
+    }
+
+    public long getUnreadCount(Long userId) {
+        return notificationRepository.countByUserIdAndIsReadFalse(userId);
     }
 }

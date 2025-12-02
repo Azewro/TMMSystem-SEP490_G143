@@ -58,7 +58,8 @@ public class DataInitializer implements CommandLineRunner {
             productionService.fixMissingReworkDetails();
             log.info("Startup: Fixed missing details for Supplementary Orders");
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
-            // seedQcCheckpoints();
+            // Seed QC Checkpoints (Updated)
+            seedQcCheckpoints();
             // createSampleMachines();
             // createSampleCategoriesAndProducts();
             // createSampleMaterials();
@@ -99,35 +100,50 @@ public class DataInitializer implements CommandLineRunner {
     /** Seed QC checkpoints (song ngữ) nếu chưa có */
     private void seedQcCheckpoints() {
         List<QcSeed> seeds = new java.util.ArrayList<>();
-        // Cuồng mắc / Warping
-        addSeed(seeds, "WARPING", "Chất lượng sợi", "Đối chiếu thông số BOM", "AQL", true, 1);
-        addSeed(seeds, "WARPING", "Độ căng sợi", "Quan sát & đo", "AQL", true, 2);
-        addSeed(seeds, "WARPING", "Sợi mắc đều", "Quan sát", "AQL", false, 3);
-        addSeed(seeds, "WARPING", "Khổ & chiều dài cây sợi", "Đo khổ/cây", "AQL", false, 4);
 
-        // Dệt / Weaving
-        addSeed(seeds, "WEAVING", "Độ bền sợi nền", "Thử kéo", "AQL", true, 1);
-        addSeed(seeds, "WEAVING", "Hình dáng khăn", "Quan sát", "AQL", false, 2);
-        addSeed(seeds, "WEAVING", "Bề mặt vải", "Quan sát", "AQL", false, 3);
+        // WARPING (Cuồng mắc)
+        addSeed(seeds, "WARPING", "Chủng loại sợi đúng BOM", "Đối chiếu BOM", "AQL", true, 1);
+        addSeed(seeds, "WARPING", "Không lẫn cỡ sợi", "Quan sát & so mẫu", "AQL", true, 2);
+        addSeed(seeds, "WARPING", "Không sợi đứt/chùng", "Quan sát", "AQL", true, 3);
+        addSeed(seeds, "WARPING", "Độ hồ bám", "Kiểm tra độ bám hồ trên sợi", "AQL", true, 4);
+        addSeed(seeds, "WARPING", "Không dầu, bẩn", "Quan sát", "AQL", true, 5);
 
-        // Nhuộm / Dyeing
-        addSeed(seeds, "DYEING", "Màu sắc chuẩn", "So màu mẫu chuẩn", "100%", true, 1);
-        addSeed(seeds, "DYEING", "Độ bền màu", "Thử ma sát/giặt", "AQL", true, 2);
-        addSeed(seeds, "DYEING", "Vết loang/đốm", "Quan sát", "AQL", false, 3);
+        // WEAVING (Dệt)
+        addSeed(seeds, "WEAVING", "Mật độ dệt", "Đo mặt độ warp/weft", "AQL", true, 1);
+        addSeed(seeds, "WEAVING", "Độ rộng vải", "Đo khổ vải", "AQL", true, 2);
+        addSeed(seeds, "WEAVING", "Mặt vòng", "Quan sát lỗi vòng sợi", "AQL", true, 3);
+        addSeed(seeds, "WEAVING", "Sọc", "Quan sát sọc dọc/ngang", "AQL", true, 4);
+        addSeed(seeds, "WEAVING", "Vải vân", "Quan sát vải xoắn/vênh", "AQL", true, 5);
+        addSeed(seeds, "WEAVING", "Độ bền kéo Warp/Weft", "Thử kéo hai chiều", "AQL", true, 6);
 
-        // Cắt / Cutting
-        addSeed(seeds, "CUTTING", "Kích thước chuẩn", "Đo từng chi tiết", "100%", true, 1);
-        addSeed(seeds, "CUTTING", "Đường cắt sạch", "Quan sát", "AQL", true, 2);
-        addSeed(seeds, "CUTTING", "Độ chính xác về kích thước", "Measure", "100%", true, 1);
+        // DYEING (Nhuộm)
+        addSeed(seeds, "DYEING", "Không lem/loang", "Quan sát trên bề mặt", "AQL", true, 1);
+        addSeed(seeds, "DYEING", "Ánh sáng", "So màu dưới ánh sáng chuẩn", "AQL", true, 2);
+        addSeed(seeds, "DYEING", "Độ co", "Đo độ co theo tiêu chuẩn", "AQL", true, 3);
+        addSeed(seeds, "DYEING", "Không dư hóa chất", "Kiểm tra hóa chất dư", "AQL", true, 4);
+        addSeed(seeds, "DYEING", "Độ đều màu", "Quan sát và so màu", "AQL", true, 5);
+        addSeed(seeds, "DYEING", "Độ bền màu", "Kiểm tra ma sát/giặt", "AQL", true, 6);
+        addSeed(seeds, "DYEING", "Độ co rút sau nhuộm", "Đo co rút sau xử lý", "AQL", true, 7);
+        addSeed(seeds, "DYEING", "Độ mềm", "Kiểm tra cảm quan độ mềm vải", "AQL", false, 8); // is_mandatory = 0
 
-        // May / Hemming
+        // CUTTING (Cắt)
+        addSeed(seeds, "CUTTING", "Kích thước chuẩn", "Đo kích thước chi tiết", "100%", true, 1);
+        addSeed(seeds, "CUTTING", "Đường cắt thẳng, không tưa sợi", "Quan sát", "AQL", true, 2);
+        addSeed(seeds, "CUTTING", "Góc vuông vắn, mép sạch", "Quan sát", "AQL", true, 3);
+        addSeed(seeds, "CUTTING", "Cắt đúng layout", "Đối chiếu layout", "AQL", true, 4);
+        addSeed(seeds, "CUTTING", "Không bị cuộn biên / lệch biên", "Quan sát", "AQL", true, 5);
+
+        // HEMMING (May)
         addSeed(seeds, "HEMMING", "Đường may thẳng", "Quan sát", "AQL", true, 1);
-        addSeed(seeds, "HEMMING", "Mật độ mũi chỉ", "Đếm/đo", "AQL", true, 2);
+        addSeed(seeds, "HEMMING", "Mũi chỉ đều", "Đếm & kiểm", "AQL", true, 2);
+        addSeed(seeds, "HEMMING", "Không đứt mũi, bỏ mũi", "Quan sát", "AQL", true, 3);
+        addSeed(seeds, "HEMMING", "Không nhăn, vặn mép khăn", "Quan sát", "AQL", true, 4);
+        addSeed(seeds, "HEMMING", "Gắn nhãn đúng vị trí, không lệch", "Đối chiếu vị trí nhãn", "AQL", true, 5);
 
-        // Đóng gói / Packaging
-        addSeed(seeds, "PACKAGING", "Đủ phụ kiện kèm", "Đếm", "AQL", true, 1);
-        addSeed(seeds, "PACKAGING", "Tem/nhãn đúng chuẩn", "Đối chiếu", "AQL", true, 2);
-        addSeed(seeds, "PACKAGING", "Phụ kiện đầy đủ", "Đếm", "AQL", true, 1);
+        // PACKAGING (Đóng gói)
+        addSeed(seeds, "PACKAGING", "Sạch, không sợi thừa", "Quan sát", "AQL", true, 1);
+        addSeed(seeds, "PACKAGING", "Gấp đúng quy cách", "Đối chiếu hướng dẫn gấp", "AQL", true, 2);
+        addSeed(seeds, "PACKAGING", "Đủ số lượng hàng", "Đếm số lượng", "100%", true, 3);
 
         int inserted = 0;
         for (QcSeed seed : seeds) {
