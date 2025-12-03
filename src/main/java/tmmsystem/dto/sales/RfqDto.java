@@ -1,13 +1,15 @@
 package tmmsystem.dto.sales;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
-@Getter @Setter
+@Getter
+@Setter
 public class RfqDto {
     private Long id;
     private String rfqNumber;
@@ -27,7 +29,8 @@ public class RfqDto {
     private Instant updatedAt;
     private List<RfqDetailDto> details;
 
-    // Thông tin dành cho Public Form khi khách không đăng nhập (from snapshot or fallback customer)
+    // Thông tin dành cho Public Form khi khách không đăng nhập (from snapshot or
+    // fallback customer)
     private String contactPerson;
     private String contactEmail;
     private String contactPhone;

@@ -304,31 +304,37 @@ public class QuotationService {
         rfqRepository.save(rfq);
         notificationService.notifyQuotationCreated(savedQuotation);
 
-        // NEW: nếu customer chưa có mật khẩu, cấp mật khẩu tạm và gửi email kèm URL báo
-        // giá
-        Customer customer = rfq.getCustomer();
-        String tempPassword = null;
-        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
-                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
-            try {
-                tempPassword = customerService.provisionTemporaryPassword(customer.getId());
-                log.info("Temporary password provisioned for customer {}: {}", customer.getId(),
-                        tempPassword != null ? "***" : "null");
-            } catch (Exception e) {
-                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(),
-                        e.getMessage(), e);
-            }
-        } else if (customer != null) {
-            log.info("Customer {} already has password, skipping temporary password provision", customer.getId());
-        }
-        try {
-            emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
-            log.info("Quotation email with login sent to customer {} (tempPassword provided: {})",
-                    customer != null ? customer.getId() : "null", tempPassword != null && !tempPassword.isBlank());
-        } catch (Exception e) {
-            log.error("Failed to send quotation email with login for quotation {}: {}", savedQuotation.getId(),
-                    e.getMessage(), e);
-        }
+        // REMOVED: Email is now sent manually by Sales in sendQuotationToCustomer
+        // Customer customer = rfq.getCustomer();
+        // String tempPassword = null;
+        // if (customer != null && (customer.getPassword() == null ||
+        // customer.getPassword().isBlank()
+        // || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+        // try {
+        // tempPassword = customerService.provisionTemporaryPassword(customer.getId());
+        // log.info("Temporary password provisioned for customer {}: {}",
+        // customer.getId(),
+        // tempPassword != null ? "***" : "null");
+        // } catch (Exception e) {
+        // log.error("Failed to provision temporary password for customer {}: {}",
+        // customer.getId(),
+        // e.getMessage(), e);
+        // }
+        // } else if (customer != null) {
+        // log.info("Customer {} already has password, skipping temporary password
+        // provision", customer.getId());
+        // }
+        // try {
+        // emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
+        // log.info("Quotation email with login sent to customer {} (tempPassword
+        // provided: {})",
+        // customer != null ? customer.getId() : "null", tempPassword != null &&
+        // !tempPassword.isBlank());
+        // } catch (Exception e) {
+        // log.error("Failed to send quotation email with login for quotation {}: {}",
+        // savedQuotation.getId(),
+        // e.getMessage(), e);
+        // }
         return savedQuotation;
     }
 
@@ -608,7 +614,26 @@ public class QuotationService {
         notificationService.notifyQuotationSentToCustomer(savedQuotation);
 
         // Gửi email cho Customer
-        emailService.sendQuotationEmail(savedQuotation);
+        // Gửi email cho Customer (kèm mật khẩu tạm nếu cần)
+        Customer customer = quotation.getCustomer();
+        String tempPassword = null;
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
+                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+            try {
+                tempPassword = customerService.provisionTemporaryPassword(customer.getId());
+                log.info("Temporary password provisioned for customer {}: {}", customer.getId(),
+                        tempPassword != null ? "***" : "null");
+            } catch (Exception e) {
+                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(),
+                        e.getMessage(), e);
+            }
+        }
+
+        if (tempPassword != null) {
+            emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
+        } else {
+            emailService.sendQuotationEmail(savedQuotation);
+        }
 
         return savedQuotation;
     }
