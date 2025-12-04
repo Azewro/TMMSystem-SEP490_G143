@@ -1,13 +1,23 @@
 package tmmsystem.dto.user;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import tmmsystem.validation.OptionalPasswordStrength;
+import tmmsystem.validation.ValidName;
+import tmmsystem.validation.VietnamesePhoneNumber;
 
 @Schema(name = "UpdateUserRequest")
 public class UpdateUserRequest {
+    @NotBlank(message = "Họ và tên là bắt buộc")
+    @ValidName
+    @Size(max = 255, message = "Họ và tên không được quá 255 ký tự")
     @Schema(description = "Tên hiển thị", example = "User Name")
     private String name;
 
+    @NotBlank(message = "Số điện thoại là bắt buộc")
+    @VietnamesePhoneNumber
+    @Size(max = 30, message = "Số điện thoại không được quá 30 ký tự")
     @Schema(description = "SĐT", example = "0123456789")
     private String phoneNumber;
 
@@ -20,7 +30,8 @@ public class UpdateUserRequest {
     @Schema(description = "Trạng thái xác minh")
     private Boolean verified;
 
-    @Size(min = 0, max = 100)
+    @Size(min = 8, max = 100, message = "Mật khẩu phải có ít nhất 8 ký tự.")
+    @OptionalPasswordStrength
     @Schema(description = "Mật khẩu mới (tùy chọn)", example = "NewPass1")
     private String password;
 

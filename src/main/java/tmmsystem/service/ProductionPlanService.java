@@ -524,12 +524,20 @@ public class ProductionPlanService {
             // .orElseThrow(() -> new RuntimeException("Machine not found")));
         }
         if (req.getInChargeUserId() != null) {
-            stage.setInChargeUser(userRepo.findById(req.getInChargeUserId())
-                    .orElseThrow(() -> new RuntimeException("User not found")));
+            User u = userRepo.findById(req.getInChargeUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            if (!Boolean.TRUE.equals(u.getActive())) {
+                throw new RuntimeException("Người phụ trách đã bị vô hiệu hóa.");
+            }
+            stage.setInChargeUser(u);
         }
         if (req.getQcUserId() != null) {
-            stage.setQcUser(
-                    userRepo.findById(req.getQcUserId()).orElseThrow(() -> new RuntimeException("User not found")));
+            User u = userRepo.findById(req.getQcUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            if (!Boolean.TRUE.equals(u.getActive())) {
+                throw new RuntimeException("Người kiểm tra (QC) đã bị vô hiệu hóa.");
+            }
+            stage.setQcUser(u);
         }
         if (req.getPlannedStartTime() != null) {
             stage.setPlannedStartTime(req.getPlannedStartTime());

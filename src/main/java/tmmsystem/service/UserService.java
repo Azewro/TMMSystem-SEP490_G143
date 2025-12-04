@@ -28,8 +28,9 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final MailService mailService;
-    
-    public UserService(UserRepository userRepo, RoleRepository roleRepository, PasswordEncoder passwordEncoder, JwtService jwtService, MailService mailService) {
+
+    public UserService(UserRepository userRepo, RoleRepository roleRepository, PasswordEncoder passwordEncoder,
+            JwtService jwtService, MailService mailService) {
         this.userRepo = userRepo;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -37,25 +38,38 @@ public class UserService {
         this.mailService = mailService;
     }
 
-    public LoginResponse authenticate(String email, String password){
+    public LoginResponse authenticate(String email, String password) {
         return userRepo.findByEmail(email)
                 .filter(u -> passwordEncoder.matches(password, u.getPassword()) && Boolean.TRUE.equals(u.getActive()))
                 .map(u -> {
                     String token = jwtService.generateToken(u.getEmail(), java.util.Map.of(
                             "uid", u.getId(),
-                            "role", u.getRole().getName()
-                    ));
+                            "role", u.getRole().getName()));
                     long expiresIn = jwtService.getExpirationMillis();
-                    return new LoginResponse(u.getId(), u.getName(), u.getEmail(), u.getRole().getName(), u.getActive(), token, expiresIn, u.getEmployeeCode());
+                    return new LoginResponse(u.getId(), u.getName(), u.getEmail(), u.getRole().getName(), u.getActive(),
+                            token, expiresIn, u.getEmployeeCode());
                 })
                 .orElse(null);
     }
 
-    public List<User> findAll(){ return userRepo.findAll(); }
-    public boolean existsByEmail(String email) { return userRepo.existsByEmail(email); }
+    public List<User> findAll() {
+        return userRepo.findAll();
+    }
+
+    public boolean existsByEmail(String email) {
+        return userRepo.existsByEmail(email);
+    }
 
     @Transactional
-    public void setActive(Long id, boolean active){
+    public void setActive(Long id, boolean active) {
+        if (!active) {
+            String currentEmail = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                    .getAuthentication().getName();
+            User currentUser = userRepo.findByEmail(currentEmail).orElse(null);
+            if (currentUser != null && currentUser.getId().equals(id)) {
+                throw new RuntimeException("Bạn không thể tự vô hiệu hóa tài khoản của chính mình.");
+            }
+        }
         User u = userRepo.findById(id).orElseThrow();
         u.setActive(active);
     }
@@ -72,6 +86,10 @@ public class UserService {
         }
         if (request.newPassword() == null || request.newPassword().isBlank()) {
             throw new RuntimeException("New password must not be empty");
+        }
+        // Validate new password is not the same as current password
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("Mật khẩu mới không được trùng với mật khẩu hiện tại.");
         }
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         // save is optional due to transactional dirty checking but keep explicit
@@ -138,47 +156,47 @@ public class UserService {
         }
         return sb.toString();
     }
+
     public List<UserDto> getAllUsers() {
         return userRepo.findAll()
                 .stream()
                 .map(UserMapper::toDto)
                 .collect(Collectors.toList());
     }
-    
+
     public Page<UserDto> getAllUsers(Pageable pageable) {
         return userRepo.findAll(pageable)
                 .map(UserMapper::toDto);
     }
-    
+
     public Page<UserDto> getAllUsers(Pageable pageable, String search, String roleName, Boolean isActive) {
         Page<User> userPage;
-        
+
         // Build query conditions
         if (search != null && !search.trim().isEmpty()) {
             String searchLower = search.trim().toLowerCase();
             // Search in name, email, phoneNumber, or role name
             userPage = userRepo.findAll((root, query, cb) -> {
                 var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                
+
                 // Search predicate
                 var searchPredicate = cb.or(
-                    cb.like(cb.lower(root.get("name")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("email")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("phoneNumber")), "%" + searchLower + "%"),
-                    cb.like(cb.lower(root.get("role").get("name")), "%" + searchLower + "%")
-                );
+                        cb.like(cb.lower(root.get("name")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("email")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("phoneNumber")), "%" + searchLower + "%"),
+                        cb.like(cb.lower(root.get("role").get("name")), "%" + searchLower + "%"));
                 predicates.add(searchPredicate);
-                
+
                 // Role filter
                 if (roleName != null && !roleName.trim().isEmpty()) {
                     predicates.add(cb.equal(root.get("role").get("name"), roleName));
                 }
-                
+
                 // Status filter
                 if (isActive != null) {
                     predicates.add(cb.equal(root.get("active"), isActive));
                 }
-                
+
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
             }, pageable);
         } else {
@@ -186,22 +204,22 @@ public class UserService {
             if (roleName != null || isActive != null) {
                 userPage = userRepo.findAll((root, query, cb) -> {
                     var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                    
+
                     if (roleName != null && !roleName.trim().isEmpty()) {
                         predicates.add(cb.equal(root.get("role").get("name"), roleName));
                     }
-                    
+
                     if (isActive != null) {
                         predicates.add(cb.equal(root.get("active"), isActive));
                     }
-                    
+
                     return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
                 }, pageable);
             } else {
                 userPage = userRepo.findAll(pageable);
             }
         }
-        
+
         return userPage.map(UserMapper::toDto);
     }
 
@@ -216,14 +234,14 @@ public class UserService {
         if (userRepo.existsByEmail(user.getEmail())) {
             throw new RuntimeException("Email đã được sử dụng");
         }
-        
+
         // Check phone number duplicate (if provided)
         if (user.getPhoneNumber() != null && !user.getPhoneNumber().isBlank()) {
             if (userRepo.existsByPhoneNumber(user.getPhoneNumber())) {
                 throw new RuntimeException("Số điện thoại đã được sử dụng");
             }
         }
-        
+
         if (user.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
@@ -278,6 +296,14 @@ public class UserService {
         user.setAvatar(updated.getAvatar());
         // Only update active and verified if explicitly provided
         if (updated.getActive() != null) {
+            if (Boolean.FALSE.equals(updated.getActive())) {
+                String currentEmail = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication().getName();
+                User currentUser = userRepo.findByEmail(currentEmail).orElse(null);
+                if (currentUser != null && currentUser.getId().equals(id)) {
+                    throw new RuntimeException("Bạn không thể tự vô hiệu hóa tài khoản của chính mình.");
+                }
+            }
             user.setActive(updated.getActive());
         }
         if (updated.getVerified() != null) {

@@ -337,6 +337,10 @@ public class CustomerService {
         if (newPassword == null || newPassword.isBlank()) {
             throw new RuntimeException("New password must not be empty");
         }
+        // Validate new password is not the same as current password
+        if (customer.getPassword() != null && passwordEncoder.matches(newPassword, customer.getPassword())) {
+            throw new IllegalArgumentException("Mật khẩu mới không được trùng với mật khẩu hiện tại.");
+        }
         customer.setPassword(passwordEncoder.encode(newPassword));
         customer.setForcePasswordChange(false); // đã đổi xong lần đầu
         customerRepository.save(customer);

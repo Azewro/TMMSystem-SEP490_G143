@@ -57,6 +57,15 @@ public class MachineController {
     @PostMapping
     public MachineDto create(
             @RequestBody(description = "Payload tạo máy", required = true, content = @Content(schema = @Schema(implementation = MachineRequest.class))) @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
+        // Validate specifications JSON
+        if (body.getSpecifications() != null && !body.getSpecifications().trim().isEmpty()) {
+            List<String> specErrors = tmmsystem.util.MachineSpecificationsValidator.validate(
+                    body.getSpecifications(), body.getType());
+            if (!specErrors.isEmpty()) {
+                throw new IllegalArgumentException(String.join("; ", specErrors));
+            }
+        }
+        
         tmmsystem.entity.Machine e = new tmmsystem.entity.Machine();
         e.setCode(body.getCode());
         e.setName(body.getName());
@@ -76,6 +85,15 @@ public class MachineController {
     public MachineDto update(
             @PathVariable Long id,
             @RequestBody(description = "Payload cập nhật máy", required = true, content = @Content(schema = @Schema(implementation = MachineRequest.class))) @Valid @org.springframework.web.bind.annotation.RequestBody MachineRequest body) {
+        // Validate specifications JSON
+        if (body.getSpecifications() != null && !body.getSpecifications().trim().isEmpty()) {
+            List<String> specErrors = tmmsystem.util.MachineSpecificationsValidator.validate(
+                    body.getSpecifications(), body.getType());
+            if (!specErrors.isEmpty()) {
+                throw new IllegalArgumentException(String.join("; ", specErrors));
+            }
+        }
+        
         tmmsystem.entity.Machine e = new tmmsystem.entity.Machine();
         e.setCode(body.getCode());
         e.setName(body.getName());

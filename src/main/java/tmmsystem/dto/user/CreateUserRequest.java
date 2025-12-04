@@ -2,20 +2,31 @@ package tmmsystem.dto.user;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
+import tmmsystem.validation.ValidName;
+import tmmsystem.validation.VietnamesePhoneNumber;
 
 @Schema(name = "CreateUserRequest")
 public class CreateUserRequest {
-    @Email @NotBlank @Size(max = 150)
+    @NotBlank(message = "Email là bắt buộc")
+    @Email(message = "Email không hợp lệ.")
+    @Size(max = 150, message = "Email không được quá 150 ký tự")
     @Schema(description = "Email đăng nhập", example = "user@example.com", requiredMode = Schema.RequiredMode.REQUIRED)
     private String email;
 
-    @NotBlank @Size(min = 6, max = 100)
+    @NotBlank(message = "Mật khẩu là bắt buộc")
+    @Size(min = 8, max = 100, message = "Mật khẩu phải có ít nhất 8 ký tự.")
     @Schema(description = "Mật khẩu", example = "Passw0rd", requiredMode = Schema.RequiredMode.REQUIRED)
     private String password;
 
+    @NotBlank(message = "Họ và tên là bắt buộc")
+    @ValidName
+    @Size(max = 255, message = "Họ và tên không được quá 255 ký tự")
     @Schema(description = "Tên hiển thị", example = "User Name")
     private String name;
 
+    @NotBlank(message = "Số điện thoại là bắt buộc")
+    @VietnamesePhoneNumber
+    @Size(max = 30, message = "Số điện thoại không được quá 30 ký tự")
     @Schema(description = "SĐT", example = "0123456789")
     private String phoneNumber;
 

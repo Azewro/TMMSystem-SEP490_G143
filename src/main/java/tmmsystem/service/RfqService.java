@@ -257,6 +257,11 @@ public class RfqService {
                 && (dto.getContactPhone() == null || dto.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Public submission must provide contactEmail or contactPhone");
         }
+        
+        // Validate contactAddress is not empty (frontend sends full address string)
+        if (dto.getContactAddress() == null || dto.getContactAddress().trim().isEmpty()) {
+            throw new IllegalArgumentException("Vui lòng điền đầy đủ địa chỉ nhận hàng.");
+        }
 
         String normEmail = normalizeEmail(dto.getContactEmail());
         String normPhone = normalizePhone(dto.getContactPhone());
@@ -343,6 +348,11 @@ public class RfqService {
         if ((req.getContactEmail() == null || req.getContactEmail().isBlank())
                 && (req.getContactPhone() == null || req.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Must provide contactEmail or contactPhone");
+        }
+        
+        // Validate contactAddress is not empty (frontend sends full address string)
+        if (req.getContactAddress() == null || req.getContactAddress().trim().isEmpty()) {
+            throw new IllegalArgumentException("Vui lòng điền đầy đủ địa chỉ nhận hàng.");
         }
         String email = normalizeEmail(req.getContactEmail());
         String phone = normalizePhone(req.getContactPhone());
@@ -668,7 +678,9 @@ public class RfqService {
     public Rfq assignSales(Long rfqId, Long salesId, String employeeCode) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
         if (!"DRAFT".equals(rfq.getStatus()))
-            throw new IllegalStateException("Chỉ gán Sales khi RFQ ở DRAFT");
+            throw new IllegalStateException(
+                    "Chỉ có thể phân công nhân viên kinh doanh khi yêu cầu báo giá đang ở trạng thái DRAFT. Trạng thái hiện tại: "
+                            + rfq.getStatus());
         if (salesId == null && (employeeCode == null || employeeCode.isBlank())) {
             throw new IllegalArgumentException("Thiếu assignedSalesId hoặc employeeCode");
         }
@@ -686,6 +698,11 @@ public class RfqService {
         String roleName = salesUser.getRole() != null ? salesUser.getRole().getName() : null;
         if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff");
+        }
+
+        if (!Boolean.TRUE.equals(salesUser.getActive())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Nhân viên này đã bị vô hiệu hóa, không thể phân công.");
         }
 
         rfq.setAssignedSales(salesUser);

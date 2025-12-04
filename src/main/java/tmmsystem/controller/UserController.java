@@ -18,6 +18,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import tmmsystem.dto.PageResponse;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -49,7 +50,7 @@ public class UserController {
     public UserDto create(
             @RequestBody(description = "Payload tạo user", required = true,
                     content = @Content(schema = @Schema(implementation = CreateUserRequest.class)))
-            @org.springframework.web.bind.annotation.RequestBody CreateUserRequest req) {
+            @Valid @org.springframework.web.bind.annotation.RequestBody CreateUserRequest req) {
         User user = new User();
         user.setEmail(req.getEmail());
         user.setPassword(req.getPassword());
@@ -69,7 +70,7 @@ public class UserController {
             @PathVariable Long id,
             @RequestBody(description = "Payload cập nhật user", required = true,
                     content = @Content(schema = @Schema(implementation = UpdateUserRequest.class)))
-            @org.springframework.web.bind.annotation.RequestBody UpdateUserRequest req) {
+            @Valid @org.springframework.web.bind.annotation.RequestBody UpdateUserRequest req) {
         User updated = new User();
         updated.setName(req.getName());
         updated.setPhoneNumber(req.getPhoneNumber());

@@ -1,5 +1,7 @@
 package tmmsystem.controller;
 
+import jakarta.validation.Valid;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -75,7 +77,14 @@ public class MaterialStockManagementController {
             description = "Production Manager tạo bản ghi nhập kho nguyên liệu mới")
     @PostMapping
     public MaterialStockDto create(
-            @RequestBody MaterialStockDto body) {
+            @Valid @RequestBody MaterialStockDto body) {
+        // Validate expiryDate >= receivedDate
+        if (body.getExpiryDate() != null && body.getReceivedDate() != null) {
+            if (body.getExpiryDate().isBefore(body.getReceivedDate())) {
+                throw new IllegalArgumentException("Ngày hết hạn phải sau ngày nhập hàng");
+            }
+        }
+        
         MaterialStock stock = new MaterialStock();
         if (body.getMaterialId() != null) {
             Material material = new Material();
@@ -98,7 +107,14 @@ public class MaterialStockManagementController {
     @PutMapping("/{id}")
     public MaterialStockDto update(
             @Parameter(description = "ID nhập kho") @PathVariable Long id,
-            @RequestBody MaterialStockDto body) {
+            @Valid @RequestBody MaterialStockDto body) {
+        // Validate expiryDate >= receivedDate
+        if (body.getExpiryDate() != null && body.getReceivedDate() != null) {
+            if (body.getExpiryDate().isBefore(body.getReceivedDate())) {
+                throw new IllegalArgumentException("Ngày hết hạn phải sau ngày nhập hàng");
+            }
+        }
+        
         MaterialStock stock = new MaterialStock();
         if (body.getMaterialId() != null) {
             Material material = new Material();

@@ -1,20 +1,46 @@
 package tmmsystem.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import tmmsystem.validation.TaxCode;
+import tmmsystem.validation.ValidName;
+import tmmsystem.validation.VietnamesePhoneNumber;
 
 public class CustomerUpdateRequest {
+    @NotBlank(message = "Tên công ty là bắt buộc")
+    @Size(max = 255, message = "Tên công ty không được quá 255 ký tự")
     @Schema(description = "Tên công ty")
     private String companyName;
+    
+    @NotBlank(message = "Người liên hệ là bắt buộc")
+    @ValidName
+    @Size(max = 150, message = "Người liên hệ không được quá 150 ký tự")
     @Schema(description = "Người liên hệ chính")
     private String contactPerson;
+    
+    @NotBlank(message = "Email là bắt buộc")
+    @Email(message = "Email không hợp lệ.")
+    @Size(max = 150, message = "Email không được quá 150 ký tự")
     @Schema(description = "Email đăng nhập")
     private String email;
+    
+    @NotBlank(message = "Số điện thoại là bắt buộc")
+    @VietnamesePhoneNumber
+    @Size(max = 30, message = "Số điện thoại không được quá 30 ký tự")
     @Schema(description = "SĐT")
     private String phoneNumber;
     @Schema(description = "Vị trí (Giám đốc, Sales, HR, ...)")
     private String position;
+    @NotBlank(message = "Địa chỉ là bắt buộc")
+    @Size(max = 1000, message = "Địa chỉ không được quá 1000 ký tự")
     @Schema(description = "Địa chỉ")
     private String address;
+    
+    // TaxCode is optional - only validate format if provided
+    @TaxCode
+    @Size(max = 50, message = "Mã số thuế không được quá 50 ký tự")
     @Schema(description = "Mã số thuế")
     private String taxCode;
     @Schema(description = "Ngành nghề")

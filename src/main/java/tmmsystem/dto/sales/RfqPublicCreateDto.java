@@ -1,10 +1,14 @@
 package tmmsystem.dto.sales;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import tmmsystem.validation.ExpectedDeliveryDate;
+import tmmsystem.validation.VietnamesePhoneNumber;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -14,13 +18,15 @@ import java.util.List;
 public class RfqPublicCreateDto {
     private String rfqNumber;
 
-    @NotBlank(message = "contactPerson is required")
+    @NotBlank(message = "Họ và tên là bắt buộc.")
     private String contactPerson;
 
-    @Email(message = "contactEmail must be a valid email")
+    @NotBlank(message = "Email là bắt buộc.")
+    @Email(message = "Email không hợp lệ.")
     private String contactEmail;
 
-    @Pattern(regexp = "^$|^[0-9+\\-() ]{6,20}$", message = "contactPhone must be a valid phone number")
+    @NotBlank(message = "Số điện thoại là bắt buộc.")
+    @VietnamesePhoneNumber
     private String contactPhone;
 
     private String contactAddress;
@@ -28,11 +34,18 @@ public class RfqPublicCreateDto {
     private String contactMethod; // EMAIL | PHONE (optional -> infer)
 
     private String sourceType;
+    
+    @NotNull(message = "Ngày giao hàng mong muốn là bắt buộc.")
+    @ExpectedDeliveryDate
     private LocalDate expectedDeliveryDate;
     private String status;
     private Boolean isSent;
     private String notes;
     private Instant approvalDate;
+    
+    @NotNull(message = "Danh sách sản phẩm là bắt buộc")
+    @NotEmpty(message = "RFQ phải có ít nhất một sản phẩm.")
+    @Valid
     private List<RfqDetailDto> details;
 
     // Optional: if a sale staff fills employeeCode, auto-assign if valid

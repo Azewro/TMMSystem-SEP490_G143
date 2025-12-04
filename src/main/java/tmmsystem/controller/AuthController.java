@@ -29,33 +29,33 @@ public class AuthController {
     }
 
     @PostMapping("/user/login")
-    public ResponseEntity<?> userLogin(@RequestBody LoginRequest req){
+    public ResponseEntity<?> userLogin(@Valid @RequestBody LoginRequest req){
         LoginResponse userRes = userService.authenticate(req.email(), req.password());
         if (userRes != null) { return ResponseEntity.ok(userRes); }
         return ResponseEntity.status(401).body("Invalid credentials or inactive");
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest req){
+    public ResponseEntity<?> changePassword(@Valid @RequestBody ChangePasswordRequest req){
         try { userService.changePassword(req); return ResponseEntity.ok().build(); }
         catch (Exception ex) { return ResponseEntity.badRequest().body("Error: " + ex.getMessage()); }
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest req){
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest req){
         try { userService.requestPasswordReset(req); return ResponseEntity.ok().build(); }
         catch (Exception ex) { return ResponseEntity.badRequest().body("Error: " + ex.getMessage()); }
     }
 
     @PostMapping("/verify-reset-code")
-    public ResponseEntity<?> verifyResetCode(@RequestBody VerifyResetCodeRequest req){
+    public ResponseEntity<?> verifyResetCode(@Valid @RequestBody VerifyResetCodeRequest req){
         try { userService.verifyCodeAndResetPassword(req); return ResponseEntity.ok().build(); }
         catch (Exception ex) { return ResponseEntity.badRequest().body("Error: " + ex.getMessage()); }
     }
 
     // ===== Customer password login & change =====
     @PostMapping("/customer/login")
-    public ResponseEntity<?> customerPasswordLogin(@RequestBody LoginRequest req) {
+    public ResponseEntity<?> customerPasswordLogin(@Valid @RequestBody LoginRequest req) {
         try {
             var key = req.email(); // field 'email' in DTO will carry email or phone
             var res = customerService.customerPasswordLoginEmailOrPhone(key, req.password());
@@ -66,13 +66,13 @@ public class AuthController {
     }
 
     @PostMapping("/customer/forgot-password")
-    public ResponseEntity<?> customerForgotPassword(@RequestBody tmmsystem.dto.auth.ForgotPasswordRequest req) {
+    public ResponseEntity<?> customerForgotPassword(@Valid @RequestBody tmmsystem.dto.auth.ForgotPasswordRequest req) {
         try { customerService.requestCustomerPasswordReset(req.email()); return ResponseEntity.ok().build(); }
         catch (RuntimeException ex) { return ResponseEntity.badRequest().body(ex.getMessage()); }
     }
 
     @PostMapping("/customer/verify-reset-code")
-    public ResponseEntity<?> customerVerifyResetCode(@RequestBody tmmsystem.dto.auth.VerifyResetCodeRequest req) {
+    public ResponseEntity<?> customerVerifyResetCode(@Valid @RequestBody tmmsystem.dto.auth.VerifyResetCodeRequest req) {
         try { customerService.verifyCustomerResetCode(req.email(), req.code()); return ResponseEntity.ok().build(); }
         catch (RuntimeException ex) { return ResponseEntity.badRequest().body(ex.getMessage()); }
     }
@@ -80,7 +80,7 @@ public class AuthController {
     public record CustomerChangePasswordRequest(Long customerId, String oldPassword, String newPassword) {}
 
     @PostMapping("/customer/change-password")
-    public ResponseEntity<?> customerChangePassword(@RequestBody tmmsystem.dto.auth.ChangePasswordRequest req) {
+    public ResponseEntity<?> customerChangePassword(@Valid @RequestBody tmmsystem.dto.auth.ChangePasswordRequest req) {
         try { customerService.changeCustomerPasswordByEmail(req.email(), req.currentPassword(), req.newPassword()); return ResponseEntity.ok().build(); }
         catch (RuntimeException ex) { return ResponseEntity.badRequest().body(ex.getMessage()); }
     }

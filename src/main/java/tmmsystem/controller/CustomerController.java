@@ -75,7 +75,7 @@ public class CustomerController {
             @PathVariable Long id,
             @RequestBody(description = "Payload cập nhật khách hàng", required = true,
                     content = @Content(schema = @Schema(implementation = CustomerUpdateRequest.class)))
-            @org.springframework.web.bind.annotation.RequestBody CustomerUpdateRequest body) {
+            @Valid @org.springframework.web.bind.annotation.RequestBody CustomerUpdateRequest body) {
         Customer updated = new Customer();
         updated.setCompanyName(body.getCompanyName());
         updated.setContactPerson(body.getContactPerson());
