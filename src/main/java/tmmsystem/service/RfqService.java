@@ -257,7 +257,7 @@ public class RfqService {
                 && (dto.getContactPhone() == null || dto.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Public submission must provide contactEmail or contactPhone");
         }
-        
+
         // Validate contactAddress is not empty (frontend sends full address string)
         if (dto.getContactAddress() == null || dto.getContactAddress().trim().isEmpty()) {
             throw new IllegalArgumentException("Vui lòng điền đầy đủ địa chỉ nhận hàng.");
@@ -349,7 +349,7 @@ public class RfqService {
                 && (req.getContactPhone() == null || req.getContactPhone().isBlank())) {
             throw new IllegalArgumentException("Must provide contactEmail or contactPhone");
         }
-        
+
         // Validate contactAddress is not empty (frontend sends full address string)
         if (req.getContactAddress() == null || req.getContactAddress().trim().isEmpty()) {
             throw new IllegalArgumentException("Vui lòng điền đầy đủ địa chỉ nhận hàng.");
@@ -382,14 +382,17 @@ public class RfqService {
         rfq.setSourceType("BY_SALES");
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
 
-        // Logic: If Sales creates it, they are assigned, so status is SENT.
-        rfq.setStatus("SENT");
+        // Logic: If Sales creates it, they are assigned, so status is
+        // PRELIMINARY_CHECKED.
+        rfq.setStatus("PRELIMINARY_CHECKED");
         rfq.setSent(true);
+        rfq.setSalesConfirmedAt(java.time.Instant.now());
 
         rfq.setNotes(req.getNotes());
         User sales = new User();
         sales.setId(salesUserId);
         rfq.setAssignedSales(sales);
+        rfq.setSalesConfirmedBy(sales);
         // snapshots
         rfq.setContactPersonSnapshot(req.getContactPerson());
         rfq.setContactEmailSnapshot(email);
