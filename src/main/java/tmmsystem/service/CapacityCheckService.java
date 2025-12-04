@@ -322,7 +322,7 @@ public class CapacityCheckService {
 
         machineCapacity.setDyeingStage(createStageInfo("Nhuộm vải", "DYEING", capacityResult.getDyeingDays(),
                 DYEING_WAIT_TIME, dyeing.start().toLocalDate(), dyeing.end().toLocalDate(),
-                BigDecimal.ZERO, "Gửi vendor nhuộm (2 ngày cố định)"));
+                getMachineCapacity("DYEING"), "Nhuộm 5000 sp/ngày"));
 
         machineCapacity.setCuttingStage(createStageInfo("Cắt vải", "CUTTING", capacityResult.getCuttingDays(),
                 CUTTING_WAIT_TIME, cutting.start().toLocalDate(), cutting.end().toLocalDate(),
@@ -334,7 +334,7 @@ public class CapacityCheckService {
 
         machineCapacity.setPackagingStage(createStageInfo("Đóng gói", "PACKAGING", capacityResult.getPackagingDays(),
                 PACKAGING_WAIT_TIME, packaging.start().toLocalDate(), packaging.end().toLocalDate(),
-                new BigDecimal("20000"), "Đóng gói sản phẩm (5 người)"));
+                getMachineCapacity("PACKAGING"), "Đóng gói (2 người, 1000 sp/giờ)"));
 
         BigDecimal totalWaitTime = WARPING_WAIT_TIME
                 .add(WEAVING_WAIT_TIME)
@@ -377,8 +377,8 @@ public class CapacityCheckService {
      */
     private BigDecimal getMachineCapacity(String machineType) {
         if ("DYEING".equals(machineType)) {
-            // Vendor nhuộm có công suất vô hạn (chỉ bị giới hạn bởi thời gian)
-            return new BigDecimal("999999");
+            // Dyeing: 5000 items/day
+            return new BigDecimal("5000");
         } else if ("CUTTING".equals(machineType) || "SEWING".equals(machineType)) {
             // Đối với máy cắt và may, tính công suất theo số lượng sản phẩm
             return machineRepository.findAll().stream()
@@ -387,7 +387,7 @@ public class CapacityCheckService {
                     .map(this::extractCapacityPerDayFromSpecifications)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         } else if ("PACKAGING".equals(machineType)) {
-            return new BigDecimal("20000");
+            return new BigDecimal("8000");
         } else {
             // Đối với máy mắc và dệt, tính công suất theo khối lượng
             return machineRepository.findAll().stream()
