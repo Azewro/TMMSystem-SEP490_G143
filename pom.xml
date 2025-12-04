@@ -105,6 +105,12 @@
             <version>${mapstruct.version}</version>
             <scope>provided</scope>
         </dependency>
+        
+        <!-- Jackson Hibernate6 Module - Fix ByteBuddyInterceptor serialization error -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-hibernate6</artifactId>
+        </dependency>
 
         <!-- Dev & Test -->
         <dependency>
