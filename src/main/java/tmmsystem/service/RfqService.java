@@ -383,8 +383,8 @@ public class RfqService {
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
 
         // Logic: If Sales creates it, they are assigned, so status is
-        // PRELIMINARY_CHECKED.
-        rfq.setStatus("PRELIMINARY_CHECKED");
+        // FORWARDED_TO_PLANNING.
+        rfq.setStatus("FORWARDED_TO_PLANNING");
         rfq.setSent(true);
         rfq.setSalesConfirmedAt(java.time.Instant.now());
 
