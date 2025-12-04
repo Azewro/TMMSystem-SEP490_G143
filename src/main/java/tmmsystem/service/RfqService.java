@@ -24,15 +24,17 @@ public class RfqService {
     private final NotificationService notificationService;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
+    private final ProductRepository productRepository;
 
     public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository,
             NotificationService notificationService, CustomerRepository customerRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository, ProductRepository productRepository) {
         this.rfqRepository = rfqRepository;
         this.detailRepository = detailRepository;
         this.notificationService = notificationService;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
+        this.productRepository = productRepository;
     }
 
     public List<Rfq> findAll() {
@@ -150,8 +152,9 @@ public class RfqService {
                 RfqDetail detail = new RfqDetail();
                 detail.setRfq(savedRfq);
                 if (detailDto.getProductId() != null) {
-                    Product product = new Product();
-                    product.setId(detailDto.getProductId());
+                    Product product = productRepository.findById(detailDto.getProductId())
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                    "Product not found with id: " + detailDto.getProductId()));
                     detail.setProduct(product);
                 }
                 detail.setQuantity(detailDto.getQuantity());
@@ -500,8 +503,9 @@ public class RfqService {
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
                 if (detailDto.getProductId() != null) {
-                    Product p = new Product();
-                    p.setId(detailDto.getProductId());
+                    Product p = productRepository.findById(detailDto.getProductId())
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                    "Product not found with id: " + detailDto.getProductId()));
                     nd.setProduct(p);
                 }
                 nd.setQuantity(detailDto.getQuantity());
@@ -536,8 +540,9 @@ public class RfqService {
         RfqDetail detail = new RfqDetail();
         detail.setRfq(rfq);
         if (dto.getProductId() != null) {
-            Product product = new Product();
-            product.setId(dto.getProductId());
+            Product product = productRepository.findById(dto.getProductId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Product not found with id: " + dto.getProductId()));
             detail.setProduct(product);
         }
         detail.setQuantity(dto.getQuantity());
@@ -555,8 +560,9 @@ public class RfqService {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
         if (dto.getProductId() != null) {
-            Product product = new Product();
-            product.setId(dto.getProductId());
+            Product product = productRepository.findById(dto.getProductId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Product not found with id: " + dto.getProductId()));
             detail.setProduct(product);
         }
         detail.setQuantity(dto.getQuantity());
