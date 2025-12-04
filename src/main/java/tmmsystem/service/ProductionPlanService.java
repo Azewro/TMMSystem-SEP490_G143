@@ -149,6 +149,12 @@ public class ProductionPlanService {
         for (QuotationDetail qd : detailsOfProduct) {
             if (!qd.getProduct().getId().equals(productId))
                 continue; // safety
+
+            // Prevent duplicates: check if this quotation detail is already assigned to a
+            // lot
+            if (lotOrderRepo.existsByQuotationDetail_Id(qd.getId())) {
+                continue;
+            }
             ProductionLotOrder lo = new ProductionLotOrder();
             lo.setLot(lot);
             lo.setContract(contract);

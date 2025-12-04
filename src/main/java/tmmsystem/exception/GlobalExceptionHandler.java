@@ -27,13 +27,16 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<String> handleRuntimeException(RuntimeException ex, WebRequest request) {
-        return ResponseEntity.badRequest().body(ex.getMessage());
+    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex, WebRequest request) {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", ex.getMessage());
+        return ResponseEntity.badRequest().body(response);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<String> handleGenericException(Exception ex, WebRequest request) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Lỗi hệ thống: " + ex.getMessage());
+    public ResponseEntity<Map<String, String>> handleGenericException(Exception ex, WebRequest request) {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Lỗi hệ thống: " + ex.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }
