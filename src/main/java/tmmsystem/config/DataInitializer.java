@@ -176,6 +176,7 @@ public class DataInitializer implements CommandLineRunner {
     @Autowired
     private tmmsystem.repository.RfqRepository rfqRepository;
 
+    @org.springframework.transaction.annotation.Transactional
     private void syncRejectedQuotations() {
         // Find all REJECTED quotations
         List<tmmsystem.entity.Quotation> rejectedQuotes = quotationRepository.findByStatus("REJECTED");
