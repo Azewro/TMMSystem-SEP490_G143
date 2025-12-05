@@ -428,7 +428,10 @@ public class ProductionService {
             // Populate Batch Number (Lot Code)
             // Populate Batch Number (Lot Code)
             String batchNumber = issue.getProductionStage().getBatchNumber();
-            if ((batchNumber == null || batchNumber.isEmpty()) && issue.getProductionOrder() != null) {
+            // If batchNumber is missing or is actually a PO Number, try to find real Lot
+            // Code
+            if ((batchNumber == null || batchNumber.isEmpty() || batchNumber.startsWith("PO-"))
+                    && issue.getProductionOrder() != null) {
                 // Try from Contract -> ProductionPlan
                 if (issue.getProductionOrder().getContract() != null) {
                     List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
@@ -436,8 +439,7 @@ public class ProductionService {
                     tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
                             .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
                             .findFirst()
-                            .orElse(plans.isEmpty() ? null : plans.get(plans.size() - 1)); // Fallback to latest if no
-                                                                                           // current version
+                            .orElse(plans.isEmpty() ? null : plans.get(plans.size() - 1)); // Fallback to latest
                     if (currentPlan != null && currentPlan.getLot() != null) {
                         batchNumber = currentPlan.getLot().getLotCode();
                     }
