@@ -11,8 +11,11 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "production_stage", indexes = {
-        // REMOVED: idx_stage_wodetail_sequence - cột work_order_detail_id đã bị xóa khỏi database
-        @Index(name = "idx_stage_po_sequence", columnList = "production_order_id, stage_sequence"), // Removed unique: một PO có thể có nhiều sets stages
+        // REMOVED: idx_stage_wodetail_sequence - cột work_order_detail_id đã bị xóa
+        // khỏi database
+        @Index(name = "idx_stage_po_sequence", columnList = "production_order_id, stage_sequence"), // Removed unique:
+                                                                                                    // một PO có thể có
+                                                                                                    // nhiều sets stages
         @Index(name = "idx_stage_status_type", columnList = "status, stage_type"),
         @Index(name = "idx_stage_leader_status", columnList = "assigned_leader_id, status"),
         @Index(name = "idx_stage_machine_status", columnList = "machine_id, status"),
@@ -25,7 +28,8 @@ public class ProductionStage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // REMOVED: workOrderDetail field - cột work_order_detail_id đã bị xóa khỏi database
+    // REMOVED: workOrderDetail field - cột work_order_detail_id đã bị xóa khỏi
+    // database
     // @ManyToOne(fetch = FetchType.LAZY)
     // @JoinColumn(name = "work_order_detail_id")
     // private WorkOrderDetail workOrderDetail;
@@ -123,4 +127,10 @@ public class ProductionStage {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "original_stage_id")
     private ProductionStage originalStage; // NEW: nếu là rework clone từ stage trước (tùy chọn sử dụng)
+
+    @Column(name = "defect_level", length = 20)
+    private String defectLevel; // MINOR, MAJOR, CRITICAL
+
+    @Column(columnDefinition = "text")
+    private String defectDescription;
 }

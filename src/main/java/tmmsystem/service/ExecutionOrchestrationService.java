@@ -494,6 +494,8 @@ public class ExecutionOrchestrationService {
 
         } else {
             stageRef.setExecutionStatus("QC_FAILED");
+            stageRef.setDefectLevel(defectLevel); // Persist defect level
+            stageRef.setDefectDescription(defectDescription); // Persist defect description
             stageRepo.save(stageRef);
             QualityIssue issue = new QualityIssue();
             issue.setProductionStage(stageRef);

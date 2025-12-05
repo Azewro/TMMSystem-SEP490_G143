@@ -38,10 +38,17 @@ public class TechnicalService {
         if ("REWORK".equalsIgnoreCase(decision)) {
             // Minor defect -> Rework
             // Reset stage to PENDING/WAITING_REWORK
+            stage.setExecutionStatus("WAITING_REWORK"); // FIX: Update execution status
             stage.setStatus("WAITING_REWORK");
             stage.setIsRework(true);
             stage.setQcLastResult(null);
             stage.setProgressPercent(0);
+
+            // FIX: Save notes to defect description for Leader to see
+            if (notes != null && !notes.isEmpty()) {
+                stage.setDefectDescription(notes);
+            }
+
             stageRepo.save(stage);
 
             // Notify Leader

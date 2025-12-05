@@ -25,20 +25,43 @@ public class RfqService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final QuotationRepository quotationRepository;
 
     public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository,
             NotificationService notificationService, CustomerRepository customerRepository,
-            UserRepository userRepository, ProductRepository productRepository) {
+            UserRepository userRepository, ProductRepository productRepository,
+            QuotationRepository quotationRepository) {
         this.rfqRepository = rfqRepository;
         this.detailRepository = detailRepository;
         this.notificationService = notificationService;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.productRepository = productRepository;
+        this.quotationRepository = quotationRepository;
     }
 
     public List<Rfq> findAll() {
         return rfqRepository.findAll();
+    }
+
+    @Transactional
+    public void syncRejectedQuotations(org.slf4j.Logger externalLog) {
+        // Find all REJECTED quotations
+        List<tmmsystem.entity.Quotation> rejectedQuotes = quotationRepository.findByStatus("REJECTED");
+        int count = 0;
+        for (tmmsystem.entity.Quotation q : rejectedQuotes) {
+            if (q.getRfq() != null) {
+                tmmsystem.entity.Rfq rfq = q.getRfq();
+                if (!"REJECTED".equals(rfq.getStatus())) {
+                    rfq.setStatus("REJECTED");
+                    rfqRepository.save(rfq);
+                    count++;
+                }
+            }
+        }
+        if (count > 0 && externalLog != null) {
+            externalLog.info("Startup: Synced {} RFQs to REJECTED based on rejected quotations", count);
+        }
     }
 
     public Page<Rfq> findAll(Pageable pageable) {

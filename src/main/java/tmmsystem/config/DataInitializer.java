@@ -62,7 +62,7 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Startup: Fixed missing details for Supplementary Orders");
 
             // Sync RFQ Status for Rejected Quotations
-            syncRejectedQuotations();
+            rfqService.syncRejectedQuotations(log);
 
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
@@ -175,26 +175,6 @@ public class DataInitializer implements CommandLineRunner {
     private tmmsystem.repository.QuotationRepository quotationRepository;
     @Autowired
     private tmmsystem.repository.RfqRepository rfqRepository;
-
-    @org.springframework.transaction.annotation.Transactional
-    private void syncRejectedQuotations() {
-        // Find all REJECTED quotations
-        List<tmmsystem.entity.Quotation> rejectedQuotes = quotationRepository.findByStatus("REJECTED");
-        int count = 0;
-        for (tmmsystem.entity.Quotation q : rejectedQuotes) {
-            if (q.getRfq() != null) {
-                tmmsystem.entity.Rfq rfq = q.getRfq();
-                if (!"REJECTED".equals(rfq.getStatus())) {
-                    rfq.setStatus("REJECTED");
-                    rfqRepository.save(rfq);
-                    count++;
-                }
-            }
-        }
-        if (count > 0) {
-            log.info("Startup: Synced {} RFQs to REJECTED based on rejected quotations", count);
-        }
-    }
 
     private void addSeed(List<QcSeed> seeds, String stageType, String name,
             String criteria, String sampling, boolean mandatory, int order) {
