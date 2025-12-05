@@ -902,10 +902,26 @@ public class RfqService {
         }
         if (req.getExpectedDeliveryDate() != null) {
             java.time.LocalDate baseDate = rfq.getCreatedAt() != null
+                    ? java.time.LocalDate.ofInstant(rfq.getCreatedAt(), java.time.ZoneId.of("UTC"))
+                    : java.time.LocalDate.now(java.time.ZoneId.of("UTC"));
+            if (req.getExpectedDeliveryDate().isBefore(baseDate.plusDays(7))) {
+                // warning or allow
+            }
+            rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
+        }
+
+        if (rfq.getCustomer() != null) {
+            Customer cust = rfq.getCustomer();
+            if (req.getContactPerson() != null)
+                cust.setContactPerson(req.getContactPerson());
+            if (req.getContactEmail() != null)
+                cust.setEmail(normalizeEmail(req.getContactEmail()));
+            if (req.getContactPhone() != null)
                 cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
             if (req.getContactAddress() != null)
                 cust.setAddress(req.getContactAddress());
             customerRepository.save(cust);
+
             // Update snapshots simultaneously
             if (req.getContactPerson() != null)
                 rfq.setContactPersonSnapshot(req.getContactPerson());
@@ -942,7 +958,14 @@ public class RfqService {
                 detailRepository.save(nd);
             }
         }
+
+        // Reset capacity status so Planning can re-evaluate
+        rfq.setCapacityStatus(null);
+        rfq.setCapacityReason(null);
+        rfq.setProposedNewDeliveryDate(null);
+
         return rfqRepository.save(rfq);
+
     }
 
     @Transactional
