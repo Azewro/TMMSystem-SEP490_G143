@@ -228,6 +228,29 @@ public class ProductionService {
         return stageRepo.findById(id).orElseThrow();
     }
 
+    public ProductionStageDto getStageDto(Long id) {
+        ProductionStage stage = findStage(id);
+        ProductionStageDto dto = productionMapper.toDto(stage);
+
+        // Enrich with QualityIssue if defect data is missing in stage but present in
+        // issue
+        // This handles legacy data where ProductionStage fields might be null
+        if ((dto.getDefectLevel() == null || dto.getDefectLevel().isEmpty()) &&
+                "QC_FAILED".equals(stage.getExecutionStatus())) {
+
+            List<QualityIssue> issues = issueRepo.findByProductionStageId(id);
+            if (!issues.isEmpty()) {
+                // Use the latest issue
+                QualityIssue issue = issues.get(issues.size() - 1);
+                dto.setDefectLevel(issue.getSeverity());
+                dto.setDefectSeverity(issue.getSeverity());
+                dto.setDefectDescription(issue.getDescription());
+                dto.setDefectId(issue.getId());
+            }
+        }
+        return dto;
+    }
+
     @Transactional
     public ProductionStage createStage(ProductionStage s) {
         return stageRepo.save(s);

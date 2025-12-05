@@ -270,7 +270,7 @@ public class ProductionController {
 
     @GetMapping("/stages/{id}")
     public ProductionStageDto getStage(@PathVariable Long id) {
-        return mapper.toDto(service.findStage(id));
+        return service.getStageDto(id);
     }
 
     @Operation(summary = "Tạo Production Stage")
