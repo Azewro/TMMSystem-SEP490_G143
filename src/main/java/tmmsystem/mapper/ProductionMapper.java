@@ -146,6 +146,7 @@ public class ProductionMapper {
 
         // Map defect info
         dto.setDefectSeverity(s.getDefectLevel());
+        dto.setDefectLevel(s.getDefectLevel());
         dto.setDefectDescription(s.getDefectDescription());
 
         // Format start and end times for Leader

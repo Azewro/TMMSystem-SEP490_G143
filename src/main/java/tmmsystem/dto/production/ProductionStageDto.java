@@ -54,4 +54,5 @@ public class ProductionStageDto {
     private Long defectId;
     private String defectDescription;
     private String defectSeverity;
+    private String defectLevel; // NEW: Field name matching Entity for consistency
 }
