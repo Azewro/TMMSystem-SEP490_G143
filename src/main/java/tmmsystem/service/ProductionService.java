@@ -446,12 +446,11 @@ public class ProductionService {
             }
         }
 
-        // Use defectDescription from stage if available (Technical notes), otherwise
-        // fallback to issue description
-        if (issue.getProductionStage() != null && issue.getProductionStage().getDefectDescription() != null) {
-            dto.setIssueDescription(issue.getProductionStage().getDefectDescription());
-        } else {
-            dto.setIssueDescription(issue.getDescription());
+        dto.setIssueDescription(issue.getDescription());
+
+        // Populate technical notes from stage
+        if (issue.getProductionStage() != null) {
+            dto.setTechnicalNotes(issue.getProductionStage().getDefectDescription());
         }
 
         // Fallback for evidence photo if missing in QualityIssue

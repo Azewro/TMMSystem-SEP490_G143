@@ -159,6 +159,16 @@ public class QualityIssueDto {
         this.issueDescription = issueDescription;
     }
 
+    private String technicalNotes;
+
+    public String getTechnicalNotes() {
+        return technicalNotes;
+    }
+
+    public void setTechnicalNotes(String technicalNotes) {
+        this.technicalNotes = technicalNotes;
+    }
+
     private String evidencePhoto;
 
     public String getEvidencePhoto() {
