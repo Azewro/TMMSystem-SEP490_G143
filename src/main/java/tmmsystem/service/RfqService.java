@@ -103,6 +103,17 @@ public class RfqService {
                 } else if ("ASSIGNED".equals(finalStatus)) {
                     predicates.add(cb.equal(root.get("status"), "SENT"));
                     predicates.add(cb.isNotNull(root.get("assignedSales")));
+                } else if (finalStatus.contains(",")) {
+                    String[] statuses = finalStatus.split(",");
+                    var statusPredicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                    for (String s : statuses) {
+                        if (!s.trim().isEmpty()) {
+                            statusPredicates.add(cb.equal(root.get("status"), s.trim()));
+                        }
+                    }
+                    if (!statusPredicates.isEmpty()) {
+                        predicates.add(cb.or(statusPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
+                    }
                 } else {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
                 }
@@ -762,7 +773,7 @@ public class RfqService {
     public Page<Rfq> findByAssignedSales(Long salesId, Pageable pageable, String search, String status) {
         if (salesId == null)
             return Page.empty(pageable);
-        if (search != null && !search.trim().isEmpty() || status != null && !status.trim().isEmpty()) {
+        if ((search != null && !search.trim().isEmpty()) || (status != null && !status.trim().isEmpty())) {
             String searchLower = search != null ? search.trim().toLowerCase() : "";
             String finalStatus = status;
             return rfqRepository.findAll((root, query, cb) -> {
@@ -777,7 +788,21 @@ public class RfqService {
                 }
 
                 if (finalStatus != null && !finalStatus.trim().isEmpty()) {
-                    predicates.add(cb.equal(root.get("status"), finalStatus));
+                    if (finalStatus.contains(",")) {
+                        String[] statuses = finalStatus.split(",");
+                        var statusPredicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+                        for (String s : statuses) {
+                            if (!s.trim().isEmpty()) {
+                                statusPredicates.add(cb.equal(root.get("status"), s.trim()));
+                            }
+                        }
+                        if (!statusPredicates.isEmpty()) {
+                            predicates.add(
+                                    cb.or(statusPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
+                        }
+                    } else {
+                        predicates.add(cb.equal(root.get("status"), finalStatus));
+                    }
                 }
 
                 return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));

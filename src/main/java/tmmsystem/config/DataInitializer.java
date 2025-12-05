@@ -57,6 +57,13 @@ public class DataInitializer implements CommandLineRunner {
             // Fix Missing Rework Details (Supplementary Orders)
             productionService.fixMissingReworkDetails();
             log.info("Startup: Fixed missing details for Supplementary Orders");
+            // Fix Missing Rework Details (Supplementary Orders)
+            productionService.fixMissingReworkDetails();
+            log.info("Startup: Fixed missing details for Supplementary Orders");
+
+            // Sync RFQ Status for Rejected Quotations
+            syncRejectedQuotations();
+
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
             // seedQcCheckpoints();
@@ -161,6 +168,30 @@ public class DataInitializer implements CommandLineRunner {
         }
         if (inserted > 0) {
             log.info("Đã seed thêm {} QC checkpoints (song ngữ)", inserted);
+        }
+    }
+
+    @Autowired
+    private tmmsystem.repository.QuotationRepository quotationRepository;
+    @Autowired
+    private tmmsystem.repository.RfqRepository rfqRepository;
+
+    private void syncRejectedQuotations() {
+        // Find all REJECTED quotations
+        List<tmmsystem.entity.Quotation> rejectedQuotes = quotationRepository.findByStatus("REJECTED");
+        int count = 0;
+        for (tmmsystem.entity.Quotation q : rejectedQuotes) {
+            if (q.getRfq() != null) {
+                tmmsystem.entity.Rfq rfq = q.getRfq();
+                if (!"REJECTED".equals(rfq.getStatus())) {
+                    rfq.setStatus("REJECTED");
+                    rfqRepository.save(rfq);
+                    count++;
+                }
+            }
+        }
+        if (count > 0) {
+            log.info("Startup: Synced {} RFQs to REJECTED based on rejected quotations", count);
         }
     }
 

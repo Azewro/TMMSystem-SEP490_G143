@@ -36,4 +36,10 @@ public class RfqDto {
     private String contactPhone;
     private String contactAddress;
     private String contactMethod; // EMAIL | PHONE
+
+    // Capacity check results
+    private String capacityStatus;
+    private String capacityReason;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    private LocalDate proposedNewDeliveryDate;
 }

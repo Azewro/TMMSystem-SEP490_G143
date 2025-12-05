@@ -37,7 +37,6 @@ public class ProductionPlanService {
     @SuppressWarnings("unused")
     private final NotificationService notificationService;
     public final ProductionPlanMapper mapper;
-    private final MachineSelectionService machineSelectionService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
     private final PlanningTimelineCalculator timelineCalculator;
@@ -62,7 +61,6 @@ public class ProductionPlanService {
             MaterialRepository materialRepo,
             NotificationService notificationService,
             ProductionPlanMapper mapper,
-            MachineSelectionService machineSelectionService,
             ProductionLotRepository lotRepo,
             ProductionLotOrderRepository lotOrderRepo,
             MachineAssignmentRepository machineAssignmentRepository,
@@ -83,7 +81,6 @@ public class ProductionPlanService {
         this.materialRepo = materialRepo;
         this.notificationService = notificationService;
         this.mapper = mapper;
-        this.machineSelectionService = machineSelectionService;
         this.lotRepo = lotRepo;
         this.lotOrderRepo = lotOrderRepo;
         this.machineAssignmentRepository = machineAssignmentRepository;
@@ -430,28 +427,7 @@ public class ProductionPlanService {
         return createProductionOrderFromPlan(plan);
     }
 
-    // ===== Machine Selection (stage.plan) =====
-    public List<MachineSelectionService.MachineSuggestionDto> getMachineSuggestionsForStage(String stageType,
-            Long productId, BigDecimal requiredQuantity, LocalDateTime preferredStartTime,
-            LocalDateTime preferredEndTime) {
-        return machineSelectionService.getSuitableMachines(stageType, productId, requiredQuantity, preferredStartTime,
-                preferredEndTime);
-    }
-
-    @Transactional
-    public ProductionPlanStageDto autoAssignMachineToStage(Long stageId) {
-        // DEPRECATED: No machine assignment in planning
-        throw new UnsupportedOperationException("Machine assignment is no longer supported in planning phase");
-    }
-
-    /**
-     * Kiểm tra xung đột lịch trình cho một stage (dựa trên plan.lot sản phẩm/khối
-     * lượng)
-     */
-    public List<String> checkStageScheduleConflicts(Long stageId) {
-        // DEPRECATED: No machine assignment in planning
-        return List.of();
-    }
+    // Removed machine selection methods
 
     // Helpers
     private String generatePlanCode() {

@@ -731,7 +731,9 @@ public class QuotationService {
         contract.setQuotation(quotation);
         contract.setCustomer(quotation.getCustomer());
         contract.setContractDate(java.time.LocalDate.now());
-        contract.setDeliveryDate(quotation.getValidUntil());
+        // Fix: Use RFQ expected delivery date instead of Quotation validUntil
+        contract.setDeliveryDate(
+                quotation.getRfq() != null ? quotation.getRfq().getExpectedDeliveryDate() : quotation.getValidUntil());
         contract.setTotalAmount(quotation.getTotalAmount());
         contract.setStatus("PENDING_UPLOAD"); // pending upload signed contract by Sales
         contract.setCreatedBy(quotation.getCreatedBy());
