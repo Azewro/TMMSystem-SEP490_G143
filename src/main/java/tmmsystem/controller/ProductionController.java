@@ -45,6 +45,13 @@ public class ProductionController {
         return service.enrichProductionOrderDto(po);
     }
 
+    @GetMapping("/orders/by-quotation/{quotationId}")
+    public List<ProductionOrderDto> getPOByQuotation(@PathVariable Long quotationId) {
+        return service.findPOByQuotationId(quotationId).stream()
+                .map(mapper::toDto)
+                .collect(Collectors.toList());
+    }
+
     @Operation(summary = "PM: Lấy danh sách đơn hàng")
     @GetMapping("/manager/orders")
     public List<ProductionOrderDto> getManagerOrders() {

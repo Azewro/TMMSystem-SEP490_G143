@@ -7,8 +7,10 @@ import java.util.List;
 
 public interface ProductionOrderRepository extends JpaRepository<ProductionOrder, Long> {
     boolean existsByPoNumber(String poNumber);
+
     List<ProductionOrder> findByContractId(Long contractId);
+
+    List<ProductionOrder> findByContract_Quotation_Id(Long quotationId);
+
     List<ProductionOrder> findByStatus(String status);
 }
-
-

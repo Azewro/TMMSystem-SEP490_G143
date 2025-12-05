@@ -682,6 +682,13 @@ public class QuotationService {
         quotation.setRejectedAt(java.time.Instant.now());
         Quotation savedQuotation = quotationRepository.save(quotation);
 
+        // Sync RFQ status to REJECTED
+        if (quotation.getRfq() != null) {
+            Rfq rfq = quotation.getRfq();
+            rfq.setStatus("REJECTED");
+            rfqRepository.save(rfq);
+        }
+
         // Gửi thông báo cho Sale Staff
         notificationService.notifyQuotationRejected(savedQuotation);
 
@@ -698,6 +705,13 @@ public class QuotationService {
         quotation.setRejectedAt(java.time.Instant.now());
         quotation.setRejectReason(reason);
         Quotation savedQuotation = quotationRepository.save(quotation);
+
+        // Sync RFQ status to REJECTED
+        if (quotation.getRfq() != null) {
+            Rfq rfq = quotation.getRfq();
+            rfq.setStatus("REJECTED");
+            rfqRepository.save(rfq);
+        }
         notificationService.notifyQuotationRejected(savedQuotation);
         return savedQuotation;
     }

@@ -122,8 +122,12 @@ public class ProductionService {
         return poRepo.findAll();
     }
 
+    public List<ProductionOrder> findPOByQuotationId(Long quotationId) {
+        return poRepo.findByContract_Quotation_Id(quotationId);
+    }
+
     public ProductionOrder findPO(Long id) {
-        return poRepo.findById(id).orElseThrow();
+        return poRepo.findById(id).orElseThrow(() -> new RuntimeException("PO not found"));
     }
 
     @Transactional

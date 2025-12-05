@@ -902,20 +902,6 @@ public class RfqService {
         }
         if (req.getExpectedDeliveryDate() != null) {
             java.time.LocalDate baseDate = rfq.getCreatedAt() != null
-                    ? rfq.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                    : java.time.LocalDate.now();
-            validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), baseDate);
-            rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
-        }
-        if (req.getNotes() != null)
-            rfq.setNotes(req.getNotes());
-        Customer cust = rfq.getCustomer();
-        if (cust != null) {
-            if (req.getContactPerson() != null)
-                cust.setContactPerson(req.getContactPerson());
-            if (req.getContactEmail() != null)
-                cust.setEmail(normalizeEmail(req.getContactEmail()));
-            if (req.getContactPhone() != null)
                 cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
             if (req.getContactAddress() != null)
                 cust.setAddress(req.getContactAddress());
