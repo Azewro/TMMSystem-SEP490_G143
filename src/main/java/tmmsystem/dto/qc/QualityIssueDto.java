@@ -59,6 +59,16 @@ public class QualityIssueDto {
         this.stageId = stageId;
     }
 
+    private String stageStatus;
+
+    public String getStageStatus() {
+        return stageStatus;
+    }
+
+    public void setStageStatus(String stageStatus) {
+        this.stageStatus = stageStatus;
+    }
+
     public String getStageType() {
         return stageType;
     }

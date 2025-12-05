@@ -423,6 +423,7 @@ public class ProductionService {
             dto.setStageId(issue.getProductionStage().getId());
             dto.setStageType(issue.getProductionStage().getStageType());
             dto.setStageName(issue.getProductionStage().getStageType()); // Use stageType as stageName for now
+            dto.setStageStatus(issue.getProductionStage().getExecutionStatus());
 
             // Populate Batch Number (Lot Code)
             String batchNumber = issue.getProductionStage().getBatchNumber();
@@ -444,7 +445,14 @@ public class ProductionService {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
             }
         }
-        dto.setIssueDescription(issue.getDescription());
+
+        // Use defectDescription from stage if available (Technical notes), otherwise
+        // fallback to issue description
+        if (issue.getProductionStage() != null && issue.getProductionStage().getDefectDescription() != null) {
+            dto.setIssueDescription(issue.getProductionStage().getDefectDescription());
+        } else {
+            dto.setIssueDescription(issue.getDescription());
+        }
 
         // Fallback for evidence photo if missing in QualityIssue
         String photo = issue.getEvidencePhoto();
