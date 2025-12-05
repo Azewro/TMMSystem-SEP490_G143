@@ -144,6 +144,10 @@ public class ProductionMapper {
         dto.setAssigneeName(getAssigneeName(s)); // Lấy tên người phụ trách
         dto.setStatusLabel(mapStageStatusToLabel(s.getExecutionStatus(), s.getStatus())); // Map status sang label
 
+        // Map defect info
+        dto.setDefectSeverity(s.getDefectLevel());
+        dto.setDefectDescription(s.getDefectDescription());
+
         // Format start and end times for Leader
         if (s.getStartAt() != null) {
             dto.setStartTimeFormatted(formatInstant(s.getStartAt()));

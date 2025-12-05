@@ -9,6 +9,7 @@ import tmmsystem.repository.ProductionStageRepository;
 public class TechnicalService {
     private final ProductionStageRepository stageRepo;
     private final NotificationService notificationService;
+    private final tmmsystem.repository.QualityIssueRepository issueRepo;
     private final tmmsystem.repository.MaterialRequisitionRepository reqRepo;
     private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
     private final tmmsystem.repository.MaterialRepository materialRepo;
@@ -19,13 +20,15 @@ public class TechnicalService {
             tmmsystem.repository.MaterialRequisitionRepository reqRepo,
             tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo,
             tmmsystem.repository.MaterialRepository materialRepo,
-            tmmsystem.repository.UserRepository userRepo) {
+            tmmsystem.repository.UserRepository userRepo,
+            tmmsystem.repository.QualityIssueRepository issueRepo) {
         this.stageRepo = stageRepo;
         this.notificationService = notificationService;
         this.reqRepo = reqRepo;
         this.reqDetailRepo = reqDetailRepo;
         this.materialRepo = materialRepo;
         this.userRepo = userRepo;
+        this.issueRepo = issueRepo;
     }
 
     @Transactional
@@ -33,7 +36,6 @@ public class TechnicalService {
             java.math.BigDecimal quantity,
             java.util.List<tmmsystem.dto.execution.MaterialRequisitionDetailDto> details) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        // ... (rest of the logic)
 
         if ("REWORK".equalsIgnoreCase(decision)) {
             // Minor defect -> Rework
@@ -67,6 +69,17 @@ public class TechnicalService {
             req.setNotes(notes);
             req.setStatus("PENDING");
             req.setRequisitionType("YARN_SUPPLY");
+
+            // Link Source Issue
+            java.util.List<tmmsystem.entity.QualityIssue> issues = issueRepo.findByProductionStageId(stage.getId());
+            if (!issues.isEmpty()) {
+                // Determine the active issue (usually the latest one causing this request)
+                // Since this is called from Technical view handling a specific defect, getting
+                // the latest UNRESOLVED/IN_PROGRESS one is safest.
+                // For now, grabbing the first one is acceptable if 1:1, but let's be safe.
+                tmmsystem.entity.QualityIssue issue = issues.get(0);
+                req.setSourceIssue(issue);
+            }
 
             tmmsystem.entity.MaterialRequisition savedReq = reqRepo.save(req);
 

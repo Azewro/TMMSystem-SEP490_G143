@@ -426,18 +426,25 @@ public class ProductionService {
             dto.setStageStatus(issue.getProductionStage().getExecutionStatus());
 
             // Populate Batch Number (Lot Code)
+            // Populate Batch Number (Lot Code)
             String batchNumber = issue.getProductionStage().getBatchNumber();
-            if (batchNumber == null && issue.getProductionOrder().getContract() != null) {
-                // Fallback: Get from ProductionPlan -> ProductionLot
-                List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
-                        .findByContractId(issue.getProductionOrder().getContract().getId());
-                tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
-                        .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
-                        .findFirst()
-                        .orElse(null);
-                if (currentPlan != null && currentPlan.getLot() != null) {
-                    batchNumber = currentPlan.getLot().getLotCode();
+            if ((batchNumber == null || batchNumber.isEmpty()) && issue.getProductionOrder() != null) {
+                // Try from Contract -> ProductionPlan
+                if (issue.getProductionOrder().getContract() != null) {
+                    List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                            .findByContractId(issue.getProductionOrder().getContract().getId());
+                    tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+                            .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
+                            .findFirst()
+                            .orElse(plans.isEmpty() ? null : plans.get(plans.size() - 1)); // Fallback to latest if no
+                                                                                           // current version
+                    if (currentPlan != null && currentPlan.getLot() != null) {
+                        batchNumber = currentPlan.getLot().getLotCode();
+                    }
                 }
+            }
+            if (batchNumber == null) {
+                batchNumber = issue.getProductionOrder() != null ? issue.getProductionOrder().getPoNumber() : "N/A";
             }
             dto.setBatchNumber(batchNumber);
 
