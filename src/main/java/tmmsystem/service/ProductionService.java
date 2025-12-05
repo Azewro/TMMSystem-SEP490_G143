@@ -232,22 +232,19 @@ public class ProductionService {
         ProductionStage stage = findStage(id);
         ProductionStageDto dto = productionMapper.toDto(stage);
 
-        // Enrich with QualityIssue if defect data is missing in stage but present in
-        // issue
-        // This handles legacy data where ProductionStage fields might be null
-        if ((dto.getDefectLevel() == null || dto.getDefectLevel().isEmpty()) &&
-                "QC_FAILED".equals(stage.getExecutionStatus())) {
-
-            List<QualityIssue> issues = issueRepo.findByProductionStageId(id);
-            if (!issues.isEmpty()) {
-                // Use the latest issue
-                QualityIssue issue = issues.get(issues.size() - 1);
-                dto.setDefectLevel(issue.getSeverity());
-                dto.setDefectSeverity(issue.getSeverity());
-                dto.setDefectDescription(issue.getDescription());
-                dto.setDefectId(issue.getId());
-            }
+        // Always check QualityIssue for defect details to ensure source of truth
+        // This covers cases where stage status changed (e.g. REWORK) or data updated in
+        // QualityIssue
+        List<QualityIssue> issues = issueRepo.findByProductionStageId(id);
+        if (!issues.isEmpty()) {
+            // Use the latest issue
+            QualityIssue issue = issues.get(issues.size() - 1);
+            dto.setDefectLevel(issue.getSeverity());
+            dto.setDefectSeverity(issue.getSeverity());
+            dto.setDefectDescription(issue.getDescription());
+            dto.setDefectId(issue.getId());
         }
+
         return dto;
     }
 
