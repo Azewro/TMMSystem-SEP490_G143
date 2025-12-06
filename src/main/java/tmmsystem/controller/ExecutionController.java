@@ -71,6 +71,9 @@ public class ExecutionController {
                     dto.setResult(i.getResult());
                     dto.setNotes(i.getNotes());
                     dto.setPhotoUrl(i.getPhotoUrl());
+                    if (i.getQcCheckpoint() != null) {
+                        dto.setCheckpointName(i.getQcCheckpoint().getCheckpointName());
+                    }
                     return dto;
                 })
                 .collect(Collectors.toList());

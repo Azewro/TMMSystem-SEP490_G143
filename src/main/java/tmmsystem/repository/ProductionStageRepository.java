@@ -64,4 +64,7 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
 
     // NEW: Find stages by type and status (for Rework Preemption)
     List<ProductionStage> findByStageTypeAndStatus(String stageType, String status);
+
+    // NEW: Check if stages exist for a specific order
+    boolean existsByProductionOrderId(Long productionOrderId);
 }

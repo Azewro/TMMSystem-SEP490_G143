@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Lazy;
 
@@ -848,6 +849,12 @@ public class ProductionService {
         ProductionOrder po = poRepo.findById(poId).orElseThrow(() -> new RuntimeException("PO not found"));
         Map<Long, List<ProductionStage>> stageMapping = new HashMap<>();
 
+        // SAFEGUARD: Check if stages already exist to prevent duplication
+        if (stageRepo.existsByProductionOrderId(poId)) {
+            System.out.println("Stages already exist for PO " + poId + ". Skipping creation.");
+            return stageMapping;
+        }
+
         // Nếu không có planStages, tạo 6 stages mặc định
         if (planStages == null || planStages.isEmpty()) {
             List<ProductionStage> defaultStages = new ArrayList<>();
@@ -888,40 +895,41 @@ public class ProductionService {
                 .orElse(null);
 
         List<ProductionOrderDetail> pods = podRepo.findByProductionOrderId(poId);
+        String productName = pods.isEmpty() ? ""
+                : pods.stream()
+                        .map(this::safeProductName)
+                        .distinct()
+                        .collect(Collectors.joining(", "));
 
-        for (ProductionOrderDetail pod : pods) {
-            String productName = safeProductName(pod);
+        for (ProductionPlanStage planStage : orderedStages) {
+            ProductionStage stage = new ProductionStage();
+            stage.setProductionOrder(po); // NEW: Link trực tiếp với ProductionOrder
+            stage.setStageType(planStage.getStageType());
+            stage.setStageSequence(planStage.getSequenceNo());
 
-            for (ProductionPlanStage planStage : orderedStages) {
-                ProductionStage stage = new ProductionStage();
-                stage.setProductionOrder(po); // NEW: Link trực tiếp với ProductionOrder
-                stage.setStageType(planStage.getStageType());
-                stage.setStageSequence(planStage.getSequenceNo());
+            // Validate và resolve machine/user từ DB để tránh FK constraint violation
+            stage.setMachine(resolveMachine(planStage.getAssignedMachine()));
+            stage.setAssignedLeader(resolveUser(planStage.getInChargeUser()));
+            stage.setQcAssignee(resolveUser(planStage.getQcUser()));
+            stage.setPlannedStartAt(toInstant(planStage.getPlannedStartTime()));
+            stage.setPlannedEndAt(toInstant(planStage.getPlannedEndTime()));
+            stage.setPlannedDurationHours(calculateDurationHours(planStage.getPlannedStartTime(),
+                    planStage.getPlannedEndTime()));
+            stage.setOutsourced("DYEING".equalsIgnoreCase(planStage.getStageType()));
 
-                // Validate và resolve machine/user từ DB để tránh FK constraint violation
-                stage.setMachine(resolveMachine(planStage.getAssignedMachine()));
-                stage.setAssignedLeader(resolveUser(planStage.getInChargeUser()));
-                stage.setQcAssignee(resolveUser(planStage.getQcUser()));
-                stage.setPlannedStartAt(toInstant(planStage.getPlannedStartTime()));
-                stage.setPlannedEndAt(toInstant(planStage.getPlannedEndTime()));
-                stage.setPlannedDurationHours(calculateDurationHours(planStage.getPlannedStartTime(),
-                        planStage.getPlannedEndTime()));
-                stage.setOutsourced("DYEING".equalsIgnoreCase(planStage.getStageType()));
+            boolean isFirstStage = firstSequence != null && firstSequence.equals(planStage.getSequenceNo());
+            syncStageStatus(stage, isFirstStage ? "WAITING" : "PENDING");
+            stage.setProgressPercent(0);
 
-                boolean isFirstStage = firstSequence != null && firstSequence.equals(planStage.getSequenceNo());
-                syncStageStatus(stage, isFirstStage ? "WAITING" : "PENDING");
-                stage.setProgressPercent(0);
-
-                // NEW: Generate QR Token for first stage
-                if (isFirstStage) {
-                    stage.setQrToken(generateQrToken());
-                }
-
-                ProductionStage savedStage = stageRepo.save(stage);
-                // Map theo planStage.id để tương thích với reservePlanStages()
-                stageMapping.computeIfAbsent(planStage.getId(), key -> new ArrayList<>()).add(savedStage);
-                notifyStageAssignments(savedStage, po.getPoNumber(), productName);
+            // NEW: Generate QR Token for first stage
+            if (isFirstStage) {
+                stage.setQrToken(generateQrToken());
             }
+
+            ProductionStage savedStage = stageRepo.save(stage);
+            // Map theo planStage.id để tương thích với reservePlanStages()
+            stageMapping.computeIfAbsent(planStage.getId(), key -> new ArrayList<>()).add(savedStage);
+            notifyStageAssignments(savedStage, po.getPoNumber(), productName);
         }
 
         return stageMapping;
