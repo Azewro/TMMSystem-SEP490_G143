@@ -102,7 +102,9 @@ public class ProductionPlanMapper {
         dto.setNotes(stage.getNotes());
 
         // Calculate duration
-        if (stage.getPlannedStartTime() != null && stage.getPlannedEndTime() != null) {
+        if (stage.getMinRequiredDurationMinutes() != null) {
+            dto.setDurationMinutes(stage.getMinRequiredDurationMinutes().longValue());
+        } else if (stage.getPlannedStartTime() != null && stage.getPlannedEndTime() != null) {
             dto.setDurationMinutes(java.time.Duration.between(
                     stage.getPlannedStartTime(), stage.getPlannedEndTime()).toMinutes());
         }

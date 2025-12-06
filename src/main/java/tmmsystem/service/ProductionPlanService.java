@@ -619,6 +619,22 @@ public class ProductionPlanService {
                     .findFirst().orElse(null);
             if (timeline == null)
                 continue;
+
+            // Calculate work duration
+            java.math.BigDecimal days = java.math.BigDecimal.ZERO;
+            switch (stage.getStageType()) {
+                case "WARPING" -> days = result.getWarpingDays();
+                case "WEAVING" -> days = result.getWeavingDays();
+                case "DYEING" -> days = result.getDyeingDays();
+                case "CUTTING" -> days = result.getCuttingDays();
+                case "HEMMING" -> days = result.getSewingDays();
+                case "PACKAGING" -> days = result.getPackagingDays();
+            }
+            if (days != null) {
+                stage.setMinRequiredDurationMinutes(days.multiply(new java.math.BigDecimal("8"))
+                        .multiply(new java.math.BigDecimal("60")).intValue());
+            }
+
             stage.setPlannedStartTime(timeline.start());
             stage.setPlannedEndTime(timeline.end());
             stageRepo.save(stage);

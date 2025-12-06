@@ -110,7 +110,13 @@ public class SequentialCapacityCalculator {
     private BigDecimal getTotalCapacityPerDay(String machineType) {
         return machineRepository.findAll().stream()
                 .filter(machine -> machineType.equalsIgnoreCase(machine.getType()))
-                .map(machine -> extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerDay"))
+                .map(machine -> {
+                    BigDecimal hourly = extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerHour");
+                    if (hourly.compareTo(BigDecimal.ZERO) > 0) {
+                        return hourly.multiply(WORKING_HOURS_PER_DAY);
+                    }
+                    return extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerDay");
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
