@@ -13,4 +13,6 @@ public interface ProductionOrderRepository extends JpaRepository<ProductionOrder
     List<ProductionOrder> findByContract_Quotation_Id(Long quotationId);
 
     List<ProductionOrder> findByStatus(String status);
+
+    List<ProductionOrder> findByNotes(String notes);
 }

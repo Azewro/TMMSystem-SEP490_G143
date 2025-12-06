@@ -1861,6 +1861,9 @@ public class ProductionService {
 
     @Transactional
     public void fixDataConsistency() {
+        // 0. Cleanup Duplicate Orders (New Fix)
+        cleanupDuplicateOrders();
+
         // 1. Fix missing QR tokens
         List<ProductionStage> stages = stageRepo.findAll();
         for (ProductionStage s : stages) {
@@ -2419,6 +2422,65 @@ public class ProductionService {
                                 + " đã được tiếp tục.",
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
+        }
+    }
+
+    // Cleanup Duplicate Orders Helper
+    private void cleanupDuplicateOrders() {
+        List<ProductionOrder> allOrders = poRepo.findAll();
+        // Group by Notes (Plan Code)
+        Map<String, List<ProductionOrder>> ordersByPlan = new HashMap<>();
+
+        for (ProductionOrder po : allOrders) {
+            String notes = po.getNotes();
+            if (notes != null && notes.startsWith("Auto-generated from Production Plan:")) {
+                ordersByPlan.computeIfAbsent(notes, k -> new ArrayList<>()).add(po);
+            }
+        }
+
+        // Find duplicates
+        int removedCount = 0;
+        for (Map.Entry<String, List<ProductionOrder>> entry : ordersByPlan.entrySet()) {
+            List<ProductionOrder> duplicates = entry.getValue();
+            if (duplicates.size() > 1) {
+                // Sort by ID ascending (keep the first created)
+                duplicates.sort(Comparator.comparing(ProductionOrder::getId));
+
+                // Keep the first one, delete the rest
+                ProductionOrder toKeep = duplicates.get(0);
+
+                for (int i = 1; i < duplicates.size(); i++) {
+                    ProductionOrder toDelete = duplicates.get(i);
+                    // Check if safe to delete (e.g. status is WAITING)
+                    // But duplicates are bugs, so force delete to clean up
+                    System.out.println("Cleaning up duplicate PO: " + toDelete.getPoNumber() + " (ID: "
+                            + toDelete.getId() + ") for Plan: " + entry.getKey());
+
+                    // Delete details first
+                    List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(toDelete.getId());
+                    podRepo.deleteAll(details);
+
+                    // Delete stages
+                    List<ProductionStage> stages = stageRepo
+                            .findByProductionOrderIdOrderByStageSequenceAsc(toDelete.getId());
+                    // Delete tracking/assignments/issues associated with stages if cascade is not
+                    // enough
+                    for (ProductionStage s : stages) {
+                        issueRepo.deleteAll(issueRepo.findByProductionStageId(s.getId()));
+                        stageTrackingRepository.deleteAll(
+                                stageTrackingRepository.findByProductionStageIdOrderByTimestampDesc(s.getId()));
+                        machineAssignmentRepository.deleteByProductionStageId(s.getId());
+                        reqRepo.deleteAll(reqRepo.findByProductionStageId(s.getId()));
+                    }
+                    stageRepo.deleteAll(stages);
+
+                    poRepo.delete(toDelete);
+                    removedCount++;
+                }
+            }
+        }
+        if (removedCount > 0) {
+            System.out.println("Cleaned up " + removedCount + " duplicate Production Orders.");
         }
     }
 }

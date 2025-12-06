@@ -370,6 +370,15 @@ public class ProductionPlanService {
         po.setStatus("WAITING_PRODUCTION");
         po.setExecutionStatus("WAITING_PRODUCTION");
         po.setNotes("Auto-generated from Production Plan: " + plan.getPlanCode());
+
+        // IDEMPOTENCY CHECK:
+        // Check if an order with these notes already exists (meaning it was already
+        // created for this plan)
+        List<ProductionOrder> existingOrders = poRepo.findByNotes(po.getNotes());
+        if (!existingOrders.isEmpty()) {
+            return existingOrders.get(0);
+        }
+
         po.setCreatedBy(plan.getCreatedBy());
         java.math.BigDecimal totalQty = plan.getLot() != null ? plan.getLot().getTotalQuantity()
                 : java.math.BigDecimal.ZERO;

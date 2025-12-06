@@ -364,6 +364,13 @@ public class ExecutionOrchestrationService {
         tracking.setOperator(operator);
         tracking.setAction(percent == 100 ? "COMPLETE" : "UPDATE_PROGRESS");
         tracking.setQuantityCompleted(java.math.BigDecimal.valueOf(percent));
+
+        // Fix: Determine isRework based on stage status or flag
+        boolean isRework = Boolean.TRUE.equals(stage.getIsRework()) ||
+                "REWORK_IN_PROGRESS".equals(stage.getExecutionStatus()) ||
+                "WAITING_REWORK".equals(stage.getExecutionStatus());
+        tracking.setIsRework(isRework);
+
         stageTrackingRepository.save(tracking);
 
         return saved;
