@@ -26,4 +26,6 @@ public interface MachineAssignmentRepository extends JpaRepository<MachineAssign
 
         java.util.Optional<MachineAssignment> findByMachineAndProductionStage(tmmsystem.entity.Machine machine,
                         tmmsystem.entity.ProductionStage productionStage);
+
+        void deleteByProductionStageId(Long productionStageId);
 }
