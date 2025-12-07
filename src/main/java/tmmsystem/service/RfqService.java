@@ -119,6 +119,7 @@ public class RfqService {
             }
 
             // Status filter
+            // Status filter
             if (hasStatus && finalStatus != null) {
                 if ("WAITING_ASSIGNMENT".equals(finalStatus)) {
                     predicates.add(cb.equal(root.get("status"), "SENT"));
@@ -127,15 +128,13 @@ public class RfqService {
                     predicates.add(cb.equal(root.get("status"), "SENT"));
                     predicates.add(cb.isNotNull(root.get("assignedSales")));
                 } else if (finalStatus.contains(",")) {
-                    String[] statuses = finalStatus.split(",");
-                    var statusPredicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
-                    for (String s : statuses) {
-                        if (!s.trim().isEmpty()) {
-                            statusPredicates.add(cb.equal(root.get("status"), s.trim()));
-                        }
-                    }
-                    if (!statusPredicates.isEmpty()) {
-                        predicates.add(cb.or(statusPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
+                    // Support multiple status filtering
+                    var statuses = java.util.Arrays.stream(finalStatus.split(","))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(java.util.stream.Collectors.toList());
+                    if (!statuses.isEmpty()) {
+                        predicates.add(root.get("status").in(statuses));
                     }
                 } else {
                     predicates.add(cb.equal(root.get("status"), finalStatus));
@@ -161,6 +160,7 @@ public class RfqService {
 
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         }, pageable);
+
     }
 
     public Rfq findById(Long id) {

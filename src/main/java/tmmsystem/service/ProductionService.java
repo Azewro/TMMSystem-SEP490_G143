@@ -1506,6 +1506,20 @@ public class ProductionService {
     }
 
     /**
+     * Count active stages for a Leader (for workload balancing)
+     */
+    public long countActiveStagesForLeader(Long leaderId, List<String> activeStatuses) {
+        return stageRepo.countByAssignedLeaderIdAndExecutionStatusIn(leaderId, activeStatuses);
+    }
+
+    /**
+     * Count active stages for a QC (for workload balancing)
+     */
+    public long countActiveStagesForQc(Long qcId, List<String> activeStatuses) {
+        return stageRepo.countByQcAssigneeIdAndExecutionStatusIn(qcId, activeStatuses);
+    }
+
+    /**
      * Enrich ProductionOrderDto với các thông tin cần thiết cho frontend
      * - lotCode từ ProductionLot (thông qua ProductionPlan)
      * - productName từ ProductionOrderDetail

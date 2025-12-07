@@ -42,6 +42,12 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     List<ProductionStage> findByAssignedLeaderIdAndExecutionStatusIn(@Param("leaderId") Long leaderId,
             @Param("statuses") List<String> statuses);
 
+    // NEW: Count active stages for Leader workload balancing
+    long countByAssignedLeaderIdAndExecutionStatusIn(Long leaderId, List<String> executionStatuses);
+
+    // NEW: Count active stages for QC workload balancing (using qcAssignee)
+    long countByQcAssigneeIdAndExecutionStatusIn(Long qcAssigneeId, List<String> executionStatuses);
+
     // Query tất cả stages được assign cho leader (không filter theo status)
     // Sử dụng JOIN FETCH để load productionOrder ngay lập tức, tránh
     // LazyLoadingException

@@ -250,6 +250,10 @@ public class ProductionPlanService {
             initDefaultStages(saved);
         }
         applyTimelineToPlan(saved);
+
+        // NEW: Auto-assign Leader and QC
+        autoAssignResourcesToPlan(saved);
+
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
@@ -701,6 +705,86 @@ public class ProductionPlanService {
                 throw new RuntimeException(
                         "Công đoạn " + stage.getStageType() + ": Thời gian kết thúc phải sau thời gian bắt đầu.");
             }
+        }
+    }
+
+    private void autoAssignResourcesToPlan(ProductionPlan plan) {
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
+        if (stages.isEmpty())
+            return;
+
+        // 1. Find Best Leader
+        List<User> leaders = userRepo.findByRoleName("PRODUCT PROCESS LEADER");
+        if (leaders.isEmpty()) {
+            leaders = userRepo.findByRoleName("PRODUCTION MANAGER");
+        }
+
+        User selectedLeader = null;
+        if (!leaders.isEmpty()) {
+            User bestLeader = null;
+            long minLoad = Long.MAX_VALUE;
+            List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
+                    "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
+
+            for (User leader : leaders) {
+                if (!Boolean.TRUE.equals(leader.getActive()))
+                    continue;
+
+                // Use ProductionService to count active stages
+                long load = productionService.countActiveStagesForLeader(leader.getId(), activeStatuses);
+                if (load < minLoad) {
+                    minLoad = load;
+                    bestLeader = leader;
+                }
+            }
+            selectedLeader = bestLeader;
+        }
+
+        // 2. Find Best QC
+        List<User> qcs = userRepo.findByRoleName("QUALITY ASSURANCE DEPARTMENT");
+        if (qcs.isEmpty()) {
+            qcs = userRepo.findByRoleName("QC");
+        }
+
+        User selectedQc = null;
+        if (!qcs.isEmpty()) {
+            User bestQc = null;
+            long minLoad = Long.MAX_VALUE;
+            List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
+                    "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
+
+            for (User qc : qcs) {
+                if (!Boolean.TRUE.equals(qc.getActive()))
+                    continue;
+
+                long load = productionService.countActiveStagesForQc(qc.getId(), activeStatuses);
+                if (load < minLoad) {
+                    minLoad = load;
+                    bestQc = qc;
+                }
+            }
+            selectedQc = bestQc;
+        }
+
+        // 3. Assign to ALL stages
+        boolean anyChanged = false;
+        for (ProductionPlanStage stage : stages) {
+            boolean changed = false;
+            // Only assign if not already assigned (though requirement implies FORCE assign,
+            // but new plan has none)
+            if (selectedLeader != null) {
+                stage.setInChargeUser(selectedLeader);
+                changed = true;
+            }
+            if (selectedQc != null) {
+                stage.setQcUser(selectedQc);
+                changed = true;
+            }
+            if (changed)
+                anyChanged = true;
+        }
+        if (anyChanged) {
+            stageRepo.saveAll(stages);
         }
     }
 }
