@@ -1936,6 +1936,59 @@ public class ProductionService {
                 .orElseThrow(() -> new RuntimeException("Material requisition not found"));
     }
 
+    @Transactional
+    public tmmsystem.dto.MaterialRequisitionResponseDto getMaterialRequestDetails(Long id) {
+        tmmsystem.entity.MaterialRequisition req = getMaterialRequest(id);
+        List<tmmsystem.entity.MaterialRequisitionDetail> details = reqDetailRepo.findByRequisitionId(id);
+
+        tmmsystem.dto.MaterialRequisitionResponseDto dto = new tmmsystem.dto.MaterialRequisitionResponseDto();
+        dto.setId(req.getId());
+        dto.setRequisitionNumber(req.getRequisitionNumber());
+        dto.setStatus(req.getStatus());
+        dto.setRequestedAt(req.getRequestedAt());
+        dto.setApprovedAt(req.getApprovedAt());
+        dto.setNotes(req.getNotes());
+        dto.setQuantityRequested(req.getQuantityRequested());
+        dto.setQuantityApproved(req.getQuantityApproved());
+
+        // Enhanced fields
+        if (req.getProductionStage() != null) {
+            dto.setStageName(req.getProductionStage().getStageType()); // Or a more descriptive name if available
+        }
+        if (req.getRequestedBy() != null) {
+            dto.setRequesterName(req.getRequestedBy().getName());
+        }
+        if (req.getApprovedBy() != null) {
+            dto.setApproverName(req.getApprovedBy().getName());
+        }
+
+        if (req.getSourceIssue() != null) {
+            tmmsystem.dto.MaterialRequisitionResponseDto.SourceIssueDto issueDto = new tmmsystem.dto.MaterialRequisitionResponseDto.SourceIssueDto();
+            issueDto.setDescription(req.getSourceIssue().getDescription());
+            issueDto.setSeverity(req.getSourceIssue().getSeverity());
+            issueDto.setEvidencePhoto(req.getSourceIssue().getEvidencePhoto());
+            dto.setSourceIssue(issueDto);
+        }
+
+        List<tmmsystem.dto.MaterialRequisitionDetailDto> detailDtos = details.stream().map(d -> {
+            tmmsystem.dto.MaterialRequisitionDetailDto dDto = new tmmsystem.dto.MaterialRequisitionDetailDto();
+            dDto.setId(d.getId());
+            if (d.getMaterial() != null) {
+                dDto.setMaterialName(d.getMaterial().getName());
+                dDto.setMaterialCode(d.getMaterial().getCode());
+            }
+            dDto.setQuantityRequested(d.getQuantityRequested());
+            dDto.setQuantityApproved(d.getQuantityApproved());
+            dDto.setUnit(d.getUnit());
+            dDto.setNotes(d.getNotes());
+            return dDto;
+        }).collect(java.util.stream.Collectors.toList());
+
+        dto.setDetails(detailDtos);
+
+        return dto;
+    }
+
     // Legacy overload for ExecutionOrchestrationService
     @Transactional
     public ProductionOrder approveMaterialRequest(Long requestId, Long directorId, boolean force) {

@@ -652,8 +652,8 @@ public class ProductionController {
     // Material Requisition APIs
     @Operation(summary = "Lấy chi tiết yêu cầu cấp sợi")
     @GetMapping("/material-requests/{id}")
-    public tmmsystem.entity.MaterialRequisition getMaterialRequest(@PathVariable Long id) {
-        return service.getMaterialRequest(id);
+    public tmmsystem.dto.MaterialRequisitionResponseDto getMaterialRequest(@PathVariable Long id) {
+        return service.getMaterialRequestDetails(id);
     }
 
     @Operation(summary = "Phê duyệt yêu cầu cấp sợi")

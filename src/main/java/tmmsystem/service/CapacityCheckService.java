@@ -91,7 +91,10 @@ public class CapacityCheckService {
         // 4. Available Time
         // Start = Now + 7 days (prep time)
         LocalDate productionStartDate = LocalDate.now().plusDays(7);
-        long availableDaysCount = ChronoUnit.DAYS.between(productionStartDate, targetDate);
+        // End = Delivery Date - 7 days (shipping buffer)
+        LocalDate productionDeadline = targetDate.minusDays(7);
+
+        long availableDaysCount = ChronoUnit.DAYS.between(productionStartDate, productionDeadline);
         BigDecimal availableDays = BigDecimal.valueOf(Math.max(0, availableDaysCount));
 
         // 5. Result
@@ -105,7 +108,8 @@ public class CapacityCheckService {
         machineCapacity.setRequiredDays(totalLoadDays); // Total Load
         machineCapacity.setAvailableDays(availableDays);
         machineCapacity.setProductionStartDate(productionStartDate);
-        machineCapacity.setProductionEndDate(targetDate);
+        machineCapacity.setProductionEndDate(
+                productionStartDate.plusDays(totalLoadDays.setScale(0, RoundingMode.CEILING).longValue()));
         machineCapacity.setConflicts(new ArrayList<>()); // No specific conflicts in this model
 
         // Populate stage details for the NEW order only (for visualization)
