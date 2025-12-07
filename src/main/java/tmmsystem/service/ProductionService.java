@@ -1968,6 +1968,28 @@ public class ProductionService {
             issueDto.setSeverity(req.getSourceIssue().getSeverity());
             issueDto.setEvidencePhoto(req.getSourceIssue().getEvidencePhoto());
             dto.setSourceIssue(issueDto);
+
+            // Populate Check Details (Failed Inspections)
+            if (req.getProductionStage() != null) {
+                // Find latest Failed inspections for this stage
+                // Note: Logic allows seeing ALL failed inspections for this stage.
+                // Alternatively we could filter by date close to issue creation.
+                List<tmmsystem.entity.QcInspection> inspections = qcInspectionRepository
+                        .findByProductionStageId(req.getProductionStage().getId());
+
+                List<tmmsystem.dto.MaterialRequisitionResponseDto.DefectDetailDto> defects = inspections.stream()
+                        .filter(i -> "FAIL".equalsIgnoreCase(i.getResult()))
+                        .map(i -> {
+                            tmmsystem.dto.MaterialRequisitionResponseDto.DefectDetailDto d = new tmmsystem.dto.MaterialRequisitionResponseDto.DefectDetailDto();
+                            d.setCriteriaName(i.getQcCheckpoint() != null ? i.getQcCheckpoint().getInspectionCriteria()
+                                    : "Kiểm tra chung");
+                            d.setDescription(i.getNotes());
+                            d.setPhotoUrl(i.getPhotoUrl());
+                            return d;
+                        })
+                        .collect(java.util.stream.Collectors.toList());
+                dto.setDefectDetails(defects);
+            }
         }
 
         List<tmmsystem.dto.MaterialRequisitionDetailDto> detailDtos = details.stream().map(d -> {

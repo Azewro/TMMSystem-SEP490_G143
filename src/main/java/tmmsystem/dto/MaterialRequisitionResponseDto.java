@@ -23,6 +23,7 @@ public class MaterialRequisitionResponseDto {
 
     // Defect info
     private SourceIssueDto sourceIssue;
+    private List<DefectDetailDto> defectDetails;
 
     // Line items
     private List<MaterialRequisitionDetailDto> details;
@@ -32,5 +33,12 @@ public class MaterialRequisitionResponseDto {
         private String description;
         private String severity; // minor, major
         private String evidencePhoto;
+    }
+
+    @Data
+    public static class DefectDetailDto {
+        private String criteriaName; // Checkpoint name
+        private String description; // Notes/Defect desc
+        private String photoUrl;
     }
 }
