@@ -714,10 +714,19 @@ public class ProductionPlanService {
             return;
 
         // 1. Find Best Leader
-        List<User> leaders = userRepo.findByRoleName("PRODUCT PROCESS LEADER");
+        List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
         if (leaders.isEmpty()) {
-            leaders = userRepo.findByRoleName("PRODUCTION MANAGER");
+            leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
         }
+        if (leaders.isEmpty()) {
+            leaders = userRepo.findByRoleNameIgnoreCase("PRODUCTION MANAGER");
+        }
+        // Fallback for demo data
+        if (leaders.isEmpty()) {
+            leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCTION_MANAGER");
+        }
+
+        System.out.println("AutoAssign: Found " + leaders.size() + " potential leaders.");
 
         User selectedLeader = null;
         if (!leaders.isEmpty()) {
@@ -732,6 +741,7 @@ public class ProductionPlanService {
 
                 // Use ProductionService to count active stages
                 long load = productionService.countActiveStagesForLeader(leader.getId(), activeStatuses);
+                System.out.println("AutoAssign: Leader " + leader.getName() + " load=" + load);
                 if (load < minLoad) {
                     minLoad = load;
                     bestLeader = leader;
@@ -741,10 +751,18 @@ public class ProductionPlanService {
         }
 
         // 2. Find Best QC
-        List<User> qcs = userRepo.findByRoleName("QUALITY ASSURANCE DEPARTMENT");
+        List<User> qcs = userRepo.findByRoleNameIgnoreCase("QUALITY ASSURANCE DEPARTMENT");
         if (qcs.isEmpty()) {
-            qcs = userRepo.findByRoleName("QC");
+            qcs = userRepo.findByRoleNameIgnoreCase("ROLE_QUALITY_ASSURANCE_DEPARTMENT");
         }
+        if (qcs.isEmpty()) {
+            qcs = userRepo.findByRoleNameIgnoreCase("QC");
+        }
+        if (qcs.isEmpty()) {
+            qcs = userRepo.findByRoleNameIgnoreCase("ROLE_QC");
+        }
+
+        System.out.println("AutoAssign: Found " + qcs.size() + " potential QCs.");
 
         User selectedQc = null;
         if (!qcs.isEmpty()) {
@@ -758,6 +776,7 @@ public class ProductionPlanService {
                     continue;
 
                 long load = productionService.countActiveStagesForQc(qc.getId(), activeStatuses);
+                System.out.println("AutoAssign: QC " + qc.getName() + " load=" + load);
                 if (load < minLoad) {
                     minLoad = load;
                     bestQc = qc;
@@ -772,11 +791,11 @@ public class ProductionPlanService {
             boolean changed = false;
             // Only assign if not already assigned (though requirement implies FORCE assign,
             // but new plan has none)
-            if (selectedLeader != null) {
+            if (stage.getInChargeUser() == null && selectedLeader != null) {
                 stage.setInChargeUser(selectedLeader);
                 changed = true;
             }
-            if (selectedQc != null) {
+            if (stage.getQcUser() == null && selectedQc != null) {
                 stage.setQcUser(selectedQc);
                 changed = true;
             }
@@ -785,6 +804,13 @@ public class ProductionPlanService {
         }
         if (anyChanged) {
             stageRepo.saveAll(stages);
+            System.out.println(
+                    "AutoAssign: Assigned Leader=" + (selectedLeader != null ? selectedLeader.getName() : "null")
+                            + " QC=" + (selectedQc != null ? selectedQc.getName() : "null"));
+        } else {
+            System.out.println("AutoAssign: No changes made. Leader="
+                    + (selectedLeader != null ? selectedLeader.getName() : "null") + " QC="
+                    + (selectedQc != null ? selectedQc.getName() : "null"));
         }
     }
 }
