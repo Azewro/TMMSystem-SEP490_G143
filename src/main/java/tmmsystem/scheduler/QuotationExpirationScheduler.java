@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tmmsystem.entity.Quotation;
 import tmmsystem.repository.QuotationRepository;
 import tmmsystem.service.NotificationService;
+import tmmsystem.service.EmailService;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -20,6 +21,7 @@ public class QuotationExpirationScheduler {
 
     private final QuotationRepository quotationRepository;
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
     /**
      * Runs every minute to check for expired quotations.
@@ -43,8 +45,10 @@ public class QuotationExpirationScheduler {
             log.info("Found {} expiring soon quotations.", expiringSoon.size());
             for (Quotation quotation : expiringSoon) {
                 try {
-                    // Send warning notification
+                    // Send warning notification (Sales)
                     notificationService.notifyQuotationExpiringSoon(quotation);
+                    // Send warning email (Customer)
+                    emailService.sendQuotationExpiringSoonEmail(quotation);
 
                     quotation.setExpirationWarningSent(true);
                     quotationRepository.save(quotation);
@@ -74,8 +78,10 @@ public class QuotationExpirationScheduler {
 
                     quotationRepository.save(quotation);
 
-                    // Send notification
+                    // Send notification (Sales)
                     notificationService.notifyQuotationExpired(quotation);
+                    // Send email (Customer)
+                    emailService.sendQuotationExpiredEmail(quotation);
 
                 } catch (Exception e) {
                     log.error("Failed to expire quotation ID: {}", quotation.getId(), e);

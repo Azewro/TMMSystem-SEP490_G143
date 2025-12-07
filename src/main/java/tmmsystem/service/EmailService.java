@@ -348,4 +348,30 @@ public class EmailService {
 
         return content.toString();
     }
+
+    public void sendQuotationExpiringSoonEmail(Quotation quotation) {
+        if (quotation.getCustomer() == null || quotation.getCustomer().getEmail() == null)
+            return;
+        String to = quotation.getCustomer().getEmail();
+        String subject = "CẢNH BÁO: Báo giá sắp hết hạn - " + quotation.getQuotationNumber();
+        String content = "<h1>Báo giá sắp hết hạn</h1>" +
+                "<p>Kính gửi " + quotation.getCustomer().getCompanyName() + ",</p>" +
+                "<p>Báo giá <strong>#" + quotation.getQuotationNumber()
+                + "</strong> sẽ hết hạn trong vòng <strong>3 giờ</strong> nữa.</p>" +
+                "<p>Vui lòng đăng nhập vào hệ thống để phản hồi.</p>";
+        mailService.sendHtml(to, subject, content);
+    }
+
+    public void sendQuotationExpiredEmail(Quotation quotation) {
+        if (quotation.getCustomer() == null || quotation.getCustomer().getEmail() == null)
+            return;
+        String to = quotation.getCustomer().getEmail();
+        String subject = "THÔNG BÁO: Báo giá đã hết hạn - " + quotation.getQuotationNumber();
+        String content = "<h1>Báo giá đã hết hạn</h1>" +
+                "<p>Kính gửi " + quotation.getCustomer().getCompanyName() + ",</p>" +
+                "<p>Báo giá <strong>#" + quotation.getQuotationNumber()
+                + "</strong> đã hết hạn do không có phản hồi trong 12 giờ qua.</p>" +
+                "<p>Báo giá đã tự động bị từ chối.</p>";
+        mailService.sendHtml(to, subject, content);
+    }
 }

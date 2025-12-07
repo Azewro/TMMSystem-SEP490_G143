@@ -673,20 +673,7 @@ public class NotificationService {
 
     @Transactional
     public void notifyQuotationExpiringSoon(Quotation quotation) {
-        // 1. Notify Customer (via User linked to Customer)
-        if (quotation.getCustomer() != null && quotation.getCustomer().getUser() != null) {
-            createNotificationInternal(
-                    quotation.getCustomer().getUser(),
-                    "WARNING",
-                    "QUOTATION",
-                    "Báo giá sắp hết hạn",
-                    "Báo giá #" + quotation.getQuotationNumber()
-                            + " sẽ hết hạn trong 3 giờ nữa. Vui lòng phản hồi sớm.",
-                    "QUOTATION",
-                    quotation.getId());
-        }
-
-        // 2. Notify Assigned Sales
+        // Notify Assigned Sales
         if (quotation.getAssignedSales() != null) {
             createNotificationInternal(
                     quotation.getAssignedSales(),
@@ -702,19 +689,7 @@ public class NotificationService {
 
     @Transactional
     public void notifyQuotationExpired(Quotation quotation) {
-        // 1. Notify Customer
-        if (quotation.getCustomer() != null && quotation.getCustomer().getUser() != null) {
-            createNotificationInternal(
-                    quotation.getCustomer().getUser(),
-                    "ERROR",
-                    "QUOTATION",
-                    "Báo giá đã hết hạn",
-                    "Báo giá #" + quotation.getQuotationNumber() + " đã hết hạn do không có phản hồi trong 12 giờ.",
-                    "QUOTATION",
-                    quotation.getId());
-        }
-
-        // 2. Notify Assigned Sales
+        // Notify Assigned Sales
         if (quotation.getAssignedSales() != null) {
             createNotificationInternal(
                     quotation.getAssignedSales(),
