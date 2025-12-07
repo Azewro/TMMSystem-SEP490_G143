@@ -33,6 +33,8 @@ public class QuotationService {
     private final FileStorageService fileStorageService;
     // NEW: inject CustomerService to provision password when needed
     private final CustomerService customerService;
+    // NEW: Inject CapacityCheckService for strict backend verification
+    private final CapacityCheckService capacityCheckService;
 
     public QuotationService(QuotationRepository quotationRepository,
             QuotationDetailRepository quotationDetailRepository,
@@ -45,7 +47,8 @@ public class QuotationService {
             NotificationService notificationService,
             EmailService emailService,
             FileStorageService fileStorageService,
-            CustomerService customerService) {
+            CustomerService customerService,
+            CapacityCheckService capacityCheckService) {
         this.quotationRepository = quotationRepository;
         this.quotationDetailRepository = quotationDetailRepository;
         this.rfqRepository = rfqRepository;
@@ -58,6 +61,7 @@ public class QuotationService {
         this.emailService = emailService;
         this.fileStorageService = fileStorageService;
         this.customerService = customerService;
+        this.capacityCheckService = capacityCheckService;
     }
 
     public List<Quotation> findAll() {
@@ -242,31 +246,47 @@ public class QuotationService {
         if (!"RECEIVED_BY_PLANNING".equals(rfq.getStatus())) {
             throw new IllegalStateException("RFQ must be received by planning to create quotation");
         }
-        // Require capacity evaluation done
+
+        // STRICT BACKEND VERIFICATION
+        // Re-run capacity check to prevent race conditions
+        tmmsystem.dto.sales.CapacityCheckResultDto checkResult = capacityCheckService.checkMachineCapacity(rfqId);
+        boolean isSufficient = checkResult != null &&
+                checkResult.getMachineCapacity() != null &&
+                checkResult.getMachineCapacity().isSufficient();
+
+        if (!isSufficient) {
+            // Allow INSUFFICIENT only if proposedNewDeliveryDate accepted by updating
+            // expectedDeliveryDate - BUT for strict check, we might want to block unless
+            // explicit override
+            // Re-using the logic: if status is INSUFFICIENT in DB, check if dates match
+            // But here we are checking the LIVE result.
+
+            // If live result is insufficient, we must ensure the expectedDeliveryDate has
+            // ALREADY been updated to a feasible date
+            // OR fail.
+
+            // The most robust way: if live check says insufficient, FAIL.
+            // because "sufficient" means "can meet expectedDeliveryDate".
+            // If user updated expectedDeliveryDate to a later date, checkMachineCapacity
+            // should return SUFFICIENT for *that* new date.
+
+            throw new IllegalStateException(
+                    "Capacity verification failed! The machine capacity is no longer sufficient for the requested delivery date. Please re-check capacity report.");
+        }
+
+        // Require capacity evaluation done (Double check against DB record just in
+        // case)
         if (rfq.getCapacityStatus() == null) {
             throw new IllegalStateException("Capacity evaluation not performed yet (capacityStatus is null)");
         }
-        if (!"SUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
-            // Allow INS UFFICIENT only if proposedNewDeliveryDate accepted by updating
-            // expectedDeliveryDate
-            if ("INSUFFICIENT".equalsIgnoreCase(rfq.getCapacityStatus())) {
-                if (rfq.getProposedNewDeliveryDate() == null) {
-                    throw new IllegalStateException("Capacity insufficient. Proposed new delivery date missing");
-                }
-                if (!rfq.getProposedNewDeliveryDate().equals(rfq.getExpectedDeliveryDate())) {
-                    throw new IllegalStateException(
-                            "Capacity insufficient. Please update expectedDeliveryDate to proposedNewDeliveryDate before creating quotation");
-                }
-            } else {
-                throw new IllegalStateException("RFQ capacityStatus must be SUFFICIENT to create quotation");
-            }
-        }
+
         Quotation quotation = new Quotation();
         quotation.setQuotationNumber(generateQuotationNumber());
         quotation.setRfq(rfq);
         quotation.setCustomer(rfq.getCustomer());
         quotation.setValidUntil(LocalDate.now().plusDays(30));
-        quotation.setStatus("DRAFT");
+        quotation.setStatus("SENT");
+        quotation.setSentAt(java.time.Instant.now());
         User planningUser = new User();
         planningUser.setId(planningUserId);
         quotation.setCapacityCheckedBy(planningUser);
@@ -302,39 +322,38 @@ public class QuotationService {
         quotationDetailRepository.saveAll(qDetails);
         rfq.setStatus("QUOTED");
         rfqRepository.save(rfq);
-        notificationService.notifyQuotationCreated(savedQuotation);
+        // notificationService.notifyQuotationCreated(savedQuotation); // Skipped to
+        // avoid duplicate spam, relying on Sent notification
+        notificationService.notifyQuotationSentToCustomer(savedQuotation);
 
-        // REMOVED: Email is now sent manually by Sales in sendQuotationToCustomer
-        // Customer customer = rfq.getCustomer();
-        // String tempPassword = null;
-        // if (customer != null && (customer.getPassword() == null ||
-        // customer.getPassword().isBlank()
-        // || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
-        // try {
-        // tempPassword = customerService.provisionTemporaryPassword(customer.getId());
-        // log.info("Temporary password provisioned for customer {}: {}",
-        // customer.getId(),
-        // tempPassword != null ? "***" : "null");
-        // } catch (Exception e) {
-        // log.error("Failed to provision temporary password for customer {}: {}",
-        // customer.getId(),
-        // e.getMessage(), e);
-        // }
-        // } else if (customer != null) {
-        // log.info("Customer {} already has password, skipping temporary password
-        // provision", customer.getId());
-        // }
-        // try {
-        // emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
-        // log.info("Quotation email with login sent to customer {} (tempPassword
-        // provided: {})",
-        // customer != null ? customer.getId() : "null", tempPassword != null &&
-        // !tempPassword.isBlank());
-        // } catch (Exception e) {
-        // log.error("Failed to send quotation email with login for quotation {}: {}",
-        // savedQuotation.getId(),
-        // e.getMessage(), e);
-        // }
+        // Automate Sending: Provision password and send email
+        Customer customer = rfq.getCustomer();
+        String tempPassword = null;
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
+                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+            try {
+                tempPassword = customerService.provisionTemporaryPassword(customer.getId());
+                log.info("Temporary password provisioned for customer {}: {}", customer.getId(),
+                        tempPassword != null ? "***" : "null");
+            } catch (Exception e) {
+                log.error("Failed to provision temporary password for customer {}: {}", customer.getId(),
+                        e.getMessage(), e);
+            }
+        } else if (customer != null) {
+            log.info("Customer {} already has password, skipping temporary password provision", customer.getId());
+        }
+
+        try {
+            if (tempPassword != null) {
+                emailService.sendQuotationEmailWithLogin(savedQuotation, tempPassword);
+            } else {
+                emailService.sendQuotationEmail(savedQuotation);
+            }
+            log.info("Quotation email sent to customer {}", customer != null ? customer.getId() : "null");
+        } catch (Exception e) {
+            log.error("Failed to send quotation email for quotation {}: {}", savedQuotation.getId(),
+                    e.getMessage(), e);
+        }
         return savedQuotation;
     }
 

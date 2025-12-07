@@ -62,7 +62,11 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Startup: Fixed missing details for Supplementary Orders");
 
             // Sync RFQ Status for Rejected Quotations
+            // Sync RFQ Status for Rejected Quotations
             rfqService.syncRejectedQuotations(log);
+
+            // Auto-assign backfill for existing RFQs
+            rfqService.assignSalesToUnassignedRfqs(log);
 
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)

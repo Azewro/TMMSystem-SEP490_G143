@@ -14,6 +14,7 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**") // áp dụng cho tất cả endpoint
+                        .allowedOrigins()
                         .allowedOriginPatterns("*") // cho phép mọi origin
                         .allowedMethods("*") // GET, POST, PUT, DELETE...
                         .allowedHeaders("*") // mọi header

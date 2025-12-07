@@ -246,10 +246,17 @@ public class RfqService {
             User u = new User();
             u.setId(dto.getAssignedSalesId());
             rfq.setAssignedSales(u);
+        } else {
+            // Auto-assign if no specific sales requested
+            User sales = findLeastBusySalesStaff();
+            if (sales != null) {
+                rfq.setAssignedSales(sales);
+            }
         }
 
         // Auto-set status to SENT if Sales is assigned and status is DRAFT or null
-        if (rfq.getAssignedSales() != null && (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus()))) {
+        // Request: "trạng thái lúc này là sent luôn"
+        if (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus())) {
             rfq.setStatus("SENT");
             rfq.setSent(true);
         }
@@ -361,12 +368,18 @@ public class RfqService {
             if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
             }
-            rfq.setAssignedSales(user);
-            // Auto-set status to SENT if Sales is assigned
-            if (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus())) {
-                rfq.setStatus("SENT");
-                rfq.setSent(true);
+        } else {
+            // Auto-assign for public requests
+            User sales = findLeastBusySalesStaff();
+            if (sales != null) {
+                rfq.setAssignedSales(sales);
             }
+        }
+
+        // Auto-set status to SENT
+        if (rfq.getStatus() == null || "DRAFT".equals(rfq.getStatus())) {
+            rfq.setStatus("SENT");
+            rfq.setSent(true);
         }
 
         if (dto.getExpectedDeliveryDate() != null)
@@ -416,8 +429,8 @@ public class RfqService {
         rfq.setSourceType("BY_SALES");
         rfq.setExpectedDeliveryDate(req.getExpectedDeliveryDate());
 
-        // Logic: If Sales creates it, they are assigned, so status is
-        // FORWARDED_TO_PLANNING.
+        // Logic: If Sales creates it, they are assigned.
+        // Request: "nếu là create bởi sales thì sửa lại là forwarded to planning"
         rfq.setStatus("FORWARDED_TO_PLANNING");
         rfq.setSent(true);
         rfq.setSalesConfirmedAt(java.time.Instant.now());
@@ -1066,6 +1079,56 @@ public class RfqService {
         if (date.isBefore(min)) {
             throw new IllegalArgumentException("Expected delivery date must be at least 30 days from creation date ("
                     + baseDate + ") (>= " + baseDate.plusDays(30) + ")");
+        }
+    }
+
+    private User findLeastBusySalesStaff() {
+        // Try precise roles first
+        List<User> salesStaff = userRepository.findByRoleName("SALE STAFF");
+        if (salesStaff.isEmpty()) {
+            salesStaff = userRepository.findByRoleName("SALE");
+        }
+
+        if (salesStaff.isEmpty()) {
+            return null;
+        }
+
+        User bestCandidate = null;
+        long minCount = Long.MAX_VALUE;
+
+        for (User u : salesStaff) {
+            long count = rfqRepository.countByAssignedSales_Id(u.getId());
+            if (count < minCount) {
+                minCount = count;
+                bestCandidate = u;
+            }
+        }
+        return bestCandidate;
+    }
+
+    @Transactional
+    public void assignSalesToUnassignedRfqs(org.slf4j.Logger log) {
+        // Find RFQs that are not cancelled and have no sales assigned
+        List<Rfq> all = rfqRepository.findAll();
+        int count = 0;
+        for (Rfq rfq : all) {
+            String status = rfq.getStatus() != null ? rfq.getStatus() : "DRAFT";
+            if (rfq.getAssignedSales() == null && !"CANCELED".equals(status) && !"REJECTED".equals(status)) {
+                User sales = findLeastBusySalesStaff();
+                if (sales != null) {
+                    rfq.setAssignedSales(sales);
+                    // Also ensure status is SENT if it was DRAFT
+                    if ("DRAFT".equals(status) || rfq.getStatus() == null) {
+                        rfq.setStatus("SENT");
+                        rfq.setSent(true);
+                    }
+                    rfqRepository.save(rfq);
+                    count++;
+                }
+            }
+        }
+        if (count > 0 && log != null) {
+            log.info("Startup: Auto-assigned {} RFQs to Sales Staff", count);
         }
     }
 }

@@ -34,4 +34,6 @@ public interface RfqRepository extends JpaRepository<Rfq, Long>, JpaSpecificatio
 
     @Deprecated
     Page<Rfq> findByStatusAndAssignedSalesIsNullOrAssignedPlanningIsNull(String status, Pageable pageable);
+
+    Long countByAssignedSales_Id(Long salesId);
 }
