@@ -670,4 +670,75 @@ public class NotificationService {
     public long getUnreadCount(Long userId) {
         return notificationRepository.countByUserIdAndReadFalse(userId);
     }
+
+    @Transactional
+    public void notifyQuotationExpiringSoon(Quotation quotation) {
+        // 1. Notify Customer (via User linked to Customer)
+        if (quotation.getCustomer() != null && quotation.getCustomer().getUser() != null) {
+            createNotificationInternal(
+                    quotation.getCustomer().getUser(),
+                    "WARNING",
+                    "QUOTATION",
+                    "Báo giá sắp hết hạn",
+                    "Báo giá #" + quotation.getQuotationNumber()
+                            + " sẽ hết hạn trong 3 giờ nữa. Vui lòng phản hồi sớm.",
+                    "QUOTATION",
+                    quotation.getId());
+        }
+
+        // 2. Notify Assigned Sales
+        if (quotation.getAssignedSales() != null) {
+            createNotificationInternal(
+                    quotation.getAssignedSales(),
+                    "WARNING",
+                    "QUOTATION",
+                    "Báo giá sắp hết hạn",
+                    "Báo giá #" + quotation.getQuotationNumber() + " gửi cho khách hàng "
+                            + quotation.getCustomer().getCompanyName() + " sẽ hết hạn trong 3 giờ.",
+                    "QUOTATION",
+                    quotation.getId());
+        }
+    }
+
+    @Transactional
+    public void notifyQuotationExpired(Quotation quotation) {
+        // 1. Notify Customer
+        if (quotation.getCustomer() != null && quotation.getCustomer().getUser() != null) {
+            createNotificationInternal(
+                    quotation.getCustomer().getUser(),
+                    "ERROR",
+                    "QUOTATION",
+                    "Báo giá đã hết hạn",
+                    "Báo giá #" + quotation.getQuotationNumber() + " đã hết hạn do không có phản hồi trong 12 giờ.",
+                    "QUOTATION",
+                    quotation.getId());
+        }
+
+        // 2. Notify Assigned Sales
+        if (quotation.getAssignedSales() != null) {
+            createNotificationInternal(
+                    quotation.getAssignedSales(),
+                    "ERROR",
+                    "QUOTATION",
+                    "Báo giá đã hết hạn",
+                    "Báo giá #" + quotation.getQuotationNumber() + " đã tự động bị từ chối do quá hạn 12 giờ.",
+                    "QUOTATION",
+                    quotation.getId());
+        }
+    }
+
+    private void createNotificationInternal(User user, String type, String category, String title, String message,
+            String refType, Long refId) {
+        Notification notification = new Notification();
+        notification.setUser(user);
+        notification.setType(type);
+        notification.setCategory(category);
+        notification.setTitle(title);
+        notification.setMessage(message);
+        notification.setReferenceType(refType);
+        notification.setReferenceId(refId);
+        notification.setRead(false);
+        notification.setCreatedAt(Instant.now());
+        notificationRepository.save(notification);
+    }
 }
