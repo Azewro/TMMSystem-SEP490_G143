@@ -1097,6 +1097,11 @@ public class RfqService {
         long minCount = Long.MAX_VALUE;
 
         for (User u : salesStaff) {
+            // Updated rule: Exclude inactive users
+            if (!Boolean.TRUE.equals(u.getActive())) {
+                continue;
+            }
+
             long count = rfqRepository.countByAssignedSales_Id(u.getId());
             if (count < minCount) {
                 minCount = count;
@@ -1129,6 +1134,34 @@ public class RfqService {
         }
         if (count > 0 && log != null) {
             log.info("Startup: Auto-assigned {} RFQs to Sales Staff", count);
+        }
+    }
+
+    @Transactional
+    public void reassignInactiveSalesRfqs(org.slf4j.Logger log) {
+        // Find RFQs assigned to inactive sales
+        List<Rfq> all = rfqRepository.findAll();
+        int count = 0;
+        for (Rfq rfq : all) {
+            if (rfq.getAssignedSales() != null && !Boolean.TRUE.equals(rfq.getAssignedSales().getActive())) {
+                String oldName = rfq.getAssignedSales().getName();
+                User newSales = findLeastBusySalesStaff(); // Now filters active only
+                if (newSales != null) {
+                    rfq.setAssignedSales(newSales);
+                    rfqRepository.save(rfq);
+                    count++;
+                    if (log != null) {
+                        log.info("Reassigned RFQ #{} from inactive sales '{}' to active sales '{}'",
+                                rfq.getRfqNumber(), oldName, newSales.getName());
+                    }
+                } else if (log != null) {
+                    log.warn("Could not reassign RFQ #{} from inactive sales '{}': No active sales staff found",
+                            rfq.getRfqNumber(), oldName);
+                }
+            }
+        }
+        if (count > 0 && log != null) {
+            log.info("Startup: Reassigned {} RFQs from inactive sales staff", count);
         }
     }
 }

@@ -68,6 +68,9 @@ public class DataInitializer implements CommandLineRunner {
             // Auto-assign backfill for existing RFQs
             rfqService.assignSalesToUnassignedRfqs(log);
 
+            // Reassign RFQs from inactive sales staff
+            rfqService.reassignInactiveSalesRfqs(log);
+
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
             // seedQcCheckpoints();
