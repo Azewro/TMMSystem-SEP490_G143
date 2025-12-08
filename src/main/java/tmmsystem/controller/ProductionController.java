@@ -462,22 +462,30 @@ public class ProductionController {
         List<ProductionStage> leaderStages = service.getLeaderStagesForOrder(orderId, leaderUserId);
         if (!leaderStages.isEmpty()) {
             ProductionStage leaderStage = leaderStages.get(0);
-            ProductionStageDto stageDto = mapper.toDto(leaderStage);
-            java.math.BigDecimal totalHours = service.calculateTotalHoursForStage(leaderStage.getId());
-            stageDto.setTotalHours(totalHours);
+            // Update the specific stage in the full list with extra info (Total Hours,
+            // Defect)
+            if (dto.getStages() != null) {
+                for (ProductionStageDto s : dto.getStages()) {
+                    if (s.getId().equals(leaderStage.getId())) {
+                        java.math.BigDecimal totalHours = service.calculateTotalHoursForStage(leaderStage.getId());
+                        s.setTotalHours(totalHours);
 
-            // Populate Defect Info for Rework
-            if (Boolean.TRUE.equals(leaderStage.getIsRework())) {
-                tmmsystem.entity.QualityIssue issue = service.getDefectForStage(leaderStage.getId());
-                if (issue != null) {
-                    stageDto.setDefectId(issue.getId());
-                    stageDto.setDefectDescription(issue.getDescription());
-                    stageDto.setDefectSeverity(issue.getSeverity());
+                        // Populate Defect Info for Rework
+                        if (Boolean.TRUE.equals(leaderStage.getIsRework())) {
+                            tmmsystem.entity.QualityIssue issue = service.getDefectForStage(leaderStage.getId());
+                            if (issue != null) {
+                                s.setDefectId(issue.getId());
+                                s.setDefectDescription(issue.getDescription());
+                                s.setDefectSeverity(issue.getSeverity());
+                            }
+                        }
+                        // Break after finding the leader's stage
+                        break;
+                    }
                 }
             }
-
-            // Set stage (singular) cho frontend
-            dto.setStages(java.util.List.of(stageDto));
+            // REMOVED: dto.setStages(java.util.List.of(stageDto)); -> We now keep all
+            // stages
         }
 
         return dto;

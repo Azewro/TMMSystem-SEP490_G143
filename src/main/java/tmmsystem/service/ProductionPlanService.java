@@ -252,7 +252,7 @@ public class ProductionPlanService {
         applyTimelineToPlan(saved);
 
         // NEW: Auto-assign Leader and QC
-        autoAssignResourcesToPlan(saved);
+        autoAssignResourcesToPlan(saved, true);
 
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
@@ -303,6 +303,22 @@ public class ProductionPlanService {
 
         // Validate completeness before approval (double check)
         validatePlanCompleteness(planId);
+
+        // NEW: Strict Leader Check (Director Guard)
+        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
+        if (!stages.isEmpty()) {
+            User leader = stages.get(0).getInChargeUser();
+            if (leader != null) {
+                List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
+                        "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
+                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(), activeStatuses);
+
+                if (strictLoad > 0) {
+                    throw new RuntimeException("Tổ trưởng " + leader.getName()
+                            + " hiện đang bận (tiến độ chưa 100%). Vui lòng lập lại kế hoạch.");
+                }
+            }
+        }
 
         plan.setStatus(ProductionPlan.PlanStatus.APPROVED);
         plan.setApprovedBy(getCurrentUser());
@@ -587,6 +603,10 @@ public class ProductionPlanService {
                 .orElseThrow(() -> new RuntimeException("Production plan not found"));
         applyTimelineToPlan(plan);
         ProductionPlan updatedPlan = calculateAndSetPlanDates(plan.getId());
+
+        // NEW: Auto-Recalculate Resources on View
+        autoAssignResourcesToPlan(updatedPlan, true);
+
         return mapper.toDto(updatedPlan);
     }
 
@@ -708,7 +728,7 @@ public class ProductionPlanService {
         }
     }
 
-    private void autoAssignResourcesToPlan(ProductionPlan plan) {
+    private void autoAssignResourcesToPlan(ProductionPlan plan, boolean force) {
         List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
         if (stages.isEmpty())
             return;
@@ -799,28 +819,35 @@ public class ProductionPlanService {
         boolean anyChanged = false;
         for (ProductionPlanStage stage : stages) {
             boolean changed = false;
-            // Only assign if not already assigned (though requirement implies FORCE assign,
-            // but new plan has none)
-            if (stage.getInChargeUser() == null && selectedLeader != null) {
+            // Only assign if not already assigned OR force is true
+            if ((stage.getInChargeUser() == null || force) && selectedLeader != null) {
                 stage.setInChargeUser(selectedLeader);
                 changed = true;
-            }
-            if (stage.getQcUser() == null && selectedQc != null) {
-                stage.setQcUser(selectedQc);
+            } else if (force && selectedLeader == null) {
+                // If force refresh and no leader available, clear assignment
+                stage.setInChargeUser(null);
                 changed = true;
             }
-            if (changed)
+
+            if ((stage.getQcUser() == null || force) && selectedQc != null) {
+                stage.setQcUser(selectedQc);
+                changed = true;
+            } else if (force && selectedQc == null) {
+                stage.setQcUser(null);
+                changed = true;
+            }
+
+            if (changed) {
+                // stageRepo.save(stage); // Don't save inside loop individually if we use
+                // saveAll
                 anyChanged = true;
+            }
         }
         if (anyChanged) {
             stageRepo.saveAll(stages);
             System.out.println(
                     "AutoAssign: Assigned Leader=" + (selectedLeader != null ? selectedLeader.getName() : "null")
                             + " QC=" + (selectedQc != null ? selectedQc.getName() : "null"));
-        } else {
-            System.out.println("AutoAssign: No changes made. Leader="
-                    + (selectedLeader != null ? selectedLeader.getName() : "null") + " QC="
-                    + (selectedQc != null ? selectedQc.getName() : "null"));
         }
     }
 }
