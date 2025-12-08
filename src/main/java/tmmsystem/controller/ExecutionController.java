@@ -41,6 +41,12 @@ public class ExecutionController {
         return productionMapper.toDto(stage);
     }
 
+    // NEW: Check if a stage can be started (for frontend validation)
+    @GetMapping("/stages/{stageId}/can-start")
+    public java.util.Map<String, Object> canStartStage(@PathVariable Long stageId) {
+        return orchestrationService.checkCanStartStage(stageId);
+    }
+
     @PutMapping("/stages/{stageId}/progress")
     public ProductionStageDto updateProgress(@PathVariable Long stageId, @RequestParam Long userId,
             @RequestParam Integer percent) {

@@ -230,6 +230,16 @@ public class EmailService {
         html.append("</ul>");
         html.append("</div>");
 
+        // Expiration Warning (Red)
+        html.append(
+                "<div style='margin: 20px 0; padding: 15px; background-color: #f8d7da; border-left: 4px solid #dc3545;'>");
+        html.append("<p style='color: #dc3545; font-weight: bold; margin: 0;'>");
+        html.append("Xin vui lòng xem xét báo giá này trong vòng 12 tiếng. ");
+        html.append("Sau thời gian trên, nếu quý khách không chấp nhận hoặc từ chối báo giá, ");
+        html.append("thì hệ thống sẽ tự động ghi nhận là quý khách đã từ chối báo giá.");
+        html.append("</p>");
+        html.append("</div>");
+
         // Closing
         html.append("<div style='margin-top: 40px; text-align: right;'>");
         html.append("<p style='margin: 5px 0;'>Trân trọng kính chào!</p>");

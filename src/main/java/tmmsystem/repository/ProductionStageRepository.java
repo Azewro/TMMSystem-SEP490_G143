@@ -62,6 +62,11 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     // NEW: Count active stages for capacity check
     long countByStageTypeAndExecutionStatusIn(String stageType, List<String> executionStatuses);
 
+    // NEW: Count active (progress < 100) stages of same type excluding a specific stage
+    @Query("select count(s) from ProductionStage s where s.stageType = :stageType and s.id <> :stageId and (s.progressPercent is null or s.progressPercent < 100) and s.executionStatus in :executionStatuses")
+    long countActiveByStageTypeExcludingStage(@Param("stageType") String stageType, @Param("stageId") Long stageId,
+            @Param("executionStatuses") List<String> executionStatuses);
+
     // NEW: Find active stages on a specific machine
     List<ProductionStage> findByMachineIdAndExecutionStatus(Long machineId, String executionStatus);
 
@@ -75,7 +80,7 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     boolean existsByProductionOrderId(Long productionOrderId);
 
     // NEW: Count active stages where progress < 100% for Leader strictly assignment
-    @Query("select count(s) from ProductionStage s where s.assignedLeader.id = :leaderId and s.progressPercent < 100 and s.executionStatus in :executionStatuses")
+    @Query("select count(s) from ProductionStage s where s.assignedLeader.id = :leaderId and (s.progressPercent is null or s.progressPercent < 100) and (s.executionStatus is null or s.executionStatus in :executionStatuses)")
     long countByAssignedLeaderIdAndProgressPercentLessThan100(@Param("leaderId") Long leaderId,
             @Param("executionStatuses") List<String> executionStatuses);
 }

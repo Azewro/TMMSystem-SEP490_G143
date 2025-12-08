@@ -29,4 +29,14 @@ public interface QuotationRepository extends JpaRepository<Quotation, Long>, Jpa
 
     java.util.List<Quotation> findByStatusAndExpirationWarningSentFalseAndSentAtBefore(String status,
             java.time.Instant sentAt);
+
+    // For capacity check: find active quotations (blocking capacity)
+    java.util.List<Quotation> findByStatusIn(java.util.List<String> statuses);
+
+    // With RFQ delivery date filter for capacity window check
+    @org.springframework.data.jpa.repository.Query("SELECT q FROM Quotation q JOIN q.rfq r WHERE q.status IN :statuses AND r.expectedDeliveryDate BETWEEN :start AND :end")
+    java.util.List<Quotation> findByStatusInAndRfqDeliveryDateBetween(
+            @org.springframework.data.repository.query.Param("statuses") java.util.List<String> statuses,
+            @org.springframework.data.repository.query.Param("start") java.time.LocalDate start,
+            @org.springframework.data.repository.query.Param("end") java.time.LocalDate end);
 }

@@ -61,6 +61,12 @@ public class DataInitializer implements CommandLineRunner {
             productionService.fixMissingReworkDetails();
             log.info("Startup: Fixed missing details for Supplementary Orders");
 
+            // Enforce exclusive stage per type (except outsourced dyeing) - demote extra actives to WAITING
+            int demoted = productionService.enforceExclusiveStageConflicts();
+            if (demoted > 0) {
+                log.info("Startup: Demoted {} active stages to WAITING to enforce single-lot per stage type.", demoted);
+            }
+
             // Sync RFQ Status for Rejected Quotations
             // Sync RFQ Status for Rejected Quotations
             rfqService.syncRejectedQuotations(log);

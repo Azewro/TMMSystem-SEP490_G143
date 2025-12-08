@@ -38,6 +38,11 @@ public class CapacityCheckService {
     private static final BigDecimal VENDOR_DYEING_TIME = new BigDecimal("2.0"); // Vendor nhuộm mất 2 ngày
 
     private final ContractRepository contractRepository;
+    private final QuotationRepository quotationRepository;
+
+    // Quotation statuses that block production capacity
+    private static final java.util.List<String> CAPACITY_BLOCKING_STATUSES = java.util.List.of(
+            "SENT", "ACCEPTED", "ORDER_CREATED");
 
     public CapacityCheckService(RfqRepository rfqRepository,
             RfqDetailRepository rfqDetailRepository,
@@ -46,7 +51,8 @@ public class CapacityCheckService {
             WorkOrderRepository workOrderRepository,
             PlanningTimelineCalculator timelineCalculator,
             SequentialCapacityCalculator sequentialCapacityCalculator,
-            ContractRepository contractRepository) {
+            ContractRepository contractRepository,
+            QuotationRepository quotationRepository) {
         this.rfqRepository = rfqRepository;
         this.rfqDetailRepository = rfqDetailRepository;
         this.productRepository = productRepository;
@@ -55,6 +61,7 @@ public class CapacityCheckService {
         this.timelineCalculator = timelineCalculator;
         this.sequentialCapacityCalculator = sequentialCapacityCalculator;
         this.contractRepository = contractRepository;
+        this.quotationRepository = quotationRepository;
     }
 
     public CapacityCheckResultDto checkMachineCapacity(Long rfqId) {
@@ -65,23 +72,25 @@ public class CapacityCheckService {
         SequentialCapacityResult newOrderCapacity = calculateCapacityForDetails(rfqDetails);
         BigDecimal newOrderDays = newOrderCapacity.getTotalDays();
 
-        // 2. Calculate Backlog Duration (Contracts in Window)
+        // 2. Calculate Backlog Duration (Quotations with blocking statuses in delivery
+        // window)
         LocalDate targetDate = rfq.getExpectedDeliveryDate();
         LocalDate windowStart = targetDate.minusDays(1);
         LocalDate windowEnd = targetDate.plusDays(1);
 
-        List<Contract> backlogContracts = contractRepository.findByDeliveryDateBetweenAndStatus(windowStart, windowEnd,
-                "APPROVED");
+        // Use quotations instead of contracts for capacity calculation
+        List<Quotation> backlogQuotations = quotationRepository.findByStatusInAndRfqDeliveryDateBetween(
+                CAPACITY_BLOCKING_STATUSES, windowStart, windowEnd);
         BigDecimal backlogDays = BigDecimal.ZERO;
 
-        for (Contract c : backlogContracts) {
-            if (c.getQuotation() != null && c.getQuotation().getDetails() != null) {
-                // Convert QuotationDetails to capacity input
-                // Note: This is an approximation. Ideally we should store calculated capacity
-                // in Contract/Lot.
-                // For now, re-calculate based on quotation details.
-                SequentialCapacityResult cCap = calculateCapacityForQuotationDetails(c.getQuotation().getDetails());
-                backlogDays = backlogDays.add(cCap.getTotalDays());
+        for (Quotation q : backlogQuotations) {
+            // Skip if this is the same RFQ we're checking
+            if (q.getRfq() != null && q.getRfq().getId().equals(rfqId)) {
+                continue;
+            }
+            if (q.getDetails() != null && !q.getDetails().isEmpty()) {
+                SequentialCapacityResult qCap = calculateCapacityForQuotationDetails(q.getDetails());
+                backlogDays = backlogDays.add(qCap.getTotalDays());
             }
         }
 

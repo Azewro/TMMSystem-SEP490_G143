@@ -138,15 +138,9 @@ public class ExecutionOrchestrationService {
         }
 
         // NEW: Blocking Logic (Single Lot per Stage)
-        // Exception: Outsourced stages (e.g. Dyeing) and Packaging do not block
+        // Exception: Only outsourced DYEING stages are allowed to run in parallel
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
-                "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
-                "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
-                "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
-                "CAT".equalsIgnoreCase(stage.getStageType()) ||
-                "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
-                "MAY".equalsIgnoreCase(stage.getStageType());
+                "NHUOM".equalsIgnoreCase(stage.getStageType());
 
         if (!isParallelStage) {
             // 1. Check if any Rework Order is IN_PROGRESS at this stage
@@ -323,15 +317,9 @@ public class ExecutionOrchestrationService {
             }
 
             // Update machine status to AVAILABLE and release MachineAssignment (SKIP for
-            // Parallel Stages)
+            // Parallel Stages - only DYEING is parallel)
             boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
-                    "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
-                    "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                    "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
-                    "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
-                    "CAT".equalsIgnoreCase(stage.getStageType()) ||
-                    "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
-                    "MAY".equalsIgnoreCase(stage.getStageType());
+                    "NHUOM".equalsIgnoreCase(stage.getStageType());
 
             if (!isParallelStage && stage.getStageType() != null) {
                 machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
@@ -588,15 +576,9 @@ public class ExecutionOrchestrationService {
             throw new RuntimeException("Không có quyền sửa");
 
         // NEW: Pre-emption Logic (Auto-Pause other lots)
-        // Exception: Parallel stages do not pre-empt
+        // Exception: Only DYEING (outsourced) does not pre-empt
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
-                "NHUOM".equalsIgnoreCase(stage.getStageType()) ||
-                "PACKAGING".equalsIgnoreCase(stage.getStageType()) ||
-                "DONG_GOI".equalsIgnoreCase(stage.getStageType()) ||
-                "CUTTING".equalsIgnoreCase(stage.getStageType()) ||
-                "CAT".equalsIgnoreCase(stage.getStageType()) ||
-                "HEMMING".equalsIgnoreCase(stage.getStageType()) ||
-                "MAY".equalsIgnoreCase(stage.getStageType());
+                "NHUOM".equalsIgnoreCase(stage.getStageType());
 
         if (!isParallelStage) {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
@@ -766,5 +748,89 @@ public class ExecutionOrchestrationService {
     public java.util.List<QcInspection> getStageInspections(Long stageId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         return qcInspectionRepository.findByProductionStageId(stage.getId());
+    }
+
+    /**
+     * Check if a stage can be started (for frontend validation to show/hide start
+     * button)
+     * Returns: { canStart: true/false, blockedBy: orderNumber, blockedByStageType:
+     * stageType, message: reason }
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> checkCanStartStage(Long stageId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+
+        // Default: can start
+        result.put("canStart", true);
+        result.put("stageType", stage.getStageType());
+
+        // Check if stage is in a startable state
+        String currentStatus = stage.getExecutionStatus();
+        if (!"READY".equals(currentStatus) && !"WAITING".equals(currentStatus)
+                && !"READY_TO_PRODUCE".equals(currentStatus) && !"WAITING_REWORK".equals(currentStatus)) {
+            result.put("canStart", false);
+            result.put("message", "Công đoạn không ở trạng thái sẵn sàng");
+            return result;
+        }
+
+        // Check if this is a parallel stage (DYEING can run in parallel)
+        boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
+                "NHUOM".equalsIgnoreCase(stage.getStageType());
+
+        if (isParallelStage) {
+            // DYEING is always allowed
+            return result;
+        }
+
+        // Check if any other stage of the same type is IN_PROGRESS or
+        // REWORK_IN_PROGRESS
+        java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
+                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK"));
+
+        for (ProductionStage s : activeStages) {
+            if (s.getId().equals(stageId))
+                continue; // Skip self
+
+            // Check same stage type (consider aliases)
+            String sType = s.getStageType() != null ? s.getStageType().toUpperCase() : "";
+            String thisType = stage.getStageType() != null ? stage.getStageType().toUpperCase() : "";
+
+            boolean sameType = sType.equals(thisType);
+            if (!sameType && STAGE_TYPE_ALIASES.containsKey(thisType)) {
+                sameType = sType.equals(STAGE_TYPE_ALIASES.get(thisType));
+            }
+            if (!sameType && STAGE_TYPE_ALIASES.containsKey(sType)) {
+                sameType = thisType.equals(STAGE_TYPE_ALIASES.get(sType));
+            }
+
+            if (sameType) {
+                // Blocked by this stage
+                result.put("canStart", false);
+                String blockedByOrder = s.getProductionOrder() != null ? s.getProductionOrder().getPoNumber() : "N/A";
+                result.put("blockedBy", blockedByOrder);
+                result.put("blockedByStageType", s.getStageType());
+                result.put("blockedByStageId", s.getId());
+                result.put("message", "Công đoạn " + getVietnameseStageType(stage.getStageType())
+                        + " đang được sử dụng bởi lô " + blockedByOrder);
+                return result;
+            }
+        }
+
+        return result;
+    }
+
+    private String getVietnameseStageType(String stageType) {
+        if (stageType == null)
+            return "";
+        return switch (stageType.toUpperCase()) {
+            case "WARPING", "CUONG_MAC" -> "Cuộn mắc";
+            case "WEAVING", "DET" -> "Dệt";
+            case "DYEING", "NHUOM" -> "Nhuộm";
+            case "CUTTING", "CAT" -> "Cắt";
+            case "HEMMING", "MAY" -> "May viền";
+            case "PACKAGING", "DONG_GOI" -> "Đóng gói";
+            default -> stageType;
+        };
     }
 }

@@ -29,6 +29,10 @@ import org.springframework.context.annotation.Lazy;
 
 @Service
 public class ProductionService {
+
+    private static final List<String> BLOCKING_STAGE_EXEC_STATUSES = List.of("WAITING", "READY_TO_PRODUCE",
+            "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS", "QC_FAILED", "WAITING_REWORK",
+            "REWORK_IN_PROGRESS", "PAUSED");
     private final ProductionOrderRepository poRepo;
     private final ProductionOrderDetailRepository podRepo;
     private final TechnicalSheetRepository techRepo;
@@ -116,6 +120,67 @@ public class ProductionService {
         this.reqRepo = reqRepo;
         this.reqDetailRepo = reqDetailRepo;
         this.qcInspectionRepository = qcInspectionRepository;
+    }
+
+    /**
+     * Startup fixer: ensure only one active (progress < 100%) stage per type (except
+     * outsourced dyeing). Any extra active stages are reset to WAITING/PENDING.
+     *
+     * @return number of stages that were demoted to WAITING
+     */
+    @Transactional
+    public int enforceExclusiveStageConflicts() {
+        List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(BLOCKING_STAGE_EXEC_STATUSES);
+        if (activeStages.isEmpty()) {
+            return 0;
+        }
+
+        Map<String, List<ProductionStage>> byType = activeStages.stream()
+                .filter(s -> s.getProgressPercent() == null || s.getProgressPercent() < 100)
+                .filter(s -> {
+                    boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
+                            && Boolean.TRUE.equals(s.getOutsourced());
+                    return !isOutsourcedDyeing; // allow parallel only for outsourced dyeing
+                })
+                .collect(Collectors.groupingBy(
+                        s -> s.getStageType() == null ? "UNKNOWN" : s.getStageType().toUpperCase()));
+
+        int demoted = 0;
+        for (List<ProductionStage> list : byType.values()) {
+            if (list.size() <= 1) {
+                continue;
+            }
+            // Pick the one to keep: earliest startAt (non-null first), then smallest id
+            list.sort((a, b) -> {
+                Instant aStart = a.getStartAt();
+                Instant bStart = b.getStartAt();
+                if (aStart != null && bStart != null) {
+                    int cmp = aStart.compareTo(bStart);
+                    if (cmp != 0)
+                        return cmp;
+                } else if (aStart != null) {
+                    return -1;
+                } else if (bStart != null) {
+                    return 1;
+                }
+                return a.getId().compareTo(b.getId());
+            });
+
+            ProductionStage keep = list.get(0);
+            List<ProductionStage> demoteList = list.subList(1, list.size());
+            for (ProductionStage s : demoteList) {
+                s.setExecutionStatus("WAITING");
+                s.setStatus("PENDING");
+                s.setStartAt(null); // force to start again later
+            }
+            stageRepo.saveAll(demoteList);
+            demoted += demoteList.size();
+            // Log to console to trace which stages were demoted
+            System.out.println("Exclusive stage fix: keep stage " + keep.getId() + " type " + keep.getStageType()
+                    + ", demoted=" + demoteList.stream().map(ProductionStage::getId).toList());
+        }
+
+        return demoted;
     }
 
     // Production Order
@@ -756,6 +821,18 @@ public class ProductionService {
             // Allow re-start if it was PAUSED?
             if (!"PAUSED".equals(s.getStatus())) {
                 throw new RuntimeException("Công đoạn chưa sẵn sàng hoặc đã bắt đầu.");
+            }
+        }
+
+        // Enforce single-lot rule per stage type (except outsourced dyeing)
+        boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
+                && Boolean.TRUE.equals(s.getOutsourced());
+        if (!isOutsourcedDyeing) {
+            long activeSameType = stageRepo.countActiveByStageTypeExcludingStage(s.getStageType(), s.getId(),
+                    BLOCKING_STAGE_EXEC_STATUSES);
+            if (activeSameType > 0) {
+                throw new RuntimeException("Công đoạn " + s.getStageType()
+                        + " đang bận với lô khác. Vui lòng chờ hoàn tất trước khi chạy lô mới.");
             }
         }
 

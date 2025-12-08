@@ -23,6 +23,10 @@ import java.util.stream.Collectors;
 @Service
 public class ProductionPlanService {
 
+    private static final List<String> ACTIVE_EXECUTION_STATUSES_FOR_LEADER = List.of(
+            "WAITING", "READY_TO_PRODUCE", "IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS",
+            "QC_FAILED", "WAITING_REWORK", "REWORK_IN_PROGRESS", "PENDING", "PAUSED");
+
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanStageRepository stageRepo;
     private final ContractRepository contractRepo;
@@ -237,6 +241,8 @@ public class ProductionPlanService {
             initDefaultStages(saved);
         }
         applyTimelineToPlan(saved);
+        // Auto-assign leader/QC ngay sau khi tạo để đảm bảo chọn người đang rảnh
+        autoAssignResourcesToPlan(saved, true);
         notificationService.notifyProductionPlanCreated(saved);
         return mapper.toDto(saved);
     }
@@ -309,9 +315,8 @@ public class ProductionPlanService {
         if (!stages.isEmpty()) {
             User leader = stages.get(0).getInChargeUser();
             if (leader != null) {
-                List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
-                        "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(), activeStatuses);
+                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
+                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
 
                 if (strictLoad > 0) {
                     throw new RuntimeException("Tổ trưởng " + leader.getName()
@@ -501,11 +506,24 @@ public class ProductionPlanService {
         return stageRepo.findById(stageId).orElseThrow(() -> new RuntimeException("Production plan stage not found"));
     }
 
+    private void ensureLeaderIsAvailable(User leader) {
+        if (leader == null) {
+            return;
+        }
+        long unfinished = productionService.countActiveStagesForLeaderStrict(leader.getId(),
+                ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+        if (unfinished > 0) {
+            throw new RuntimeException("Tổ trưởng " + leader.getName()
+                    + " đang phụ trách công đoạn khác chưa hoàn thành (progress < 100%). Vui lòng chọn người khác.");
+        }
+    }
+
     @Transactional
     public ProductionPlanStageDto assignInChargeUser(Long stageId, Long userId) {
         var stage = stageRepo.findById(stageId)
                 .orElseThrow(() -> new RuntimeException("Production plan stage not found"));
         var user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+        ensureLeaderIsAvailable(user);
         stage.setInChargeUser(user);
         return mapper.toDto(stageRepo.save(stage));
     }
@@ -534,6 +552,7 @@ public class ProductionPlanService {
             if (!Boolean.TRUE.equals(u.getActive())) {
                 throw new RuntimeException("Người phụ trách đã bị vô hiệu hóa.");
             }
+            ensureLeaderIsAvailable(u);
             stage.setInChargeUser(u);
         }
         if (req.getQcUserId() != null) {
@@ -752,16 +771,14 @@ public class ProductionPlanService {
         if (!leaders.isEmpty()) {
             User bestLeader = null;
             long minLoad = Long.MAX_VALUE;
-            List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
-                    "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
-
             for (User leader : leaders) {
                 if (!Boolean.TRUE.equals(leader.getActive()))
                     continue;
 
                 // STRICT RULE: Only assign leader if he has 0 active unfinished stages
                 // (progress < 100)
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(), activeStatuses);
+                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
+                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
                 System.out.println("AutoAssign: Leader " + leader.getName() + " strictLoad=" + strictLoad);
 
                 if (strictLoad == 0) {
@@ -770,7 +787,8 @@ public class ProductionPlanService {
                     // Let's bias towards the one with least total load for general balance, but
                     // primarily must be free now.
 
-                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(), activeStatuses);
+                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(),
+                            ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
                     if (totalLoad < minLoad) {
                         minLoad = totalLoad;
                         bestLeader = leader;
@@ -778,6 +796,12 @@ public class ProductionPlanService {
                 }
             }
             selectedLeader = bestLeader;
+        }
+
+        // STRICT: If no leader is free, throw an exception to notify the user
+        if (selectedLeader == null) {
+            throw new RuntimeException(
+                    "Không có Leader nào rảnh để phân công. Tất cả Leader đang bận với các công đoạn chưa hoàn thành.");
         }
 
         // 2. Find Best QC
@@ -798,14 +822,12 @@ public class ProductionPlanService {
         if (!qcs.isEmpty()) {
             User bestQc = null;
             long minLoad = Long.MAX_VALUE;
-            List<String> activeStatuses = java.util.List.of("WAITING", "IN_PROGRESS", "QC_IN_PROGRESS",
-                    "WAITING_QC", "WAITING_REWORK", "REWORK_IN_PROGRESS");
 
             for (User qc : qcs) {
                 if (!Boolean.TRUE.equals(qc.getActive()))
                     continue;
 
-                long load = productionService.countActiveStagesForQc(qc.getId(), activeStatuses);
+                long load = productionService.countActiveStagesForQc(qc.getId(), ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
                 System.out.println("AutoAssign: QC " + qc.getName() + " load=" + load);
                 if (load < minLoad) {
                     minLoad = load;
