@@ -88,6 +88,28 @@ public class ExecutionOrchestrationService {
         this.machineAssignmentRepository = machineAssignmentRepository;
     }
 
+    private record StageContext(String lotCode, String poNumber, String contractNumber, String stageType) {
+        String summary() {
+            return "PO " + (poNumber != null ? poNumber : "N/A") + " | Lô " + (lotCode != null ? lotCode : "N/A")
+                    + " | Hợp đồng " + (contractNumber != null ? contractNumber : "N/A");
+        }
+    }
+
+    private StageContext buildContext(ProductionStage stage) {
+        String stageType = stage.getStageType();
+        String poNumber = null;
+        String lotCode = null;
+        String contractNumber = null;
+        ProductionOrder order = stage.getProductionOrder();
+        if (order != null) {
+            poNumber = order.getPoNumber();
+            if (order.getContract() != null) {
+                contractNumber = order.getContract().getContractNumber();
+            }
+        }
+        return new StageContext(lotCode, poNumber, contractNumber, stageType);
+    }
+
     // Helper lấy tất cả stage thuộc orderId (dựa trên quan hệ WorkOrderDetail ->
     // ProductionOrderDetail -> ProductionOrder)
     private List<ProductionStage> findStagesByOrderId(Long orderId) {
@@ -308,12 +330,15 @@ public class ExecutionOrchestrationService {
             if (stage.getCompleteAt() == null) {
                 stage.setCompleteAt(Instant.now());
             }
+            StageContext ctx = buildContext(stage);
             if (stage.getQcAssignee() != null) {
                 notificationService.notifyUser(stage.getQcAssignee(), "QC", "INFO", "Chờ kiểm tra",
-                        "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
+                        "Công đoạn " + stage.getStageType() + " đã đạt 100%. " + ctx.summary(),
+                        "PRODUCTION_STAGE", stage.getId());
             } else {
                 notificationService.notifyRole("QC_STAFF", "QC", "INFO", "Chờ kiểm tra",
-                        "Công đoạn " + stage.getStageType() + " đã đạt 100%", "PRODUCTION_STAGE", stage.getId());
+                        "Công đoạn " + stage.getStageType() + " đã đạt 100%. " + ctx.summary(), "PRODUCTION_STAGE",
+                        stage.getId());
             }
 
             // Update machine status to AVAILABLE and release MachineAssignment (SKIP for
@@ -342,6 +367,14 @@ public class ExecutionOrchestrationService {
             // NEW: Resume Paused Orders if Rework Completes
             if (Boolean.TRUE.equals(stage.getIsRework())) {
                 productionService.resumePausedOrdersAtStage(stage.getStageType());
+            }
+
+            // Notify PM about available slot for serialized stages (non-outsource)
+            if (!isParallelStage) {
+                notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Trống công đoạn",
+                        "Công đoạn " + stage.getStageType()
+                                + " vừa giải phóng slot. Lô tiếp theo có thể bắt đầu. " + ctx.summary(),
+                        "PRODUCTION_STAGE", stage.getId());
             }
         }
         ProductionStage saved = stageRepo.save(stage);
@@ -447,6 +480,7 @@ public class ExecutionOrchestrationService {
         session.setSubmittedAt(Instant.now());
         sessionRepo.save(session);
         ProductionStage stageRef = session.getProductionStage(); // Re-use stage reference
+        StageContext ctx = buildContext(stageRef);
         if ("PASS".equalsIgnoreCase(overallResult)) {
             stageRef.setExecutionStatus("QC_PASSED");
             stageRepo.save(stageRef);
@@ -485,6 +519,21 @@ public class ExecutionOrchestrationService {
             } else {
                 // Normal flow
                 openNextStage(stageRef);
+            }
+
+            // Notify PASS
+            notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "SUCCESS", "QC đạt",
+                    "Công đoạn " + stageRef.getStageType() + " QC PASS. " + ctx.summary(), "PRODUCTION_STAGE",
+                    stageRef.getId());
+            if (stageRef.getAssignedLeader() != null) {
+                notificationService.notifyUser(stageRef.getAssignedLeader(), "PRODUCTION", "SUCCESS", "QC đạt",
+                        "Công đoạn " + stageRef.getStageType() + " QC PASS. " + ctx.summary(), "PRODUCTION_STAGE",
+                        stageRef.getId());
+            }
+            if (inspector != null) {
+                notificationService.notifyUser(inspector, "QC", "SUCCESS", "Đã ghi nhận QC PASS",
+                        "Bạn đã QC PASS cho công đoạn " + stageRef.getStageType() + ". " + ctx.summary(),
+                        "PRODUCTION_STAGE", stageRef.getId());
             }
 
         } else {
@@ -532,7 +581,18 @@ public class ExecutionOrchestrationService {
             } else {
                 // Notify technical staff for major defects
                 notificationService.notifyRole("TECHNICAL_STAFF", "PRODUCTION", "WARNING", "Lỗi QC",
-                        "Công đoạn " + stageRef.getStageType() + " QC FAIL", "QUALITY_ISSUE", issue.getId());
+                        "Công đoạn " + stageRef.getStageType() + " QC FAIL. " + ctx.summary(), "QUALITY_ISSUE",
+                        issue.getId());
+            }
+
+            // Notify PM and current leader about FAIL
+            notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "ERROR", "QC FAIL",
+                    "Công đoạn " + stageRef.getStageType() + " QC FAIL. " + ctx.summary(), "QUALITY_ISSUE",
+                    issue.getId());
+            if (stageRef.getAssignedLeader() != null) {
+                notificationService.notifyUser(stageRef.getAssignedLeader(), "PRODUCTION", "ERROR", "QC FAIL",
+                        "Công đoạn " + stageRef.getStageType() + " QC FAIL. " + ctx.summary(), "QUALITY_ISSUE",
+                        issue.getId());
             }
         }
         return session;
@@ -609,23 +669,33 @@ public class ExecutionOrchestrationService {
                 order.setExecutionStatus("COMPLETED");
                 orderRepo.save(order);
                 notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Hoàn thành",
-                        "Đơn hàng đã hoàn thành", "PRODUCTION_ORDER", order.getId());
+                        "Đơn hàng " + order.getPoNumber() + " đã hoàn thành", "PRODUCTION_ORDER", order.getId());
             }
             return;
         }
         // Use ProductionService to sync stage status
         productionService.syncStageStatus(next, "WAITING");
         stageRepo.save(next);
+        StageContext ctx = buildContext(next);
         if ("DYEING".equalsIgnoreCase(next.getStageType())) {
             notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO", "Chuẩn bị nhuộm",
-                    "Công đoạn Nhuộm đã sẵn sàng", "PRODUCTION_STAGE", next.getId());
+                    "Công đoạn Nhuộm đã sẵn sàng. " + ctx.summary(), "PRODUCTION_STAGE", next.getId());
         } else if (next.getAssignedLeader() != null) {
             notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS", "Sẵn sàng",
-                    "Công đoạn " + next.getStageType() + " đã sẵn sàng", "PRODUCTION_STAGE", next.getId());
+                    "Công đoạn " + next.getStageType() + " đã sẵn sàng. " + ctx.summary(), "PRODUCTION_STAGE",
+                    next.getId());
         } else {
             notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn tiếp theo",
-                    "Công đoạn " + next.getStageType() + " sẵn sàng", "PRODUCTION_STAGE", next.getId());
+                    "Công đoạn " + next.getStageType() + " sẵn sàng. " + ctx.summary(), "PRODUCTION_STAGE",
+                    next.getId());
         }
+        // Notify PM as well for coordination
+        notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "INFO",
+                "Công đoạn " + next.getStageType() + " đã sẵn sàng",
+                (ctx.poNumber() != null ? "PO " + ctx.poNumber() + " | " : "")
+                        + (ctx.lotCode() != null ? "Lô " + ctx.lotCode() + " | " : "")
+                        + (ctx.contractNumber() != null ? "Hợp đồng " + ctx.contractNumber() : ""),
+                "PRODUCTION_STAGE", next.getId());
     }
 
     private void ensureOrderStarted(ProductionStage stage) {
