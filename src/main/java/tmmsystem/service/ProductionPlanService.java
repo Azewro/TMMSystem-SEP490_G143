@@ -739,12 +739,22 @@ public class ProductionPlanService {
                 if (!Boolean.TRUE.equals(leader.getActive()))
                     continue;
 
-                // Use ProductionService to count active stages
-                long load = productionService.countActiveStagesForLeader(leader.getId(), activeStatuses);
-                System.out.println("AutoAssign: Leader " + leader.getName() + " load=" + load);
-                if (load < minLoad) {
-                    minLoad = load;
-                    bestLeader = leader;
+                // STRICT RULE: Only assign leader if he has 0 active unfinished stages
+                // (progress < 100)
+                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(), activeStatuses);
+                System.out.println("AutoAssign: Leader " + leader.getName() + " strictLoad=" + strictLoad);
+
+                if (strictLoad == 0) {
+                    // Only consider leaders with strictLoad == 0
+                    // If multiple are free, we can pick based on total load or just the first one.
+                    // Let's bias towards the one with least total load for general balance, but
+                    // primarily must be free now.
+
+                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(), activeStatuses);
+                    if (totalLoad < minLoad) {
+                        minLoad = totalLoad;
+                        bestLeader = leader;
+                    }
                 }
             }
             selectedLeader = bestLeader;

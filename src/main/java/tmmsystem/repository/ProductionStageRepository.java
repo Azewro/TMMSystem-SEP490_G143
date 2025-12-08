@@ -73,4 +73,9 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
 
     // NEW: Check if stages exist for a specific order
     boolean existsByProductionOrderId(Long productionOrderId);
+
+    // NEW: Count active stages where progress < 100% for Leader strictly assignment
+    @Query("select count(s) from ProductionStage s where s.assignedLeader.id = :leaderId and s.progressPercent < 100 and s.executionStatus in :executionStatuses")
+    long countByAssignedLeaderIdAndProgressPercentLessThan100(@Param("leaderId") Long leaderId,
+            @Param("executionStatuses") List<String> executionStatuses);
 }

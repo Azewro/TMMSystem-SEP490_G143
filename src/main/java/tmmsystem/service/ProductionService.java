@@ -1512,6 +1512,11 @@ public class ProductionService {
         return stageRepo.countByAssignedLeaderIdAndExecutionStatusIn(leaderId, activeStatuses);
     }
 
+    // NEW: Strict active stage count (progress < 100)
+    public long countActiveStagesForLeaderStrict(Long leaderId, List<String> executionStatuses) {
+        return stageRepo.countByAssignedLeaderIdAndProgressPercentLessThan100(leaderId, executionStatuses);
+    }
+
     /**
      * Count active stages for a QC (for workload balancing)
      */
