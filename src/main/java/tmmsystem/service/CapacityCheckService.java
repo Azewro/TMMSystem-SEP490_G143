@@ -67,59 +67,96 @@ public class CapacityCheckService {
     public CapacityCheckResultDto checkMachineCapacity(Long rfqId) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
 
-        // 1. Calculate New Order Duration (Total Days)
+        // 1. Calculate New Order Weight (kg)
         List<RfqDetail> rfqDetails = rfqDetailRepository.findByRfqId(rfqId);
+        BigDecimal newOrderWeightKg = calculateTotalWeight(rfqDetails);
+
+        // Also calculate stage breakdown for display purposes
         SequentialCapacityResult newOrderCapacity = calculateCapacityForDetails(rfqDetails);
-        BigDecimal newOrderDays = newOrderCapacity.getTotalDays();
 
-        // 2. Calculate Backlog Duration (Quotations with blocking statuses in delivery
-        // window)
+        // 2. Calculate Backlog Weight (kg) from all overlapping quotations
         LocalDate targetDate = rfq.getExpectedDeliveryDate();
-        LocalDate windowStart = targetDate.minusDays(1);
-        LocalDate windowEnd = targetDate.plusDays(1);
+        LocalDate productionStartDate = LocalDate.now().plusDays(7);
+        LocalDate productionDeadline = targetDate.minusDays(7);
 
-        // Use quotations instead of contracts for capacity calculation
-        List<Quotation> backlogQuotations = quotationRepository.findByStatusInAndRfqDeliveryDateBetween(
-                CAPACITY_BLOCKING_STATUSES, windowStart, windowEnd);
-        BigDecimal backlogDays = BigDecimal.ZERO;
+        // Get all quotations that overlap with production window
+        List<Quotation> backlogQuotations = quotationRepository.findByStatusIn(CAPACITY_BLOCKING_STATUSES);
+        BigDecimal backlogWeightKg = BigDecimal.ZERO;
+        List<CapacityCheckResultDto.BacklogOrderDto> backlogOrdersList = new ArrayList<>();
 
         for (Quotation q : backlogQuotations) {
             // Skip if this is the same RFQ we're checking
             if (q.getRfq() != null && q.getRfq().getId().equals(rfqId)) {
                 continue;
             }
-            if (q.getDetails() != null && !q.getDetails().isEmpty()) {
-                SequentialCapacityResult qCap = calculateCapacityForQuotationDetails(q.getDetails());
-                backlogDays = backlogDays.add(qCap.getTotalDays());
+            // Check if quotation's delivery date overlaps with our production window
+            LocalDate qDeliveryDate = q.getRfq() != null ? q.getRfq().getExpectedDeliveryDate() : null;
+            if (qDeliveryDate != null) {
+                // Only count if delivery date is within our production period
+                if (!qDeliveryDate.isBefore(productionStartDate) && !qDeliveryDate.isAfter(targetDate)) {
+                    BigDecimal qWeight = calculateQuotationWeight(q);
+                    backlogWeightKg = backlogWeightKg.add(qWeight);
+
+                    // Build backlog order entry
+                    CapacityCheckResultDto.BacklogOrderDto backlogOrder = new CapacityCheckResultDto.BacklogOrderDto();
+                    backlogOrder.setQuotationCode(q.getQuotationNumber());
+                    backlogOrder.setCustomerName(q.getRfq().getCustomer() != null
+                            ? q.getRfq().getCustomer().getCompanyName()
+                            : "RFQ-" + q.getRfq().getId());
+                    backlogOrder.setDeliveryDate(qDeliveryDate);
+                    backlogOrder.setWeightKg(qWeight.setScale(2, RoundingMode.HALF_UP));
+                    backlogOrder.setStatus(q.getStatus());
+                    backlogOrdersList.add(backlogOrder);
+                }
             }
         }
 
-        // 3. Total Load
-        BigDecimal totalLoadDays = newOrderDays.add(backlogDays);
+        // 3. Total Load (kg)
+        BigDecimal totalLoadKg = newOrderWeightKg.add(backlogWeightKg);
 
-        // 4. Available Time
-        // Start = Now + 7 days (prep time)
-        LocalDate productionStartDate = LocalDate.now().plusDays(7);
-        // End = Delivery Date - 7 days (shipping buffer)
-        LocalDate productionDeadline = targetDate.minusDays(7);
+        // 4. Get Bottleneck Capacity (kg/day)
+        BigDecimal bottleneckCapacity = sequentialCapacityCalculator.getBottleneckCapacityPerDay();
 
+        // 5. Calculate Required Days based on bottleneck
+        BigDecimal requiredDays;
+        if (bottleneckCapacity.compareTo(BigDecimal.ZERO) > 0) {
+            requiredDays = totalLoadKg.divide(bottleneckCapacity, 2, RoundingMode.HALF_UP);
+        } else {
+            // Fallback: use calculated processing days
+            requiredDays = newOrderCapacity.getTotalDays();
+        }
+
+        // 6. Available Days
         long availableDaysCount = ChronoUnit.DAYS.between(productionStartDate, productionDeadline);
         BigDecimal availableDays = BigDecimal.valueOf(Math.max(0, availableDaysCount));
+        BigDecimal maxCapacityKg = availableDays.multiply(bottleneckCapacity);
 
-        // 5. Result
-        boolean isSufficient = totalLoadDays.compareTo(availableDays) <= 0;
+        // 7. Result
+        boolean isSufficient = requiredDays.compareTo(availableDays) <= 0;
 
         // Construct Result DTO
         CapacityCheckResultDto result = new CapacityCheckResultDto();
         CapacityCheckResultDto.MachineCapacityDto machineCapacity = new CapacityCheckResultDto.MachineCapacityDto();
 
         machineCapacity.setSufficient(isSufficient);
-        machineCapacity.setRequiredDays(totalLoadDays); // Total Load
+        machineCapacity.setRequiredDays(requiredDays);
         machineCapacity.setAvailableDays(availableDays);
         machineCapacity.setProductionStartDate(productionStartDate);
         machineCapacity.setProductionEndDate(
-                productionStartDate.plusDays(totalLoadDays.setScale(0, RoundingMode.CEILING).longValue()));
-        machineCapacity.setConflicts(new ArrayList<>()); // No specific conflicts in this model
+                productionStartDate.plusDays(requiredDays.setScale(0, RoundingMode.CEILING).longValue()));
+        machineCapacity.setConflicts(new ArrayList<>());
+        machineCapacity.setBottleneck("WARPING/WEAVING (" + bottleneckCapacity + " kg/ngày)");
+
+        // Populate calculation details (NEW)
+        machineCapacity.setNewOrderWeightKg(newOrderWeightKg.setScale(2, RoundingMode.HALF_UP));
+        machineCapacity.setBacklogWeightKg(backlogWeightKg.setScale(2, RoundingMode.HALF_UP));
+        machineCapacity.setTotalLoadKg(totalLoadKg.setScale(2, RoundingMode.HALF_UP));
+        machineCapacity.setMaxCapacityKg(maxCapacityKg.setScale(2, RoundingMode.HALF_UP));
+        machineCapacity.setBottleneckCapacityPerDay(bottleneckCapacity.setScale(2, RoundingMode.HALF_UP));
+        machineCapacity.setBacklogOrders(backlogOrdersList);
+
+        // Populate stage capacities to explain bottleneck
+        machineCapacity.setStageCapacities(sequentialCapacityCalculator.getAllStageCapacities());
 
         // Populate stage details for the NEW order only (for visualization)
         populateSequentialStages(machineCapacity, newOrderCapacity, productionStartDate);
@@ -127,11 +164,18 @@ public class CapacityCheckService {
         if (isSufficient) {
             machineCapacity.setStatus("SUFFICIENT");
             machineCapacity.setMergeSuggestion(
-                    "Đủ năng lực. Tổng tải: " + totalLoadDays + " ngày / " + availableDays + " ngày có sẵn.");
+                    "Đủ năng lực. Tổng tải: " + totalLoadKg.setScale(2, RoundingMode.HALF_UP) + " kg (" + requiredDays
+                            + " ngày). "
+                            + "Năng lực tối đa: " + maxCapacityKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
+                            + availableDays + " ngày).");
         } else {
             machineCapacity.setStatus("INSUFFICIENT");
-            machineCapacity.setMergeSuggestion("Quá tải! Tổng tải (" + totalLoadDays + " ngày) > Thời gian có sẵn ("
-                    + availableDays + " ngày). Cần dời ngày giao hàng.");
+            machineCapacity
+                    .setMergeSuggestion("Quá tải! Tổng tải: " + totalLoadKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
+                            + requiredDays + " ngày) > "
+                            + "Năng lực tối đa: " + maxCapacityKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
+                            + availableDays
+                            + " ngày). Cần dời ngày giao hàng.");
         }
         result.setMachineCapacity(machineCapacity);
 
@@ -142,6 +186,36 @@ public class CapacityCheckService {
         result.setWarehouseCapacity(warehouseCapacity);
 
         return result;
+    }
+
+    private BigDecimal calculateTotalWeight(List<RfqDetail> details) {
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        for (RfqDetail d : details) {
+            Product p = d.getProduct();
+            if (p == null)
+                p = productRepository.findById(d.getProduct().getId()).orElseThrow();
+            BigDecimal qty = d.getQuantity();
+            BigDecimal weightPerItem = p.getStandardWeight().divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP); // g
+                                                                                                                      // to
+                                                                                                                      // kg
+            totalWeight = totalWeight.add(weightPerItem.multiply(qty));
+        }
+        return totalWeight;
+    }
+
+    private BigDecimal calculateQuotationWeight(Quotation q) {
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        if (q.getDetails() == null)
+            return totalWeight;
+        for (QuotationDetail d : q.getDetails()) {
+            Product p = d.getProduct();
+            if (p == null)
+                continue;
+            BigDecimal qty = d.getQuantity();
+            BigDecimal weightPerItem = p.getStandardWeight().divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP);
+            totalWeight = totalWeight.add(weightPerItem.multiply(qty));
+        }
+        return totalWeight;
     }
 
     private SequentialCapacityResult calculateCapacityForDetails(List<RfqDetail> details) {

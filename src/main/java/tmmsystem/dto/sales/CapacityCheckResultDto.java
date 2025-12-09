@@ -34,9 +34,42 @@ public class CapacityCheckResultDto {
         private SequentialStageDto packagingStage;
         private BigDecimal totalWaitTime;
 
-        // NEW
+        // Status and suggestion
         private String status; // SUFFICIENT | INSUFFICIENT
-        private String mergeSuggestion; // Gợi ý gộp đơn hoặc ngày có thể sản xuất
+        private String mergeSuggestion;
+
+        // Chi tiết tính toán năng lực
+        private BigDecimal newOrderWeightKg;
+        private BigDecimal backlogWeightKg;
+        private BigDecimal totalLoadKg;
+        private BigDecimal maxCapacityKg;
+        private BigDecimal bottleneckCapacityPerDay;
+        private List<BacklogOrderDto> backlogOrders;
+
+        // Bảng công suất các công đoạn (để giải thích bottleneck)
+        private List<StageCapacityDto> stageCapacities;
+    }
+
+    @Getter
+    @Setter
+    public static class StageCapacityDto {
+        private String stageName; // Tên công đoạn (VD: Mắc cuồng)
+        private String stageType; // Loại (WARPING, WEAVING, ...)
+        private int machineCount; // Số máy
+        private BigDecimal capacityPerMachine; // Năng suất mỗi máy
+        private BigDecimal totalCapacityPerDay; // Tổng năng suất/ngày
+        private String unit; // Đơn vị (kg, sản phẩm)
+        private boolean isBottleneck; // Có phải bottleneck không
+    }
+
+    @Getter
+    @Setter
+    public static class BacklogOrderDto {
+        private String quotationCode; // Mã báo giá
+        private String customerName; // Tên khách hàng
+        private LocalDate deliveryDate; // Ngày giao dự kiến
+        private BigDecimal weightKg; // Khối lượng (kg)
+        private String status; // Trạng thái (SENT/ACCEPTED/ORDER_CREATED)
     }
 
     @Getter

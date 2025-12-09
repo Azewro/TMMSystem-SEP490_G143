@@ -111,13 +111,39 @@ public class SequentialCapacityCalculator {
         return machineRepository.findAll().stream()
                 .filter(machine -> machineType.equalsIgnoreCase(machine.getType()))
                 .map(machine -> {
+                    // Check capacityPerDay first (used by WARPING and WEAVING)
+                    BigDecimal daily = extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerDay");
+                    if (daily.compareTo(BigDecimal.ZERO) > 0) {
+                        return daily;
+                    }
+                    // Fallback to capacityPerHour × 8
                     BigDecimal hourly = extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerHour");
                     if (hourly.compareTo(BigDecimal.ZERO) > 0) {
                         return hourly.multiply(WORKING_HOURS_PER_DAY);
                     }
-                    return extractCapacityFromSpecs(machine.getSpecifications(), "capacityPerDay");
+                    return BigDecimal.ZERO;
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Get the bottleneck capacity (minimum of WARPING and WEAVING) in kg/day.
+     * This is used for the hybrid rolling window capacity check.
+     */
+    public BigDecimal getBottleneckCapacityPerDay() {
+        BigDecimal warpingCapacity = getTotalCapacityPerDay("WARPING");
+        BigDecimal weavingCapacity = getTotalCapacityPerDay("WEAVING");
+
+        // If either is 0, use the other one (avoid 0 bottleneck)
+        if (warpingCapacity.compareTo(BigDecimal.ZERO) == 0) {
+            return weavingCapacity.compareTo(BigDecimal.ZERO) > 0 ? weavingCapacity : new BigDecimal("500");
+        }
+        if (weavingCapacity.compareTo(BigDecimal.ZERO) == 0) {
+            return warpingCapacity;
+        }
+
+        // Return the minimum (bottleneck)
+        return warpingCapacity.min(weavingCapacity);
     }
 
     private BigDecimal getCapacityPerDay(String machineType, String productKey) {
@@ -137,5 +163,113 @@ public class SequentialCapacityCalculator {
             return new BigDecimal(matcher.group(1));
         }
         return BigDecimal.ZERO;
+    }
+
+    /**
+     * Get all stage capacities for display purposes.
+     * Shows machine count, capacity per machine, total capacity, and whether it's
+     * the bottleneck.
+     */
+    public java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> getAllStageCapacities() {
+        java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> capacities = new java.util.ArrayList<>();
+        BigDecimal bottleneckCapacity = getBottleneckCapacityPerDay();
+
+        // WARPING
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("Mắc cuồng");
+            dto.setStageType("WARPING");
+            long count = machineRepository.findAll().stream().filter(m -> "WARPING".equalsIgnoreCase(m.getType()))
+                    .count();
+            dto.setMachineCount((int) count);
+            BigDecimal total = getTotalCapacityPerDay("WARPING");
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(
+                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("kg");
+            dto.setBottleneck(total.compareTo(bottleneckCapacity) == 0);
+            capacities.add(dto);
+        }
+
+        // WEAVING
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("Dệt vải");
+            dto.setStageType("WEAVING");
+            long count = machineRepository.findAll().stream().filter(m -> "WEAVING".equalsIgnoreCase(m.getType()))
+                    .count();
+            dto.setMachineCount((int) count);
+            BigDecimal total = getTotalCapacityPerDay("WEAVING");
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(
+                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("kg");
+            dto.setBottleneck(total.compareTo(bottleneckCapacity) == 0);
+            capacities.add(dto);
+        }
+
+        // DYEING (outsourced)
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("Nhuộm (thuê ngoài)");
+            dto.setStageType("DYEING");
+            dto.setMachineCount(0);
+            BigDecimal total = DYEING_CAPACITY_PER_HOUR.multiply(WORKING_HOURS_PER_DAY);
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(BigDecimal.ZERO);
+            dto.setUnit("sản phẩm");
+            dto.setBottleneck(false);
+            capacities.add(dto);
+        }
+
+        // CUTTING
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("Cắt vải");
+            dto.setStageType("CUTTING");
+            long count = machineRepository.findAll().stream().filter(m -> "CUTTING".equalsIgnoreCase(m.getType()))
+                    .count();
+            dto.setMachineCount((int) count);
+            BigDecimal total = getCapacityPerDay("CUTTING", "faceTowels"); // Use faceTowels as representative
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(
+                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("sản phẩm");
+            dto.setBottleneck(false);
+            capacities.add(dto);
+        }
+
+        // SEWING
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("May thành phẩm");
+            dto.setStageType("SEWING");
+            long count = machineRepository.findAll().stream().filter(m -> "SEWING".equalsIgnoreCase(m.getType()))
+                    .count();
+            dto.setMachineCount((int) count);
+            BigDecimal total = getCapacityPerDay("SEWING", "faceTowels");
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(
+                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("sản phẩm");
+            dto.setBottleneck(false);
+            capacities.add(dto);
+        }
+
+        // PACKAGING (thủ công - theo người, không theo máy)
+        {
+            var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
+            dto.setStageName("Đóng gói (thủ công)");
+            dto.setStageType("PACKAGING");
+            dto.setMachineCount(2); // 2 người
+            BigDecimal total = PACKAGING_CAPACITY_PER_HOUR.multiply(WORKING_HOURS_PER_DAY);
+            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setCapacityPerMachine(new BigDecimal("4000")); // 500 sp/người/giờ × 8 giờ = 4000 sp/người/ngày
+            dto.setUnit("sản phẩm (theo người)");
+            dto.setBottleneck(false);
+            capacities.add(dto);
+        }
+
+        return capacities;
     }
 }
