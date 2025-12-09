@@ -172,7 +172,7 @@ public class SequentialCapacityCalculator {
      */
     public java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> getAllStageCapacities() {
         java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> capacities = new java.util.ArrayList<>();
-        BigDecimal bottleneckCapacity = getBottleneckCapacityPerDay();
+        BigDecimal bottleneckCapacity = getBottleneckCapacityPerDay().setScale(0, RoundingMode.HALF_UP);
 
         // WARPING
         {
@@ -187,7 +187,7 @@ public class SequentialCapacityCalculator {
             dto.setCapacityPerMachine(
                     count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
             dto.setUnit("kg");
-            dto.setBottleneck(total.compareTo(bottleneckCapacity) == 0);
+            dto.setBottleneck(total.setScale(0, RoundingMode.HALF_UP).compareTo(bottleneckCapacity) == 0);
             capacities.add(dto);
         }
 
@@ -204,7 +204,7 @@ public class SequentialCapacityCalculator {
             dto.setCapacityPerMachine(
                     count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
             dto.setUnit("kg");
-            dto.setBottleneck(total.compareTo(bottleneckCapacity) == 0);
+            dto.setBottleneck(total.setScale(0, RoundingMode.HALF_UP).compareTo(bottleneckCapacity) == 0);
             capacities.add(dto);
         }
 

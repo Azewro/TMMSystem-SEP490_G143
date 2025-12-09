@@ -470,7 +470,7 @@ public class CapacityCheckService {
             // Đối với máy cắt và may, tính công suất theo số lượng sản phẩm
             return machineRepository.findAll().stream()
                     .filter(m -> machineType.equals(m.getType()))
-                    .filter(m -> "AVAILABLE".equals(m.getStatus()))
+                    // Không lọc theo status để tính tổng công suất nhà máy
                     .map(this::extractCapacityPerDayFromSpecifications)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         } else if ("PACKAGING".equals(machineType)) {
@@ -479,7 +479,7 @@ public class CapacityCheckService {
             // Đối với máy mắc và dệt, tính công suất theo khối lượng
             return machineRepository.findAll().stream()
                     .filter(m -> machineType.equals(m.getType()))
-                    .filter(m -> "AVAILABLE".equals(m.getStatus()))
+                    // Không lọc theo status để tính tổng công suất nhà máy
                     .map(this::extractCapacityFromSpecifications)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
