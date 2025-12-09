@@ -1,7 +1,8 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -16,9 +17,11 @@ import java.util.List;
         @Index(name = "idx_lot_product", columnList = "product_id"),
         @Index(name = "idx_lot_delivery", columnList = "delivery_date_target")
 })
-@Getter @Setter
+@Getter
+@Setter
 public class ProductionLot {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @CreationTimestamp
@@ -51,8 +54,17 @@ public class ProductionLot {
     @Column(name = "contract_date_max")
     private LocalDate contractDateMax;
 
+    /** Ngày Director phê duyệt sớm nhất trong các hợp đồng của lot */
+    @Column(name = "approval_date_min")
+    private LocalDate approvalDateMin;
+
+    /** Ngày Director phê duyệt muộn nhất trong các hợp đồng của lot */
+    @Column(name = "approval_date_max")
+    private LocalDate approvalDateMax;
+
     @Column(name = "status", length = 30)
-    private String status = "FORMING"; // FORMING, READY_FOR_PLANNING, PLANNING, PLAN_APPROVED, IN_PRODUCTION, COMPLETED, CANCELED
+    private String status = "FORMING"; // FORMING, READY_FOR_PLANNING, PLANNING, PLAN_APPROVED, IN_PRODUCTION,
+                                       // COMPLETED, CANCELED
 
     @Column(name = "material_requirements_json", columnDefinition = "json")
     private String materialRequirementsJson;
@@ -60,4 +72,3 @@ public class ProductionLot {
     @OneToMany(mappedBy = "lot", fetch = FetchType.LAZY)
     private List<ProductionLotOrder> lotOrders;
 }
-

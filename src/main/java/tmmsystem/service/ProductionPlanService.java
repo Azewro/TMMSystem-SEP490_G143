@@ -52,6 +52,10 @@ public class ProductionPlanService {
     @Value("${planning.autoInitStages:true}")
     private boolean autoInitStages;
 
+    /** Maximum days span for lot merging (prevents 'domino chain') */
+    @Value("${lot.merge.maxDays:3}")
+    private int lotMergeMaxDays;
+
     public ProductionPlanService(ProductionPlanRepository planRepo,
             ProductionPlanStageRepository stageRepo,
             ContractRepository contractRepo,
@@ -120,20 +124,19 @@ public class ProductionPlanService {
             List<QuotationDetail> detailsOfProduct) {
         Product product = productRepo.findById(productId).orElseThrow();
         LocalDate delivery = contract.getDeliveryDate();
-        LocalDate contractDate = contract.getContractDate();
+        // Sử dụng ngày Director phê duyệt hợp đồng thay vì ngày ký hợp đồng
+        LocalDate approvalDate = contract.getDirectorApprovedAt() != null
+                ? contract.getDirectorApprovedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                : contract.getContractDate(); // Fallback to contractDate if not approved yet
         LocalDate deliveryMin = delivery.minusDays(1), deliveryMax = delivery.plusDays(1);
-        LocalDate contractMin = contractDate.minusDays(1), contractMax = contractDate.plusDays(1);
+        LocalDate approvalMin = approvalDate.minusDays(1), approvalMax = approvalDate.plusDays(1);
         // Auto-create BOM if missing
         bomService.ensureBomExists(product);
 
         ProductionLot lot = lotRepo.findAll().stream()
                 .filter(l -> l.getProduct() != null && l.getProduct().getId().equals(productId))
                 .filter(l -> List.of("FORMING", "READY_FOR_PLANNING").contains(l.getStatus()))
-                .filter(l -> l.getDeliveryDateTarget() != null && !l.getDeliveryDateTarget().isBefore(deliveryMin)
-                        && !l.getDeliveryDateTarget().isAfter(deliveryMax))
-                .filter(l -> l.getContractDateMin() != null && l.getContractDateMax() != null
-                        && !(l.getContractDateMax().isBefore(contractMin)
-                                || l.getContractDateMin().isAfter(contractMax)))
+                .filter(l -> canMergeWithLot(l, approvalDate, delivery))
                 .findFirst().orElse(null);
         if (lot == null) {
             lot = new ProductionLot();
@@ -141,8 +144,8 @@ public class ProductionPlanService {
             lot.setProduct(product);
             lot.setSizeSnapshot(product.getStandardDimensions());
             lot.setDeliveryDateTarget(delivery);
-            lot.setContractDateMin(contractDate);
-            lot.setContractDateMax(contractDate);
+            lot.setApprovalDateMin(approvalDate);
+            lot.setApprovalDateMax(approvalDate);
             lot.setStatus("FORMING");
             lot.setTotalQuantity(java.math.BigDecimal.ZERO);
             lot = lotRepo.save(lot);
@@ -164,10 +167,11 @@ public class ProductionPlanService {
             lotOrderRepo.save(lo);
             lot.setTotalQuantity(lot.getTotalQuantity().add(qd.getQuantity()));
         }
-        if (contract.getContractDate().isBefore(lot.getContractDateMin()))
-            lot.setContractDateMin(contract.getContractDate());
-        if (contract.getContractDate().isAfter(lot.getContractDateMax()))
-            lot.setContractDateMax(contract.getContractDate());
+        // Widen approval date range (approvalDate already calculated at top of method)
+        if (lot.getApprovalDateMin() == null || approvalDate.isBefore(lot.getApprovalDateMin()))
+            lot.setApprovalDateMin(approvalDate);
+        if (lot.getApprovalDateMax() == null || approvalDate.isAfter(lot.getApprovalDateMax()))
+            lot.setApprovalDateMax(approvalDate);
         lot.setStatus("READY_FOR_PLANNING");
         return lotRepo.save(lot);
     }
@@ -184,6 +188,62 @@ public class ProductionPlanService {
         if (details.isEmpty())
             throw new RuntimeException("No details for product in contract");
         return createOrMergeLotFromContractAndProduct(contract, productId, details);
+    }
+
+    /**
+     * Check if a new order can be merged into an existing lot.
+     * Conditions:
+     * 1. Approval date overlaps ±1 day with lot's approval range
+     * 2. Delivery date overlaps ±1 day with lot's delivery target
+     * 3. After merge, both spans (approval and delivery) must be ≤ lotMergeMaxDays
+     */
+    private boolean canMergeWithLot(ProductionLot lot, LocalDate newApproval, LocalDate newDelivery) {
+        // 1. Check approval overlap ±1 day
+        if (lot.getApprovalDateMin() == null || lot.getApprovalDateMax() == null) {
+            return false;
+        }
+        LocalDate approvalMin = newApproval.minusDays(1);
+        LocalDate approvalMax = newApproval.plusDays(1);
+        if (lot.getApprovalDateMax().isBefore(approvalMin) || lot.getApprovalDateMin().isAfter(approvalMax)) {
+            return false;
+        }
+
+        // 2. Check delivery overlap ±1 day
+        if (lot.getDeliveryDateTarget() == null) {
+            return false;
+        }
+        LocalDate deliveryMin = newDelivery.minusDays(1);
+        LocalDate deliveryMax = newDelivery.plusDays(1);
+        if (lot.getDeliveryDateTarget().isBefore(deliveryMin) || lot.getDeliveryDateTarget().isAfter(deliveryMax)) {
+            return false;
+        }
+
+        // 3. Check MAX_DAYS constraint for approval span
+        LocalDate mergedApprovalMin = lot.getApprovalDateMin().isBefore(newApproval) ? lot.getApprovalDateMin()
+                : newApproval;
+        LocalDate mergedApprovalMax = lot.getApprovalDateMax().isAfter(newApproval) ? lot.getApprovalDateMax()
+                : newApproval;
+        long approvalSpan = java.time.temporal.ChronoUnit.DAYS.between(mergedApprovalMin, mergedApprovalMax);
+        if (approvalSpan > lotMergeMaxDays) {
+            return false;
+        }
+
+        // 4. Check MAX_DAYS constraint for delivery span (calculated from contracts in
+        // lot)
+        List<LocalDate> existingDeliveries = lotOrderRepo.findByLotId(lot.getId()).stream()
+                .filter(lo -> lo.getContract() != null && lo.getContract().getDeliveryDate() != null)
+                .map(lo -> lo.getContract().getDeliveryDate())
+                .collect(java.util.stream.Collectors.toList());
+        existingDeliveries.add(newDelivery);
+
+        LocalDate minDelivery = existingDeliveries.stream().min(LocalDate::compareTo).orElse(newDelivery);
+        LocalDate maxDelivery = existingDeliveries.stream().max(LocalDate::compareTo).orElse(newDelivery);
+        long deliverySpan = java.time.temporal.ChronoUnit.DAYS.between(minDelivery, maxDelivery);
+        if (deliverySpan > lotMergeMaxDays) {
+            return false;
+        }
+
+        return true;
     }
 
     @Transactional
@@ -752,17 +812,10 @@ public class ProductionPlanService {
         if (stages.isEmpty())
             return;
 
-        // 1. Find Best Leader
+        // 1. Find Best Leader - Only PRODUCT PROCESS LEADER role
         List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
         if (leaders.isEmpty()) {
             leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
-        }
-        if (leaders.isEmpty()) {
-            leaders = userRepo.findByRoleNameIgnoreCase("PRODUCTION MANAGER");
-        }
-        // Fallback for demo data
-        if (leaders.isEmpty()) {
-            leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCTION_MANAGER");
         }
 
         System.out.println("AutoAssign: Found " + leaders.size() + " potential leaders.");
