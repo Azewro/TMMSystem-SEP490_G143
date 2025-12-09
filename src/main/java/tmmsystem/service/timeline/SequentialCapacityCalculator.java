@@ -172,7 +172,10 @@ public class SequentialCapacityCalculator {
      */
     public java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> getAllStageCapacities() {
         java.util.List<tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto> capacities = new java.util.ArrayList<>();
-        BigDecimal bottleneckCapacity = getBottleneckCapacityPerDay().setScale(0, RoundingMode.HALF_UP);
+        BigDecimal warpingTotal = getTotalCapacityPerDay("WARPING");
+        BigDecimal weavingTotal = getTotalCapacityPerDay("WEAVING");
+        // Bottleneck is the stage with LOWER capacity (in kg)
+        boolean warpingIsBottleneck = warpingTotal.compareTo(weavingTotal) <= 0;
 
         // WARPING
         {
@@ -182,12 +185,12 @@ public class SequentialCapacityCalculator {
             long count = machineRepository.findAll().stream().filter(m -> "WARPING".equalsIgnoreCase(m.getType()))
                     .count();
             dto.setMachineCount((int) count);
-            BigDecimal total = getTotalCapacityPerDay("WARPING");
-            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setTotalCapacityPerDay(warpingTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
-                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+                    count > 0 ? warpingTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO);
             dto.setUnit("kg");
-            dto.setBottleneck(total.setScale(0, RoundingMode.HALF_UP).compareTo(bottleneckCapacity) == 0);
+            dto.setBottleneck(warpingIsBottleneck);
             capacities.add(dto);
         }
 
@@ -199,12 +202,12 @@ public class SequentialCapacityCalculator {
             long count = machineRepository.findAll().stream().filter(m -> "WEAVING".equalsIgnoreCase(m.getType()))
                     .count();
             dto.setMachineCount((int) count);
-            BigDecimal total = getTotalCapacityPerDay("WEAVING");
-            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            dto.setTotalCapacityPerDay(weavingTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
-                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+                    count > 0 ? weavingTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO);
             dto.setUnit("kg");
-            dto.setBottleneck(total.setScale(0, RoundingMode.HALF_UP).compareTo(bottleneckCapacity) == 0);
+            dto.setBottleneck(!warpingIsBottleneck);
             capacities.add(dto);
         }
 
