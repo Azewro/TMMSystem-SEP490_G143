@@ -329,8 +329,7 @@ public class QuotationService {
         // Automate Sending: Provision password and send email
         Customer customer = rfq.getCustomer();
         String tempPassword = null;
-        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
-                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank())) {
             try {
                 tempPassword = customerService.provisionTemporaryPassword(customer.getId());
                 log.info("Temporary password provisioned for customer {}: {}", customer.getId(),
@@ -636,8 +635,7 @@ public class QuotationService {
         // Gửi email cho Customer (kèm mật khẩu tạm nếu cần)
         Customer customer = quotation.getCustomer();
         String tempPassword = null;
-        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank()
-                || Boolean.TRUE.equals(customer.getForcePasswordChange()))) {
+        if (customer != null && (customer.getPassword() == null || customer.getPassword().isBlank())) {
             try {
                 tempPassword = customerService.provisionTemporaryPassword(customer.getId());
                 log.info("Temporary password provisioned for customer {}: {}", customer.getId(),

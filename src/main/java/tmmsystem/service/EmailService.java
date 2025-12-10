@@ -337,7 +337,11 @@ public class EmailService {
 
     private String generateOrderConfirmationEmailContent(Contract contract) {
         StringBuilder content = new StringBuilder();
-        content.append("Kính gửi ").append(contract.getCustomer().getCompanyName()).append(",\n\n");
+        String companyName = contract.getCustomer().getCompanyName();
+        if (companyName == null || companyName.isBlank()) {
+            companyName = "quý khách";
+        }
+        content.append("Kính gửi ").append(companyName).append(",\n\n");
         content.append("Cảm ơn quý khách đã chấp nhận báo giá. Đơn hàng của quý khách đã được tạo:\n\n");
         content.append("Mã đơn hàng: ").append(contract.getContractNumber()).append("\n");
         if (contract.getContractDate() != null) {
@@ -364,8 +368,12 @@ public class EmailService {
             return;
         String to = quotation.getCustomer().getEmail();
         String subject = "CẢNH BÁO: Báo giá sắp hết hạn - " + quotation.getQuotationNumber();
+        String customerName = quotation.getCustomer().getCompanyName();
+        if (customerName == null || customerName.isBlank()) {
+            customerName = "quý khách";
+        }
         String content = "<h1>Báo giá sắp hết hạn</h1>" +
-                "<p>Kính gửi " + quotation.getCustomer().getCompanyName() + ",</p>" +
+                "<p>Kính gửi " + customerName + ",</p>" +
                 "<p>Báo giá <strong>#" + quotation.getQuotationNumber()
                 + "</strong> sẽ hết hạn trong vòng <strong>3 giờ</strong> nữa.</p>" +
                 "<p>Vui lòng đăng nhập vào hệ thống để phản hồi.</p>";
@@ -377,8 +385,12 @@ public class EmailService {
             return;
         String to = quotation.getCustomer().getEmail();
         String subject = "THÔNG BÁO: Báo giá đã hết hạn - " + quotation.getQuotationNumber();
+        String customerName2 = quotation.getCustomer().getCompanyName();
+        if (customerName2 == null || customerName2.isBlank()) {
+            customerName2 = "quý khách";
+        }
         String content = "<h1>Báo giá đã hết hạn</h1>" +
-                "<p>Kính gửi " + quotation.getCustomer().getCompanyName() + ",</p>" +
+                "<p>Kính gửi " + customerName2 + ",</p>" +
                 "<p>Báo giá <strong>#" + quotation.getQuotationNumber()
                 + "</strong> đã hết hạn do không có phản hồi trong 12 giờ qua.</p>" +
                 "<p>Báo giá đã tự động bị từ chối.</p>";
