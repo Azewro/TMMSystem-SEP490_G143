@@ -123,7 +123,8 @@ public class ProductionService {
     }
 
     /**
-     * Startup fixer: ensure only one active (progress < 100%) stage per type (except
+     * Startup fixer: ensure only one active (progress < 100%) stage per type
+     * (except
      * outsourced dyeing). Any extra active stages are reset to WAITING/PENDING.
      *
      * @return number of stages that were demoted to WAITING
@@ -181,6 +182,111 @@ public class ProductionService {
         }
 
         return demoted;
+    }
+
+    /**
+     * Promote the next pending stage of a given type when the slot becomes
+     * available.
+     * This enables cross-PO stage promotion (e.g., when PO1's WARPING completes,
+     * PO2's WARPING can start).
+     * 
+     * Rules:
+     * 1. DYEING is outsourced - allow parallel, promote all eligible
+     * 2. Other stages: only one active at a time
+     * 3. A lot can only start a stage if its previous stage is complete
+     * (QC_PASSED/COMPLETED)
+     * 4. Order: priority DESC, createdAt ASC (FIFO)
+     */
+    @Transactional
+    public void promoteNextOrderForStageType(String stageType) {
+        // DYEING: Allow parallel (outsourced), promote all eligible
+        if ("DYEING".equalsIgnoreCase(stageType)) {
+            promoteAllEligibleDyeingStages();
+            return;
+        }
+
+        // Count blocking stages (slot occupied)
+        long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(stageType, BLOCKING_STAGE_EXEC_STATUSES);
+
+        if (activeCount == 0) {
+            // Slot available - find first eligible PENDING stage
+            List<ProductionStage> pending = stageRepo.findPendingByStageTypeOrderByPriority(stageType);
+            for (ProductionStage next : pending) {
+                if (canEnterStage(next)) {
+                    next.setExecutionStatus("READY_TO_PRODUCE");
+                    syncStageStatus(next, "READY_TO_PRODUCE");
+                    stageRepo.save(next);
+
+                    // Notify assigned leader
+                    if (next.getAssignedLeader() != null) {
+                        String poNumber = next.getProductionOrder() != null
+                                ? next.getProductionOrder().getPoNumber()
+                                : "N/A";
+                        notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "INFO",
+                                "Công đoạn sẵn sàng",
+                                "Công đoạn " + stageType + " của lô " + poNumber + " sẵn sàng bắt đầu.",
+                                "PRODUCTION_STAGE", next.getId());
+                    }
+                    break; // Only promote one (slot now occupied)
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a stage can enter production (previous stage in same PO must be
+     * completed).
+     * Ensures each lot processes stages in order:
+     * WARPING→WEAVING→DYEING→CUTTING→HEMMING→PACKAGING
+     */
+    private boolean canEnterStage(ProductionStage stage) {
+        // First stage (sequence 1, usually WARPING) can always enter if slot available
+        if (stage.getStageSequence() == null || stage.getStageSequence() == 1) {
+            return true;
+        }
+
+        ProductionOrder po = stage.getProductionOrder();
+        if (po == null) {
+            return false;
+        }
+
+        List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
+        ProductionStage prev = stages.stream()
+                .filter(s -> s.getStageSequence() != null
+                        && s.getStageSequence() == stage.getStageSequence() - 1)
+                .findFirst().orElse(null);
+
+        if (prev == null) {
+            return true; // No previous stage found, allow
+        }
+
+        String prevStatus = prev.getExecutionStatus();
+        return "QC_PASSED".equals(prevStatus) || "COMPLETED".equals(prevStatus);
+    }
+
+    /**
+     * For DYEING (outsourced): Promote all eligible pending stages since they can
+     * run in parallel.
+     */
+    private void promoteAllEligibleDyeingStages() {
+        List<ProductionStage> pending = stageRepo.findPendingByStageTypeOrderByPriority("DYEING");
+        for (ProductionStage stage : pending) {
+            if (canEnterStage(stage)) {
+                stage.setExecutionStatus("READY_TO_PRODUCE");
+                syncStageStatus(stage, "READY_TO_PRODUCE");
+                stageRepo.save(stage);
+
+                if (stage.getAssignedLeader() != null) {
+                    String poNumber = stage.getProductionOrder() != null
+                            ? stage.getProductionOrder().getPoNumber()
+                            : "N/A";
+                    notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
+                            "Công đoạn nhuộm sẵn sàng",
+                            "Công đoạn nhuộm của lô " + poNumber + " sẵn sàng bắt đầu.",
+                            "PRODUCTION_STAGE", stage.getId());
+                }
+            }
+        }
     }
 
     // Production Order
@@ -801,6 +907,10 @@ public class ProductionService {
                 }
             }
         }
+
+        // NEW: Promote next order for this stage type (cross-PO promotion)
+        // This enables the next lot in queue to start the same stage type
+        promoteNextOrderForStageType(s.getStageType());
     }
 
     // Dyeing hook on start/complete
