@@ -225,7 +225,7 @@ public class SequentialCapacityCalculator {
             capacities.add(dto);
         }
 
-        // CUTTING
+        // CUTTING - use average of 3 towel types
         {
             var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
             dto.setStageName("Cắt vải");
@@ -233,16 +233,21 @@ public class SequentialCapacityCalculator {
             long count = machineRepository.findAll().stream().filter(m -> "CUTTING".equalsIgnoreCase(m.getType()))
                     .count();
             dto.setMachineCount((int) count);
-            BigDecimal total = getCapacityPerDay("CUTTING", "faceTowels"); // Use faceTowels as representative
-            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            // Average of 3 towel types
+            BigDecimal faceCapacity = getCapacityPerDay("CUTTING", "faceTowels");
+            BigDecimal bathCapacity = getCapacityPerDay("CUTTING", "bathTowels");
+            BigDecimal sportCapacity = getCapacityPerDay("CUTTING", "sportsTowels");
+            BigDecimal avgTotal = faceCapacity.add(bathCapacity).add(sportCapacity)
+                    .divide(new BigDecimal("3"), 2, RoundingMode.HALF_UP);
+            dto.setTotalCapacityPerDay(avgTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
-                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-            dto.setUnit("sản phẩm");
+                    count > 0 ? avgTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("sản phẩm (TB 3 loại)");
             dto.setBottleneck(false);
             capacities.add(dto);
         }
 
-        // SEWING
+        // SEWING - use average of 3 towel types
         {
             var dto = new tmmsystem.dto.sales.CapacityCheckResultDto.StageCapacityDto();
             dto.setStageName("May thành phẩm");
@@ -250,11 +255,16 @@ public class SequentialCapacityCalculator {
             long count = machineRepository.findAll().stream().filter(m -> "SEWING".equalsIgnoreCase(m.getType()))
                     .count();
             dto.setMachineCount((int) count);
-            BigDecimal total = getCapacityPerDay("SEWING", "faceTowels");
-            dto.setTotalCapacityPerDay(total.setScale(2, RoundingMode.HALF_UP));
+            // Average of 3 towel types
+            BigDecimal faceCapacity = getCapacityPerDay("SEWING", "faceTowels");
+            BigDecimal bathCapacity = getCapacityPerDay("SEWING", "bathTowels");
+            BigDecimal sportCapacity = getCapacityPerDay("SEWING", "sportsTowels");
+            BigDecimal avgTotal = faceCapacity.add(bathCapacity).add(sportCapacity)
+                    .divide(new BigDecimal("3"), 2, RoundingMode.HALF_UP);
+            dto.setTotalCapacityPerDay(avgTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
-                    count > 0 ? total.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-            dto.setUnit("sản phẩm");
+                    count > 0 ? avgTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+            dto.setUnit("sản phẩm (TB 3 loại)");
             dto.setBottleneck(false);
             capacities.add(dto);
         }
