@@ -720,7 +720,9 @@ public class ExecutionOrchestrationService {
         if (active > 0)
             return;
 
-        List<ProductionStage> pendingStages = stageRepo.findByStageTypeAndExecutionStatus(stageType, "PENDING");
+        // Lấy các stage đang chờ vào máy: PENDING hoặc WAITING
+        List<ProductionStage> pendingStages = stageRepo.findByStageTypeAndExecutionStatusIn(stageType,
+                java.util.List.of("PENDING", "WAITING"));
         if (pendingStages == null || pendingStages.isEmpty())
             return;
 

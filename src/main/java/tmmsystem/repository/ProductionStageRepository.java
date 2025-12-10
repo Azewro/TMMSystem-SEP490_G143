@@ -83,4 +83,8 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
     @Query("select count(s) from ProductionStage s where s.assignedLeader.id = :leaderId and (s.progressPercent is null or s.progressPercent < 100) and (s.executionStatus is null or s.executionStatus in :executionStatuses)")
     long countByAssignedLeaderIdAndProgressPercentLessThan100(@Param("leaderId") Long leaderId,
             @Param("executionStatuses") List<String> executionStatuses);
+
+    // NEW: list stages by type and execution status in list (for auto-promotion)
+    List<ProductionStage> findByStageTypeAndExecutionStatusIn(String stageType,
+            List<String> executionStatuses);
 }
