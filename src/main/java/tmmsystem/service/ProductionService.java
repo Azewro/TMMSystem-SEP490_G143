@@ -1019,6 +1019,15 @@ public class ProductionService {
             }
         }
 
+        // NEW: Trigger event-driven stage promotion for other stage types
+        // When a stage starts, check if other lots can be promoted for different stages
+        // (e.g., when WARPING starts, check if any WEAVING/DYEING/etc. can be promoted)
+        for (String type : List.of("WARPING", "WEAVING", "DYEING", "CUTTING", "HEMMING", "PACKAGING")) {
+            if (!type.equalsIgnoreCase(s.getStageType())) {
+                promoteNextOrderForStageType(type);
+            }
+        }
+
         return s;
     }
 
@@ -1278,6 +1287,10 @@ public class ProductionService {
                     }
                 }
             }
+
+            // NEW: Trigger event-driven stage promotion when stage reaches 100%
+            // This frees the slot for the next lot to start
+            promoteNextOrderForStageType(s.getStageType());
         } else {
             s.setProgressPercent(progressPercent.intValue());
             syncStageStatus(s, "IN_PROGRESS");
