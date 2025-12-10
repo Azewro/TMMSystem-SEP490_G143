@@ -107,7 +107,7 @@ public class SequentialCapacityCalculator {
         return max;
     }
 
-    private BigDecimal getTotalCapacityPerDay(String machineType) {
+    public BigDecimal getTotalCapacityPerDay(String machineType) {
         return machineRepository.findAll().stream()
                 .filter(machine -> machineType.equalsIgnoreCase(machine.getType()))
                 .map(machine -> {

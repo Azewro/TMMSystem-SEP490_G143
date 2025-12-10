@@ -23,6 +23,25 @@ public class EmailService {
     public void sendQuotationEmail(Quotation quotation) {
         try {
             String emailContent = generateQuotationEmailHtml(quotation);
+
+            // Thêm phần login info cho người dùng đã có tài khoản
+            StringBuilder loginSection = new StringBuilder();
+            loginSection.append(
+                    "<div style='margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;'>");
+            loginSection.append("<h3 style='color: #007bff; margin-top: 0;'>Đăng nhập để phê duyệt báo giá:</h3>");
+            String baseUrl = "https://tmmsystem-sep490g143-front-production.up.railway.app";
+            loginSection.append("<p><strong>Portal:</strong> <a href='").append(baseUrl).append("/login'>")
+                    .append(baseUrl).append("/login</a></p>");
+            loginSection.append("<p><strong>Email đăng nhập:</strong> ").append(quotation.getCustomer().getEmail())
+                    .append("</p>");
+            loginSection.append("<p>Đăng nhập bằng mật khẩu hiện tại của bạn.</p>");
+            loginSection.append("<p><strong>Link báo giá:</strong> <a href='").append(baseUrl)
+                    .append("/customer/quotations/").append(quotation.getId()).append("'>Xem chi tiết báo giá</a></p>");
+            loginSection.append("</div>");
+
+            // Chèn login section trước closing tag của body
+            emailContent = emailContent.replace("</body>", loginSection.toString() + "</body>");
+
             String to = quotation.getCustomer().getEmail();
             String subject = "Báo giá mới từ TMM System";
 
@@ -62,8 +81,8 @@ public class EmailService {
             } else {
                 loginSection.append("<p>Bạn đã có tài khoản. Đăng nhập bằng mật khẩu hiện tại của bạn.</p>");
             }
-            loginSection.append("<p><strong>Link báo giá:</strong> <a href='").append(baseUrl)
-                    .append("/customer/quotations/").append(quotation.getId()).append("'>Xem chi tiết báo giá</a></p>");
+            // Không có link báo giá cho người dùng chưa có tài khoản
+            // Họ cần đăng nhập trước rồi mới xem được
             loginSection.append("</div>");
 
             // Chèn login section trước closing tag của body

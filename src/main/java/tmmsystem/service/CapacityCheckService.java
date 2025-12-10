@@ -145,7 +145,7 @@ public class CapacityCheckService {
         machineCapacity.setProductionEndDate(
                 productionStartDate.plusDays(requiredDays.setScale(0, RoundingMode.CEILING).longValue()));
         machineCapacity.setConflicts(new ArrayList<>());
-        machineCapacity.setBottleneck("WARPING/WEAVING (" + bottleneckCapacity + " kg/ngày)");
+        machineCapacity.setBottleneck(getBottleneckVietnameseName(bottleneckCapacity));
 
         // Populate calculation details (NEW)
         machineCapacity.setNewOrderWeightKg(newOrderWeightKg.setScale(2, RoundingMode.HALF_UP));
@@ -622,6 +622,21 @@ public class CapacityCheckService {
 
         } catch (Exception e) {
             return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * Get bottleneck stage name in Vietnamese based on actual capacity comparison
+     */
+    private String getBottleneckVietnameseName(BigDecimal bottleneckCapacity) {
+        BigDecimal warpingCapacity = sequentialCapacityCalculator.getTotalCapacityPerDay("WARPING");
+        BigDecimal weavingCapacity = sequentialCapacityCalculator.getTotalCapacityPerDay("WEAVING");
+
+        // Determine which one is the actual bottleneck
+        if (warpingCapacity.compareTo(weavingCapacity) <= 0) {
+            return "Mắc cuồng (" + bottleneckCapacity.setScale(0, RoundingMode.HALF_UP) + " kg/ngày)";
+        } else {
+            return "Dệt vải (" + bottleneckCapacity.setScale(0, RoundingMode.HALF_UP) + " kg/ngày)";
         }
     }
 }
