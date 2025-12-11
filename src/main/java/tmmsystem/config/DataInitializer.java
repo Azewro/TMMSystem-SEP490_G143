@@ -31,6 +31,8 @@ public class DataInitializer implements CommandLineRunner {
     private tmmsystem.service.RfqService rfqService;
     @Autowired
     private tmmsystem.service.ProductionService productionService;
+    @Autowired
+    private tmmsystem.service.ProductionPlanService productionPlanService;
 
     @Override
     public void run(String... args) {
@@ -61,7 +63,8 @@ public class DataInitializer implements CommandLineRunner {
             productionService.fixMissingReworkDetails();
             log.info("Startup: Fixed missing details for Supplementary Orders");
 
-            // Enforce exclusive stage per type (except outsourced dyeing) - demote extra actives to WAITING
+            // Enforce exclusive stage per type (except outsourced dyeing) - demote extra
+            // actives to WAITING
             int demoted = productionService.enforceExclusiveStageConflicts();
             if (demoted > 0) {
                 log.info("Startup: Demoted {} active stages to WAITING to enforce single-lot per stage type.", demoted);
@@ -76,6 +79,12 @@ public class DataInitializer implements CommandLineRunner {
 
             // Reassign RFQs from inactive sales staff
             rfqService.reassignInactiveSalesRfqs(log);
+
+            // Fix duplicate lot codes (lots with same code but different products)
+            int fixedLots = productionPlanService.fixDuplicateLotCodes();
+            if (fixedLots > 0) {
+                log.info("Startup: Fixed {} duplicate lot codes", fixedLots);
+            }
 
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)

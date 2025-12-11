@@ -1744,7 +1744,16 @@ public class ProductionService {
         ProductionOrderDto dto = productionMapper.toDto(po);
 
         // Lấy lotCode từ ProductionPlan -> ProductionLot
-        if (po.getContract() != null) {
+        // Extract planCode from notes (format: "Auto-generated from Production Plan:
+        // PP-xxxxxx")
+        String planCode = extractPlanCodeFromNotes(po.getNotes());
+        if (planCode != null) {
+            tmmsystem.entity.ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+            if (plan != null && plan.getLot() != null) {
+                dto.setLotCode(plan.getLot().getLotCode());
+            }
+        } else if (po.getContract() != null) {
+            // Fallback: tìm qua contract (chỉ dùng nếu không có planCode trong notes)
             List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
                     .findByContractId(po.getContract().getId());
             tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
@@ -2784,5 +2793,27 @@ public class ProductionService {
         if (removedCount > 0) {
             System.out.println("Cleaned up " + removedCount + " duplicate Production Orders.");
         }
+    }
+
+    /**
+     * Extract planCode from ProductionOrder notes field.
+     * Format: "Auto-generated from Production Plan: PP-xxxxxx"
+     */
+    private String extractPlanCodeFromNotes(String notes) {
+        if (notes == null || notes.isEmpty()) {
+            return null;
+        }
+        String prefix = "Auto-generated from Production Plan: ";
+        int startIndex = notes.indexOf(prefix);
+        if (startIndex == -1) {
+            return null;
+        }
+        String planCode = notes.substring(startIndex + prefix.length()).trim();
+        // Handle if there's more text after planCode
+        int spaceIndex = planCode.indexOf(' ');
+        if (spaceIndex > 0) {
+            planCode = planCode.substring(0, spaceIndex);
+        }
+        return planCode.isEmpty() ? null : planCode;
     }
 }

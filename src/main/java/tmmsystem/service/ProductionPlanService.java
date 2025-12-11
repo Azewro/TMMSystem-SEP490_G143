@@ -287,7 +287,10 @@ public class ProductionPlanService {
 
     private String generateLotCode() {
         String date = LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        return "LOT-" + date + "-" + String.format("%03d", lotRepo.count() + 1);
+        // Use timestamp millis + random to ensure uniqueness even in same transaction
+        long timestamp = System.currentTimeMillis() % 100000; // Last 5 digits of millis
+        int random = new java.util.Random().nextInt(900) + 100; // 100-999
+        return "LOT-" + date + "-" + String.format("%05d", timestamp) + "-" + random;
     }
 
     // Deprecated old createPlanFromContract -> now uses lot & version
@@ -907,5 +910,35 @@ public class ProductionPlanService {
                     "AutoAssign: Assigned Leader=" + (selectedLeader != null ? selectedLeader.getName() : "null")
                             + " QC=" + (selectedQc != null ? selectedQc.getName() : "null"));
         }
+    }
+
+    /**
+     * Fix duplicate lot codes by regenerating them.
+     * Called on startup to fix existing bad data.
+     */
+    @Transactional
+    public int fixDuplicateLotCodes() {
+        List<ProductionLot> allLots = lotRepo.findAll();
+        Map<String, List<ProductionLot>> byCode = allLots.stream()
+                .filter(l -> l.getLotCode() != null)
+                .collect(java.util.stream.Collectors.groupingBy(ProductionLot::getLotCode));
+
+        int fixed = 0;
+        for (var entry : byCode.entrySet()) {
+            List<ProductionLot> lotsWithSameCode = entry.getValue();
+            if (lotsWithSameCode.size() > 1) {
+                // Skip the first one (keep original), regenerate for the rest
+                for (int i = 1; i < lotsWithSameCode.size(); i++) {
+                    ProductionLot lot = lotsWithSameCode.get(i);
+                    String oldCode = lot.getLotCode();
+                    lot.setLotCode(generateLotCode());
+                    lotRepo.save(lot);
+                    System.out.println("Fixed duplicate lot code: " + oldCode + " -> " + lot.getLotCode()
+                            + " (Lot ID: " + lot.getId() + ")");
+                    fixed++;
+                }
+            }
+        }
+        return fixed;
     }
 }
