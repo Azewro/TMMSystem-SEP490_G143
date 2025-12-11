@@ -233,12 +233,24 @@ public class ProductionService {
 
                     // Notify assigned leader
                     if (next.getAssignedLeader() != null) {
-                        String poNumber = next.getProductionOrder() != null
-                                ? next.getProductionOrder().getPoNumber()
-                                : "N/A";
+                        String lotCode = "N/A";
+                        if (next.getProductionOrder() != null) {
+                            // Try to get lotCode from ProductionPlan
+                            String planCode = extractPlanCodeFromNotes(next.getProductionOrder().getNotes());
+                            if (planCode != null) {
+                                ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                                if (plan != null && plan.getLot() != null) {
+                                    lotCode = plan.getLot().getLotCode();
+                                }
+                            }
+                            // Fallback to poNumber if no lotCode
+                            if ("N/A".equals(lotCode)) {
+                                lotCode = next.getProductionOrder().getPoNumber();
+                            }
+                        }
                         notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "INFO",
                                 "Công đoạn sẵn sàng",
-                                "Công đoạn " + stageType + " của lô " + poNumber + " sẵn sàng bắt đầu.",
+                                "Công đoạn " + stageType + " của lô " + lotCode + " sẵn sàng bắt đầu.",
                                 "PRODUCTION_STAGE", next.getId());
                     }
                     System.out.println("Promoted stage " + next.getId() + " (" + stageType + ") to READY_TO_PRODUCE");
@@ -1314,10 +1326,12 @@ public class ProductionService {
 
                     // Notify Leader
                     if (paused.getAssignedLeader() != null) {
+                        String poNumber = paused.getProductionOrder() != null
+                                ? paused.getProductionOrder().getPoNumber()
+                                : "N/A";
                         notificationService.notifyUser(paused.getAssignedLeader(), "PRODUCTION", "INFO",
                                 "Tiếp tục sản xuất",
-                                "Công đoạn " + paused.getStageType() + " của đơn "
-                                        + paused.getProductionOrder().getPoNumber() +
+                                "Công đoạn " + paused.getStageType() + " của đơn " + poNumber +
                                         " đã được tiếp tục.",
                                 "PRODUCTION_STAGE", paused.getId());
                     }
@@ -1373,57 +1387,54 @@ public class ProductionService {
         ProductionOrder po = poRepo.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Production Order not found"));
 
-        // 1. Capacity Check for WARPING (Công đoạn đầu tiên)
-        // Count active WARPING stages (IN_PROGRESS or READY_TO_PRODUCE)
-        long activeWarpingCount = stageRepo.countByStageTypeAndExecutionStatusIn(
-                "WARPING", List.of("IN_PROGRESS", "READY_TO_PRODUCE"));
-
-        // Get total WARPING machines
-        long totalWarpingMachines = machineRepository.findAll().stream()
-                .filter(m -> "WARPING".equals(m.getType()))
-                .count();
-
-        // If total machines is 0, we can't start.
-        if (totalWarpingMachines == 0) {
-            throw new RuntimeException("Không tìm thấy máy Cuồng mắc nào trong hệ thống.");
-        }
-
-        if (activeWarpingCount >= totalWarpingMachines) {
-            throw new RuntimeException("Không thể bắt đầu. Máy cuồng mắc đang đầy (" + activeWarpingCount + "/"
-                    + totalWarpingMachines + "). Vui lòng đợi đơn hàng trước hoàn thành.");
-        }
-
-        // 2. Update Order Status
+        // 1. Update Order Status - mark as in production queue
         po.setExecutionStatus("IN_PROGRESS");
         po.setStatus("IN_PROGRESS");
         poRepo.save(po);
 
-        // 3. Activate First Stage (WARPING)
+        // 2. Set First Stage (WARPING) to WAITING (queue for scheduler to promote)
         List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(orderId);
         if (stages.isEmpty()) {
             throw new RuntimeException("Đơn hàng chưa có công đoạn nào.");
         }
 
         ProductionStage firstStage = stages.get(0);
-        // Ensure it is WARPING (or whatever the first stage is)
-        syncStageStatus(firstStage, "READY_TO_PRODUCE"); // Custom status mapping
-        firstStage.setExecutionStatus("READY_TO_PRODUCE");
+        // Set to WAITING - scheduler will promote to READY_TO_PRODUCE when slot
+        // available
+        syncStageStatus(firstStage, "WAITING");
+        firstStage.setExecutionStatus("WAITING");
         stageRepo.save(firstStage);
 
-        // 4. Set other stages to PENDING (if not already)
+        // 3. Set other stages to PENDING
         for (int i = 1; i < stages.size(); i++) {
             ProductionStage s = stages.get(i);
-            s.setExecutionStatus("PENDING"); // Changed from WAITING to PENDING to avoid confusion with legacy "Ready"
-                                             // status
+            s.setExecutionStatus("PENDING");
             s.setStatus("PENDING");
             stageRepo.save(s);
         }
 
-        // 5. Notify Warping Leader
+        // 4. Trigger scheduler to check if slot is available and promote immediately
+        promoteNextOrderForStageType(firstStage.getStageType());
+
+        // 5. Notify Leader (will be notified again when promoted to READY_TO_PRODUCE)
         if (firstStage.getAssignedLeader() != null) {
+            String currentStatus = stageRepo.findById(firstStage.getId()).map(ProductionStage::getExecutionStatus)
+                    .orElse("WAITING");
+            // Get lotCode for notification
+            String lotCode = po.getPoNumber(); // Fallback
+            String planCode = extractPlanCodeFromNotes(po.getNotes());
+            if (planCode != null) {
+                ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                if (plan != null && plan.getLot() != null) {
+                    lotCode = plan.getLot().getLotCode();
+                }
+            }
+            String message = "READY_TO_PRODUCE".equals(currentStatus)
+                    ? "Lô " + lotCode + " đã sẵn sàng sản xuất công đoạn " + firstStage.getStageType()
+                    : "Lô " + lotCode + " đã vào hàng chờ công đoạn " + firstStage.getStageType();
             notificationService.notifyUser(firstStage.getAssignedLeader(), "PRODUCTION", "INFO",
-                    "Đơn hàng sẵn sàng",
-                    "Đơn hàng " + po.getPoNumber() + " đã sẵn sàng sản xuất công đoạn " + firstStage.getStageType(),
+                    "Đơn hàng mới",
+                    message,
                     "PRODUCTION_STAGE", firstStage.getId());
         }
 
@@ -2690,7 +2701,10 @@ public class ProductionService {
 
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS");
         for (ProductionStage stage : activeStages) {
-            // Skip the current rework order
+            // Skip if no production order or if it's the current rework order
+            if (stage.getProductionOrder() == null) {
+                continue;
+            }
             if (stage.getProductionOrder().getId().equals(excludeOrderId)) {
                 continue;
             }
@@ -2725,9 +2739,12 @@ public class ProductionService {
 
             // Notify Leader
             if (stage.getAssignedLeader() != null) {
+                String poNumber = stage.getProductionOrder().getPoNumber() != null
+                        ? stage.getProductionOrder().getPoNumber()
+                        : "N/A";
                 notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "WARNING",
                         "Tạm dừng sản xuất",
-                        "Công đoạn " + stageType + " của lệnh " + stage.getProductionOrder().getPoNumber()
+                        "Công đoạn " + stageType + " của lệnh " + poNumber
                                 + " bị tạm dừng để ưu tiên lệnh sửa lỗi.",
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
@@ -2768,10 +2785,13 @@ public class ProductionService {
             stageRepo.save(stage);
 
             // Notify Leader
-            if (stage.getAssignedLeader() != null) {
+            if (stage.getAssignedLeader() != null && stage.getProductionOrder() != null) {
+                String poNumber = stage.getProductionOrder().getPoNumber() != null
+                        ? stage.getProductionOrder().getPoNumber()
+                        : "N/A";
                 notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
                         "Tiếp tục sản xuất",
-                        "Công đoạn " + stageType + " của lệnh " + stage.getProductionOrder().getPoNumber()
+                        "Công đoạn " + stageType + " của lệnh " + poNumber
                                 + " đã được tiếp tục.",
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
