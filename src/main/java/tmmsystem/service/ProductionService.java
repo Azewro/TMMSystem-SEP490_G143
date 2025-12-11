@@ -982,7 +982,9 @@ public class ProductionService {
             if (outsourcingTaskRepository.findByProductionStageId(s.getId()).isEmpty()) {
                 OutsourcingTask ot = new OutsourcingTask();
                 ot.setProductionStage(s);
-                ot.setVendorName(s.getOutsourceVendor());
+                // Fallback if vendor not specified
+                String vendor = s.getOutsourceVendor();
+                ot.setVendorName(vendor != null && !vendor.isEmpty() ? vendor : "Đơn vị nhuộm ngoài");
                 ot.setSentAt(Instant.now());
                 ot.setStatus("SENT");
                 outsourcingTaskRepository.save(ot);
