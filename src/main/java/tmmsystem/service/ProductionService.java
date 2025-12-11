@@ -950,11 +950,16 @@ public class ProductionService {
         }
 
         // Enforce single-lot rule per stage type (except outsourced dyeing)
+        // Only block if there's a stage truly IN production (not WAITING/PENDING)
         boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
                 && Boolean.TRUE.equals(s.getOutsourced());
         if (!isOutsourcedDyeing) {
+            // Truly active = already started production, not just waiting in queue
+            List<String> TRULY_ACTIVE_STATUSES = List.of("IN_PROGRESS",
+                    "WAITING_QC", "QC_IN_PROGRESS", "QC_FAILED", "WAITING_REWORK",
+                    "REWORK_IN_PROGRESS", "PAUSED");
             long activeSameType = stageRepo.countActiveByStageTypeExcludingStage(s.getStageType(), s.getId(),
-                    BLOCKING_STAGE_EXEC_STATUSES);
+                    TRULY_ACTIVE_STATUSES);
             if (activeSameType > 0) {
                 throw new RuntimeException("Công đoạn " + s.getStageType()
                         + " đang bận với lô khác. Vui lòng chờ hoàn tất trước khi chạy lô mới.");
