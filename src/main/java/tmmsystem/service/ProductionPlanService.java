@@ -558,12 +558,16 @@ public class ProductionPlanService {
         if (leader == null) {
             return;
         }
-        long unfinished = productionService.countActiveStagesForLeaderStrict(leader.getId(),
-                ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-        if (unfinished > 0) {
-            throw new RuntimeException("Tổ trưởng " + leader.getName()
-                    + " đang phụ trách công đoạn khác chưa hoàn thành (progress < 100%). Vui lòng chọn người khác.");
-        }
+        // REMOVED: Strict check - leaders can now be assigned to multiple POs
+        // since production is sequential (FIFO), not parallel
+        // long unfinished =
+        // productionService.countActiveStagesForLeaderStrict(leader.getId(),
+        // ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+        // if (unfinished > 0) {
+        // throw new RuntimeException("Tổ trưởng " + leader.getName()
+        // + " đang phụ trách công đoạn khác chưa hoàn thành (progress < 100%). Vui lòng
+        // chọn người khác.");
+        // }
     }
 
     @Transactional
