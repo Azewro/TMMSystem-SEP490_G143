@@ -1387,7 +1387,21 @@ public class ProductionService {
         ProductionOrder po = poRepo.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Production Order not found"));
 
-        // 1. Update Order Status - mark as in production queue
+        // 1. Capacity Check for WARPING (First stage - bottleneck)
+        // Fixed limit: 1 WAITING + 1 READY_TO_PRODUCE + 1 IN_PROGRESS = 3 max
+        // All machines work on ONE lot at a time, this is just queue management
+        List<String> activeStatuses = List.of("WAITING", "READY_TO_PRODUCE", "IN_PROGRESS");
+        long activeWarpingCount = stageRepo.countByStageTypeAndExecutionStatusIn("WARPING", activeStatuses);
+
+        // Fixed max: 3 lots in WARPING pipeline at any time
+        final long MAX_WARPING_QUEUE = 3;
+
+        if (activeWarpingCount >= MAX_WARPING_QUEUE) {
+            throw new RuntimeException("Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
+                    + activeWarpingCount + "/" + MAX_WARPING_QUEUE + "). Vui lòng đợi lô trước hoàn thành.");
+        }
+
+        // 2. Update Order Status - mark as in production queue
         po.setExecutionStatus("IN_PROGRESS");
         po.setStatus("IN_PROGRESS");
         poRepo.save(po);
