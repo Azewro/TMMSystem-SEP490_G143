@@ -1213,9 +1213,23 @@ public class ProductionService {
     public ProductionStage resumeStage(Long stageId, Long leaderUserId) {
         ensureLeader(stageId, leaderUserId);
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
-        // Resume về trạng thái đang làm
-        syncStageStatus(s, "IN_PROGRESS");
+
+        // Resume: executionStatus was preserved during pause, just clear PAUSED status
+        // The executionStatus tells us what state the stage was in before pause
+        String originalExecStatus = s.getExecutionStatus();
+
+        // If executionStatus is one of the "working" statuses, restore it
+        // Otherwise default to IN_PROGRESS (for safety)
+        if (originalExecStatus == null || "PAUSED".equals(originalExecStatus)
+                || "PENDING".equals(originalExecStatus) || "WAITING".equals(originalExecStatus)) {
+            // Fallback: set to IN_PROGRESS if original status was not a valid working state
+            syncStageStatus(s, "IN_PROGRESS");
+        } else {
+            // Restore: just clear PAUSED from status field, keep executionStatus as-is
+            s.setStatus(originalExecStatus);
+        }
         stageRepo.save(s);
+
         // close last open pause
         List<StagePauseLog> pauses = stagePauseLogRepository.findByProductionStageIdOrderByPausedAtDesc(s.getId());
         for (StagePauseLog p : pauses) {
@@ -2739,8 +2753,14 @@ public class ProductionService {
                 continue; // Still blocked by another rework
             }
 
-            // Resume the stage
-            stage.setStatus("IN_PROGRESS");
+            // Resume the stage - restore original executionStatus (preserved during pause)
+            String originalExecStatus = stage.getExecutionStatus();
+            if (originalExecStatus == null || "PAUSED".equals(originalExecStatus)
+                    || "PENDING".equals(originalExecStatus) || "WAITING".equals(originalExecStatus)) {
+                stage.setStatus("IN_PROGRESS");
+            } else {
+                stage.setStatus(originalExecStatus);
+            }
             stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
                     + "System: Resumed after Rework Order completion.");
             stageRepo.save(stage);
