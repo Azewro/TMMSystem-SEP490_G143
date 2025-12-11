@@ -370,20 +370,8 @@ public class ProductionPlanService {
         // Validate completeness before approval (double check)
         validatePlanCompleteness(planId);
 
-        // NEW: Strict Leader Check (Director Guard)
-        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
-        if (!stages.isEmpty()) {
-            User leader = stages.get(0).getInChargeUser();
-            if (leader != null) {
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
-                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-
-                if (strictLoad > 0) {
-                    throw new RuntimeException("Tổ trưởng " + leader.getName()
-                            + " hiện đang bận (tiến độ chưa 100%). Vui lòng lập lại kế hoạch.");
-                }
-            }
-        }
+        // NOTE: Removed strict leader check - leaders can be assigned to multiple POs
+        // since production is sequential (FIFO), not parallel
 
         plan.setStatus(ProductionPlan.PlanStatus.APPROVED);
         plan.setApprovedBy(getCurrentUser());
@@ -812,7 +800,7 @@ public class ProductionPlanService {
         if (stages.isEmpty())
             return;
 
-        // 1. Find Best Leader - Only PRODUCT PROCESS LEADER role
+        // 1. Find Best Leader - PRODUCT PROCESS LEADER with LEAST Production Orders
         List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
         if (leaders.isEmpty()) {
             leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
@@ -823,38 +811,29 @@ public class ProductionPlanService {
         User selectedLeader = null;
         if (!leaders.isEmpty()) {
             User bestLeader = null;
-            long minLoad = Long.MAX_VALUE;
+            long minPoCount = Long.MAX_VALUE;
             for (User leader : leaders) {
                 if (!Boolean.TRUE.equals(leader.getActive()))
                     continue;
 
-                // STRICT RULE: Only assign leader if he has 0 active unfinished stages
-                // (progress < 100)
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
-                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-                System.out.println("AutoAssign: Leader " + leader.getName() + " strictLoad=" + strictLoad);
+                // NEW RULE: Assign leader with LEAST number of Production Orders
+                // No strict-free check - production is sequential, so busy leaders will just
+                // queue work
+                long poCount = productionService.countProductionOrdersForLeader(leader.getId());
+                System.out.println("AutoAssign: Leader " + leader.getName() + " poCount=" + poCount);
 
-                if (strictLoad == 0) {
-                    // Only consider leaders with strictLoad == 0
-                    // If multiple are free, we can pick based on total load or just the first one.
-                    // Let's bias towards the one with least total load for general balance, but
-                    // primarily must be free now.
-
-                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(),
-                            ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-                    if (totalLoad < minLoad) {
-                        minLoad = totalLoad;
-                        bestLeader = leader;
-                    }
+                if (poCount < minPoCount) {
+                    minPoCount = poCount;
+                    bestLeader = leader;
                 }
             }
             selectedLeader = bestLeader;
         }
 
-        // STRICT: If no leader is free, throw an exception to notify the user
-        if (selectedLeader == null) {
-            throw new RuntimeException(
-                    "Không có Leader nào rảnh để phân công. Tất cả Leader đang bận với các công đoạn chưa hoàn thành.");
+        // If no leader found at all (no active leaders), throw exception
+        if (selectedLeader == null && !leaders.isEmpty()) {
+            // All leaders are inactive
+            throw new RuntimeException("Không có Leader nào đang hoạt động để phân công.");
         }
 
         // 2. Find Best QC

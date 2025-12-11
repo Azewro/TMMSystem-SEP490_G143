@@ -92,4 +92,9 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
                         "WHERE s.stageType = :stageType AND s.executionStatus = 'PENDING' " +
                         "ORDER BY po.priority DESC, po.createdAt ASC")
         List<ProductionStage> findPendingByStageTypeOrderByPriority(@Param("stageType") String stageType);
+
+        // NEW: Count distinct Production Orders for a leader (for workload balancing by
+        // PO count)
+        @Query("SELECT COUNT(DISTINCT s.productionOrder.id) FROM ProductionStage s WHERE s.assignedLeader.id = :leaderId")
+        long countDistinctProductionOrdersByLeaderId(@Param("leaderId") Long leaderId);
 }

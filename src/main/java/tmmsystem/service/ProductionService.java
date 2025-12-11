@@ -1725,6 +1725,14 @@ public class ProductionService {
     }
 
     /**
+     * Count distinct Production Orders assigned to a leader (for workload balancing
+     * by PO count)
+     */
+    public long countProductionOrdersForLeader(Long leaderId) {
+        return stageRepo.countDistinctProductionOrdersByLeaderId(leaderId);
+    }
+
+    /**
      * Enrich ProductionOrderDto với các thông tin cần thiết cho frontend
      * - lotCode từ ProductionLot (thông qua ProductionPlan)
      * - productName từ ProductionOrderDetail
