@@ -24,7 +24,6 @@ import tmmsystem.entity.Machine;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Comparator;
 
 import tmmsystem.dto.qc.QcInspectionDto;
 import tmmsystem.entity.QcCheckpoint;
@@ -493,7 +492,7 @@ public class ExecutionOrchestrationService {
                     // This is a supplementary order
                     // 1. Complete Supplementary Order
                     currentPO.setExecutionStatus("COMPLETED");
-                    currentPO.setStatus("COMPLETED");
+                        currentPO.setStatus("COMPLETED");
                     // currentPO.setActualEndDate(java.time.LocalDate.now()); // Field might not
                     // exist
                     orderRepo.save(currentPO);
@@ -521,10 +520,6 @@ public class ExecutionOrchestrationService {
                 // Normal flow
                 openNextStage(stageRef);
             }
-
-            // Sau khi QC PASS, nếu công đoạn này là loại serialize (không phải Nhuộm)
-            // và slot đang trống, đẩy một lô PENDING cùng loại lên READY_TO_PRODUCE
-            promoteNextPendingStage(stageRef.getStageType());
 
             // Notify PASS
             notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "SUCCESS", "QC đạt",
@@ -701,54 +696,6 @@ public class ExecutionOrchestrationService {
                         + (ctx.lotCode() != null ? "Lô " + ctx.lotCode() + " | " : "")
                         + (ctx.contractNumber() != null ? "Hợp đồng " + ctx.contractNumber() : ""),
                 "PRODUCTION_STAGE", next.getId());
-    }
-
-    /**
-     * Khi slot công đoạn đã trống (serialize), đẩy một stage PENDING cùng loại lên READY_TO_PRODUCE
-     * để leader có thể bấm bắt đầu. Bỏ qua Nhuộm (được chạy song song).
-     */
-    private void promoteNextPendingStage(String stageType) {
-        if (stageType == null)
-            return;
-        // Nhuộm outsource chạy song song, không cần serialize
-        if ("DYEING".equalsIgnoreCase(stageType) || "NHUOM".equalsIgnoreCase(stageType)) {
-            return;
-        }
-
-        long active = stageRepo.countByStageTypeAndExecutionStatusIn(stageType,
-                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK"));
-        if (active > 0)
-            return;
-
-        // Lấy các stage đang chờ vào máy: PENDING hoặc WAITING
-        List<ProductionStage> pendingStages = stageRepo.findByStageTypeAndExecutionStatusIn(stageType,
-                java.util.List.of("PENDING", "WAITING"));
-        if (pendingStages == null || pendingStages.isEmpty())
-            return;
-
-        ProductionStage next = pendingStages.stream()
-                .sorted(Comparator
-                        .comparing(ProductionStage::getPlannedStartAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(ProductionStage::getId))
-                .findFirst()
-                .orElse(null);
-
-        if (next == null)
-            return;
-
-        next.setExecutionStatus("READY_TO_PRODUCE");
-        stageRepo.save(next);
-
-        StageContext ctx = buildContext(next);
-        if (next.getAssignedLeader() != null) {
-            notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "INFO", "Sẵn sàng sản xuất",
-                    "Công đoạn " + next.getStageType() + " đã sẵn sàng. " + ctx.summary(),
-                    "PRODUCTION_STAGE", next.getId());
-        } else {
-            notificationService.notifyRole("PRODUCTION_STAFF", "PRODUCTION", "INFO", "Công đoạn sẵn sàng",
-                    "Công đoạn " + next.getStageType() + " đã sẵn sàng. " + ctx.summary(),
-                    "PRODUCTION_STAGE", next.getId());
-        }
     }
 
     private void ensureOrderStarted(ProductionStage stage) {

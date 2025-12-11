@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.Valid;
 import tmmsystem.dto.production_plan.*;
+import tmmsystem.entity.User;
 import tmmsystem.service.ProductionPlanService;
+import tmmsystem.service.user.FindLeaderHaveMinLOTService;
 
 import java.util.List;
 
@@ -23,9 +25,11 @@ import java.util.List;
 public class ProductionPlanController {
 
     private final ProductionPlanService service;
+    private final FindLeaderHaveMinLOTService findLeaderHaveMinLOTService;
 
-    public ProductionPlanController(ProductionPlanService service) {
+    public ProductionPlanController(ProductionPlanService service, FindLeaderHaveMinLOTService findLeaderHaveMinLOTService) {
         this.service = service;
+        this.findLeaderHaveMinLOTService = findLeaderHaveMinLOTService;
     }
 
     // ===== CRUD Operations =====

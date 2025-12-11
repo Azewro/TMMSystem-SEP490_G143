@@ -10,6 +10,7 @@ import tmmsystem.mapper.ProductionPlanMapper;
 import tmmsystem.repository.*;
 import tmmsystem.service.timeline.SequentialCapacityCalculator;
 import tmmsystem.service.timeline.SequentialCapacityResult;
+import tmmsystem.service.user.FindLeaderHaveMinLOTService;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -18,6 +19,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -371,19 +373,19 @@ public class ProductionPlanService {
         validatePlanCompleteness(planId);
 
         // NEW: Strict Leader Check (Director Guard)
-        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
-        if (!stages.isEmpty()) {
-            User leader = stages.get(0).getInChargeUser();
-            if (leader != null) {
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
-                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-
-                if (strictLoad > 0) {
-                    throw new RuntimeException("Tổ trưởng " + leader.getName()
-                            + " hiện đang bận (tiến độ chưa 100%). Vui lòng lập lại kế hoạch.");
-                }
-            }
-        }
+//        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(planId);
+//        if (!stages.isEmpty()) {
+//            User leader = stages.get(0).getInChargeUser();
+//            if (leader != null) {
+//                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
+//                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+//
+//                if (strictLoad > 0) {
+//                    throw new RuntimeException("Tổ trưởng " + leader.getName()
+//                            + " hiện đang bận (tiến độ chưa 100%). Vui lòng lập lại kế hoạch.");
+//                }
+//            }
+//        }
 
         plan.setStatus(ProductionPlan.PlanStatus.APPROVED);
         plan.setApprovedBy(getCurrentUser());
@@ -583,7 +585,7 @@ public class ProductionPlanService {
         var stage = stageRepo.findById(stageId)
                 .orElseThrow(() -> new RuntimeException("Production plan stage not found"));
         var user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        ensureLeaderIsAvailable(user);
+//        ensureLeaderIsAvailable(user);
         stage.setInChargeUser(user);
         return mapper.toDto(stageRepo.save(stage));
     }
@@ -612,7 +614,7 @@ public class ProductionPlanService {
             if (!Boolean.TRUE.equals(u.getActive())) {
                 throw new RuntimeException("Người phụ trách đã bị vô hiệu hóa.");
             }
-            ensureLeaderIsAvailable(u);
+//            ensureLeaderIsAvailable(u);
             stage.setInChargeUser(u);
         }
         if (req.getQcUserId() != null) {
@@ -813,46 +815,13 @@ public class ProductionPlanService {
             return;
 
         // 1. Find Best Leader - Only PRODUCT PROCESS LEADER role
-        List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
-        if (leaders.isEmpty()) {
-            leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
-        }
+        Optional<User> leader = Optional.ofNullable(userRepo.findUserHaveMinLOT().orElseThrow(() -> new RuntimeException("Không tìm thấy Tổ trưởng nào có số lượng đơn hàng thấp nhất.")));
 
-        System.out.println("AutoAssign: Found " + leaders.size() + " potential leaders.");
-
-        User selectedLeader = null;
-        if (!leaders.isEmpty()) {
-            User bestLeader = null;
-            long minLoad = Long.MAX_VALUE;
-            for (User leader : leaders) {
-                if (!Boolean.TRUE.equals(leader.getActive()))
-                    continue;
-
-                // STRICT RULE: Only assign leader if he has 0 active unfinished stages
-                // (progress < 100)
-                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
-                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-                System.out.println("AutoAssign: Leader " + leader.getName() + " strictLoad=" + strictLoad);
-
-                if (strictLoad == 0) {
-                    // Only consider leaders with strictLoad == 0
-                    // If multiple are free, we can pick based on total load or just the first one.
-                    // Let's bias towards the one with least total load for general balance, but
-                    // primarily must be free now.
-
-                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(),
-                            ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
-                    if (totalLoad < minLoad) {
-                        minLoad = totalLoad;
-                        bestLeader = leader;
-                    }
-                }
-            }
-            selectedLeader = bestLeader;
-        }
-
+        System.err.println("--------------------------------------------------------");
+        System.err.println("AutoAssign: " + leader.map(l -> "Found Leader: " + l.getName()).orElse("No Leader found"));
+        System.err.println("--------------------------------------------------------");
         // STRICT: If no leader is free, throw an exception to notify the user
-        if (selectedLeader == null) {
+        if (leader  == null) {
             throw new RuntimeException(
                     "Không có Leader nào rảnh để phân công. Tất cả Leader đang bận với các công đoạn chưa hoàn thành.");
         }
@@ -895,10 +864,10 @@ public class ProductionPlanService {
         for (ProductionPlanStage stage : stages) {
             boolean changed = false;
             // Only assign if not already assigned OR force is true
-            if ((stage.getInChargeUser() == null || force) && selectedLeader != null) {
-                stage.setInChargeUser(selectedLeader);
+            if ((stage.getInChargeUser() == null || force) && leader != null) {
+                stage.setInChargeUser(leader.get());
                 changed = true;
-            } else if (force && selectedLeader == null) {
+            } else if (force && leader == null) {
                 // If force refresh and no leader available, clear assignment
                 stage.setInChargeUser(null);
                 changed = true;
@@ -921,8 +890,127 @@ public class ProductionPlanService {
         if (anyChanged) {
             stageRepo.saveAll(stages);
             System.out.println(
-                    "AutoAssign: Assigned Leader=" + (selectedLeader != null ? selectedLeader.getName() : "null")
+                    "AutoAssign: Assigned Leader=" + (leader != null ? leader.get().getName() : "null")
                             + " QC=" + (selectedQc != null ? selectedQc.getName() : "null"));
         }
     }
+
+//    private void autoAssignResourcesToPlan(ProductionPlan plan, boolean force) {
+//        List<ProductionPlanStage> stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
+//        if (stages.isEmpty())
+//            return;
+//
+//        // 1. Find Best Leader - Only PRODUCT PROCESS LEADER role
+//        List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
+//        if (leaders.isEmpty()) {
+//            leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
+//        }
+//
+//        System.out.println("AutoAssign: Found " + leaders.size() + " potential leaders.");
+//
+//        User selectedLeader = null;
+//        if (!leaders.isEmpty()) {
+//            User bestLeader = null;
+//            long minLoad = Long.MAX_VALUE;
+//            for (User leader : leaders) {
+//                if (!Boolean.TRUE.equals(leader.getActive()))
+//                    continue;
+//
+//                // STRICT RULE: Only assign leader if he has 0 active unfinished stages
+//                // (progress < 100)
+//                long strictLoad = productionService.countActiveStagesForLeaderStrict(leader.getId(),
+//                        ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+//                System.out.println("AutoAssign: Leader " + leader.getName() + " strictLoad=" + strictLoad);
+//
+//                if (strictLoad == 0) {
+//                    // Only consider leaders with strictLoad == 0
+//                    // If multiple are free, we can pick based on total load or just the first one.
+//                    // Let's bias towards the one with least total load for general balance, but
+//                    // primarily must be free now.
+//
+//                    long totalLoad = productionService.countActiveStagesForLeader(leader.getId(),
+//                            ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+//                    if (totalLoad < minLoad) {
+//                        minLoad = totalLoad;
+//                        bestLeader = leader;
+//                    }
+//                }
+//            }
+//            selectedLeader = bestLeader;
+//        }
+//
+//        // STRICT: If no leader is free, throw an exception to notify the user
+//        if (selectedLeader == null) {
+//            throw new RuntimeException(
+//                    "Không có Leader nào rảnh để phân công. Tất cả Leader đang bận với các công đoạn chưa hoàn thành.");
+//        }
+//
+//        // 2. Find Best QC
+//        List<User> qcs = userRepo.findByRoleNameIgnoreCase("QUALITY ASSURANCE DEPARTMENT");
+//        if (qcs.isEmpty()) {
+//            qcs = userRepo.findByRoleNameIgnoreCase("ROLE_QUALITY_ASSURANCE_DEPARTMENT");
+//        }
+//        if (qcs.isEmpty()) {
+//            qcs = userRepo.findByRoleNameIgnoreCase("QC");
+//        }
+//        if (qcs.isEmpty()) {
+//            qcs = userRepo.findByRoleNameIgnoreCase("ROLE_QC");
+//        }
+//
+//        System.out.println("AutoAssign: Found " + qcs.size() + " potential QCs.");
+//
+//        User selectedQc = null;
+//        if (!qcs.isEmpty()) {
+//            User bestQc = null;
+//            long minLoad = Long.MAX_VALUE;
+//
+//            for (User qc : qcs) {
+//                if (!Boolean.TRUE.equals(qc.getActive()))
+//                    continue;
+//
+//                long load = productionService.countActiveStagesForQc(qc.getId(), ACTIVE_EXECUTION_STATUSES_FOR_LEADER);
+//                System.out.println("AutoAssign: QC " + qc.getName() + " load=" + load);
+//                if (load < minLoad) {
+//                    minLoad = load;
+//                    bestQc = qc;
+//                }
+//            }
+//            selectedQc = bestQc;
+//        }
+//
+//        // 3. Assign to ALL stages
+//        boolean anyChanged = false;
+//        for (ProductionPlanStage stage : stages) {
+//            boolean changed = false;
+//            // Only assign if not already assigned OR force is true
+//            if ((stage.getInChargeUser() == null || force) && selectedLeader != null) {
+//                stage.setInChargeUser(selectedLeader);
+//                changed = true;
+//            } else if (force && selectedLeader == null) {
+//                // If force refresh and no leader available, clear assignment
+//                stage.setInChargeUser(null);
+//                changed = true;
+//            }
+//
+//            if ((stage.getQcUser() == null || force) && selectedQc != null) {
+//                stage.setQcUser(selectedQc);
+//                changed = true;
+//            } else if (force && selectedQc == null) {
+//                stage.setQcUser(null);
+//                changed = true;
+//            }
+//
+//            if (changed) {
+//                // stageRepo.save(stage); // Don't save inside loop individually if we use
+//                // saveAll
+//                anyChanged = true;
+//            }
+//        }
+//        if (anyChanged) {
+//            stageRepo.saveAll(stages);
+//            System.out.println(
+//                    "AutoAssign: Assigned Leader=" + (selectedLeader != null ? selectedLeader.getName() : "null")
+//                            + " QC=" + (selectedQc != null ? selectedQc.getName() : "null"));
+//        }
+//    }
 }

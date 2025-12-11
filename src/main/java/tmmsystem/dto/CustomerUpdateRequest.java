@@ -38,7 +38,7 @@ public class CustomerUpdateRequest {
     @Schema(description = "Địa chỉ")
     private String address;
     
-     // TaxCode is optional - only validate format if provided
+    // TaxCode is optional - only validate format if provided
     @TaxCode
     @Size(max = 50, message = "Mã số thuế không được quá 50 ký tự")
     @Schema(description = "Mã số thuế")
