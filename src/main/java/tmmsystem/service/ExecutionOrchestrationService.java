@@ -16,7 +16,9 @@ import tmmsystem.repository.QualityIssueRepository;
 import tmmsystem.repository.QcSessionRepository;
 import tmmsystem.repository.UserRepository;
 import tmmsystem.repository.StageTrackingRepository;
+import tmmsystem.repository.ProductionPlanRepository;
 import tmmsystem.repository.MachineRepository;
+import tmmsystem.entity.ProductionPlan;
 import tmmsystem.repository.MachineAssignmentRepository;
 import tmmsystem.entity.MachineAssignment;
 import tmmsystem.entity.Machine;
@@ -46,6 +48,7 @@ public class ExecutionOrchestrationService {
     private final QcInspectionRepository qcInspectionRepository;
     private final MachineRepository machineRepository;
     private final MachineAssignmentRepository machineAssignmentRepository;
+    private final ProductionPlanRepository productionPlanRepository;
     private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
             Map.entry("WARPING", "CUONG_MAC"),
             Map.entry("CUONG_MAC", "WARPING"),
@@ -72,7 +75,8 @@ public class ExecutionOrchestrationService {
             QcCheckpointRepository qcCheckpointRepository,
             QcInspectionRepository qcInspectionRepository,
             MachineRepository machineRepository,
-            MachineAssignmentRepository machineAssignmentRepository) {
+            MachineAssignmentRepository machineAssignmentRepository,
+            ProductionPlanRepository productionPlanRepository) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -86,11 +90,13 @@ public class ExecutionOrchestrationService {
         this.qcInspectionRepository = qcInspectionRepository;
         this.machineRepository = machineRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
+        this.productionPlanRepository = productionPlanRepository;
     }
 
     private record StageContext(String lotCode, String poNumber, String contractNumber, String stageType) {
         String summary() {
-            return "PO " + (poNumber != null ? poNumber : "N/A") + " | Lô " + (lotCode != null ? lotCode : "N/A")
+            // Prioritize Lot Code as per user request
+            return "Lô " + (lotCode != null ? lotCode : "N/A") + " | PO " + (poNumber != null ? poNumber : "N/A")
                     + " | Hợp đồng " + (contractNumber != null ? contractNumber : "N/A");
         }
     }
@@ -105,6 +111,19 @@ public class ExecutionOrchestrationService {
             poNumber = order.getPoNumber();
             if (order.getContract() != null) {
                 contractNumber = order.getContract().getContractNumber();
+            }
+            // Fetch Lot Code from Production Plan
+            try {
+                String note = order.getNotes();
+                if (note != null && note.contains("Plan: ")) {
+                    String planCode = note.substring(note.indexOf("Plan: ") + 6).trim();
+                    ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                    if (plan != null && plan.getLot() != null) {
+                        lotCode = plan.getLot().getLotCode();
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore errors fetching lot code
             }
         }
         return new StageContext(lotCode, poNumber, contractNumber, stageType);
