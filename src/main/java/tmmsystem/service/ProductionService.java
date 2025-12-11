@@ -1096,7 +1096,9 @@ public class ProductionService {
                 stage.setProductionOrder(po);
                 stage.setStageType(stageTypes[i]);
                 stage.setStageSequence(i + 1);
-                syncStageStatus(stage, i == 0 ? "WAITING" : "PENDING");
+                // All stages start as PENDING. PM's startWorkOrder will set first stage to
+                // WAITING.
+                syncStageStatus(stage, "PENDING");
                 stage.setOutsourced(outsourced[i]);
                 stage.setProgressPercent(0);
 
@@ -1148,7 +1150,9 @@ public class ProductionService {
             stage.setOutsourced("DYEING".equalsIgnoreCase(planStage.getStageType()));
 
             boolean isFirstStage = firstSequence != null && firstSequence.equals(planStage.getSequenceNo());
-            syncStageStatus(stage, isFirstStage ? "WAITING" : "PENDING");
+            // All stages start as PENDING. PM's startWorkOrder will set first stage to
+            // WAITING.
+            syncStageStatus(stage, "PENDING");
             stage.setProgressPercent(0);
 
             // NEW: Generate QR Token for first stage
