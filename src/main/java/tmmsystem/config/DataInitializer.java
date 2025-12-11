@@ -86,6 +86,17 @@ public class DataInitializer implements CommandLineRunner {
                 log.info("Startup: Fixed {} duplicate lot codes", fixedLots);
             }
 
+            // Promote WAITING stages to READY_TO_PRODUCE if slot is available
+            String[] stageTypes = { "WARPING", "WEAVING", "DYEING", "CUTTING", "HEMMING", "PACKAGING" };
+            for (String stageType : stageTypes) {
+                try {
+                    productionService.promoteNextOrderForStageType(stageType);
+                } catch (Exception e) {
+                    log.error("Error promoting {} stages: {}", stageType, e.getMessage());
+                }
+            }
+            log.info("Startup: Ran stage promotion for all stage types");
+
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
             // seedQcCheckpoints();

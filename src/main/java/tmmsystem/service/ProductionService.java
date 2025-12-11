@@ -205,13 +205,27 @@ public class ProductionService {
             return;
         }
 
-        // Count blocking stages (slot occupied)
-        long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(stageType, BLOCKING_STAGE_EXEC_STATUSES);
+        // "Truly active" statuses that block the slot (exclude WAITING/PENDING - those
+        // need promotion)
+        List<String> TRULY_ACTIVE_STATUSES = List.of("READY_TO_PRODUCE", "IN_PROGRESS",
+                "WAITING_QC", "QC_IN_PROGRESS", "QC_FAILED", "WAITING_REWORK",
+                "REWORK_IN_PROGRESS", "PAUSED");
+
+        // Count stages that are truly occupying the production slot
+        long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(stageType, TRULY_ACTIVE_STATUSES);
 
         if (activeCount == 0) {
-            // Slot available - find first eligible PENDING stage
-            List<ProductionStage> pending = stageRepo.findPendingByStageTypeOrderByPriority(stageType);
-            for (ProductionStage next : pending) {
+            // Slot available - find stages in WAITING or PENDING status
+            // WAITING stages have priority (they're the first stage of each PO)
+            List<ProductionStage> waitingStages = stageRepo.findByStageTypeAndExecutionStatus(stageType, "WAITING");
+            List<ProductionStage> pendingStages = stageRepo.findPendingByStageTypeOrderByPriority(stageType);
+
+            // Combine: WAITING first, then PENDING
+            List<ProductionStage> candidates = new java.util.ArrayList<>();
+            candidates.addAll(waitingStages);
+            candidates.addAll(pendingStages);
+
+            for (ProductionStage next : candidates) {
                 if (canEnterStage(next)) {
                     next.setExecutionStatus("READY_TO_PRODUCE");
                     syncStageStatus(next, "READY_TO_PRODUCE");
@@ -227,6 +241,7 @@ public class ProductionService {
                                 "Công đoạn " + stageType + " của lô " + poNumber + " sẵn sàng bắt đầu.",
                                 "PRODUCTION_STAGE", next.getId());
                     }
+                    System.out.println("Promoted stage " + next.getId() + " (" + stageType + ") to READY_TO_PRODUCE");
                     break; // Only promote one (slot now occupied)
                 }
             }
