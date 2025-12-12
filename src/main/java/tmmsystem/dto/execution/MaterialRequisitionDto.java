@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 public class MaterialRequisitionDto {
     private Long id;
     private String requisitionNumber;
+    private String lotCode; // NEW: Mã lô để hiển thị
     private Long productionStageId;
     private String stageType; // Useful for display
     private String requestedByName;
