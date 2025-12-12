@@ -674,6 +674,11 @@ public class ExecutionOrchestrationService {
 
     @Transactional
     public ProductionStage startRework(Long stageId, Long leaderUserId) {
+        return startRework(stageId, leaderUserId, true); // Default: force stop active stages
+    }
+
+    @Transactional
+    public ProductionStage startRework(Long stageId, Long leaderUserId, boolean forceStopActive) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         if (!"WAITING_REWORK".equals(stage.getExecutionStatus())
                 && !"WAITING".equals(stage.getExecutionStatus())
@@ -690,13 +695,66 @@ public class ExecutionOrchestrationService {
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(stage.getStageType());
 
-        if (!isParallelStage) {
+        // Only pause if forceStopActive is true
+        if (!isParallelStage && forceStopActive) {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
         }
 
         stage.setExecutionStatus("REWORK_IN_PROGRESS");
         stageRepo.save(stage);
         return stage;
+    }
+
+    /**
+     * Kiểm tra có stage nào đang hoạt động cùng loại trước khi bắt đầu rework
+     * Returns: { hasActiveStages, stageType, activeStages: [{stageId, orderId,
+     * lotCode}] }
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> checkActiveStagesBeforeRework(Long stageId) {
+        ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+
+        // Tìm tất cả stages cùng loại đang IN_PROGRESS
+        java.util.List<ProductionStage> activeStages = stageRepo
+                .findByStageTypeAndExecutionStatus(stage.getStageType(), "IN_PROGRESS")
+                .stream()
+                .filter(s -> !s.getId().equals(stageId))
+                .toList();
+
+        result.put("hasActiveStages", !activeStages.isEmpty());
+        result.put("stageType", stage.getStageType());
+        result.put("stageTypeName", getVietnameseStageType(stage.getStageType()));
+        result.put("activeStages", activeStages.stream().map(s -> {
+            java.util.Map<String, Object> dto = new java.util.HashMap<>();
+            dto.put("stageId", s.getId());
+            dto.put("orderId", s.getProductionOrder() != null ? s.getProductionOrder().getId() : null);
+
+            // Get lotCode
+            String lotCode = null;
+            if (s.getProductionOrder() != null) {
+                ProductionOrder po = s.getProductionOrder();
+                try {
+                    String note = po.getNotes();
+                    if (note != null && note.contains("Plan: ")) {
+                        String planCode = note.substring(note.indexOf("Plan: ") + 6).trim();
+                        ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                        if (plan != null && plan.getLot() != null) {
+                            lotCode = plan.getLot().getLotCode();
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
+                if (lotCode == null) {
+                    lotCode = po.getPoNumber();
+                }
+            }
+            dto.put("lotCode", lotCode != null ? lotCode : "N/A");
+            return dto;
+        }).toList());
+
+        return result;
     }
 
     private void openNextStage(ProductionStage current) {
