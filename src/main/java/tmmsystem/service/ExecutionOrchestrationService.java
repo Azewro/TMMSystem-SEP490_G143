@@ -925,14 +925,16 @@ public class ExecutionOrchestrationService {
             }
 
             if (sameType) {
-                // Blocked by this stage
+                // Blocked by this stage - get lot code instead of PO number
                 result.put("canStart", false);
-                String blockedByOrder = s.getProductionOrder() != null ? s.getProductionOrder().getPoNumber() : "N/A";
-                result.put("blockedBy", blockedByOrder);
+                StageContext blockedContext = buildContext(s);
+                String blockedByLot = blockedContext.lotCode() != null ? blockedContext.lotCode()
+                        : (s.getProductionOrder() != null ? s.getProductionOrder().getPoNumber() : "N/A");
+                result.put("blockedBy", blockedByLot);
                 result.put("blockedByStageType", s.getStageType());
                 result.put("blockedByStageId", s.getId());
                 result.put("message", "Công đoạn " + getVietnameseStageType(stage.getStageType())
-                        + " đang được sử dụng bởi lô " + blockedByOrder);
+                        + " đang được sử dụng bởi lô " + blockedByLot);
                 return result;
             }
         }
