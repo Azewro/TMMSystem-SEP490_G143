@@ -633,9 +633,8 @@ public class ProductionService {
     }
 
     public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
-        // Show all defects except RESOLVED (so Tech can track defects they've sent)
+        // Show ALL defects (including RESOLVED for history tracking)
         return issueRepo.findAll().stream()
-                .filter(i -> !"RESOLVED".equals(i.getStatus())) // Show PENDING, PROCESSED, IN_PROGRESS etc.
                 .map(this::mapQualityIssueToDto)
                 .collect(java.util.stream.Collectors.toList());
     }
