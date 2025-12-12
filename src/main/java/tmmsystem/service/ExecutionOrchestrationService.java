@@ -504,23 +504,26 @@ public class ExecutionOrchestrationService {
             stageRef.setExecutionStatus("QC_PASSED");
             stageRepo.save(stageRef);
 
-            // NEW: Resolve linked QualityIssues when QC PASS after rework
-            if (Boolean.TRUE.equals(stageRef.getIsRework())) {
-                List<tmmsystem.entity.QualityIssue> linkedIssues = issueRepo.findByProductionStageId(stageRef.getId());
-                for (tmmsystem.entity.QualityIssue issue : linkedIssues) {
-                    if (!"RESOLVED".equals(issue.getStatus())) {
-                        issue.setStatus("RESOLVED");
-                        issue.setResolvedAt(Instant.now());
-                        issueRepo.save(issue);
-                    }
+            // Resolve ALL linked QualityIssues when QC PASS (regardless of rework flag)
+            List<tmmsystem.entity.QualityIssue> linkedIssues = issueRepo.findByProductionStageId(stageRef.getId());
+            for (tmmsystem.entity.QualityIssue issue : linkedIssues) {
+                if (!"RESOLVED".equals(issue.getStatus())) {
+                    issue.setStatus("RESOLVED");
+                    issue.setResolvedAt(Instant.now());
+                    issueRepo.save(issue);
                 }
+            }
+
+            // Store isRework flag before clearing (for merge-back logic below)
+            boolean wasRework = Boolean.TRUE.equals(stageRef.getIsRework());
+            if (wasRework) {
                 // Clear rework flag now that it's resolved
                 stageRef.setIsRework(false);
                 stageRepo.save(stageRef);
             }
 
             // NEW: Merge Back Logic for Supplementary Orders
-            if (stageRef.getIsRework() != null && stageRef.getIsRework()) {
+            if (wasRework) {
                 ProductionOrder currentPO = stageRef.getProductionOrder();
                 if (currentPO.getPoNumber().contains("-REWORK")) {
                     // This is a supplementary order

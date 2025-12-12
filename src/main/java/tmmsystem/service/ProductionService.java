@@ -620,9 +620,13 @@ public class ProductionService {
             if (stage == null) {
                 continue;
             }
-            // If stage has passed QC, mark issue as RESOLVED
+            // Check if stage has passed QC (using qcLastResult which is more reliable)
+            String qcResult = stage.getQcLastResult();
             String stageStatus = stage.getExecutionStatus();
-            if (stageStatus != null && (stageStatus.contains("QC_PASSED") || stageStatus.equals("COMPLETED"))) {
+            boolean hasPassedQc = "PASS".equals(qcResult)
+                    || (stageStatus != null && (stageStatus.contains("QC_PASSED") || stageStatus.equals("COMPLETED")));
+
+            if (hasPassedQc) {
                 issue.setStatus("RESOLVED");
                 issue.setResolvedAt(java.time.Instant.now());
                 issueRepo.save(issue);
