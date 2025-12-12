@@ -644,19 +644,32 @@ public class ExecutionOrchestrationService {
     public ProductionStage requestRework(Long issueId, Long techUserId) {
         QualityIssue issue = issueRepo.findById(issueId).orElseThrow();
         ProductionStage stage = issue.getProductionStage();
+        User techUser = userRepo.findById(techUserId).orElseThrow();
         issue.setStatus("PROCESSED");
         issue.setProcessedAt(Instant.now());
-        issue.setProcessedBy(userRepo.findById(techUserId).orElseThrow());
+        issue.setProcessedBy(techUser);
         issueRepo.save(issue);
         stage.setExecutionStatus("WAITING_REWORK");
         stage.setIsRework(true);
         stage.setProgressPercent(0);
-        stageRepo.save(stage);
+        ProductionStage saved = stageRepo.save(stage);
+
+        // NEW: Create initial tracking entry at 0% for rework history (similar to
+        // production start)
+        StageTracking tracking = new StageTracking();
+        tracking.setProductionStage(saved);
+        tracking.setOperator(stage.getAssignedLeader() != null ? stage.getAssignedLeader() : techUser);
+        tracking.setAction("START");
+        tracking.setQuantityCompleted(java.math.BigDecimal.ZERO);
+        tracking.setIsRework(true); // Mark as rework entry
+        tracking.setNotes("Bắt đầu làm lại lỗi");
+        stageTrackingRepository.save(tracking);
+
         if (stage.getAssignedLeader() != null) {
             notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO", "Chờ sửa",
                     "Công đoạn " + stage.getStageType() + " cần sửa lại", "PRODUCTION_STAGE", stage.getId());
         }
-        return stage;
+        return saved;
     }
 
     @Transactional

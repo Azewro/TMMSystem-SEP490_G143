@@ -2709,6 +2709,57 @@ public class ProductionService {
         }
     }
 
+    /**
+     * Backfill initial 0% START entries for existing rework stages that don't have
+     * them.
+     * This ensures "Lịch sử cập nhật tiến độ lỗi" shows "Bắt đầu 0%" from the
+     * beginning.
+     */
+    @Transactional
+    public int backfillReworkInitialTracking() {
+        int count = 0;
+        // Find all stages that have rework history but no initial START entry
+        List<ProductionStage> allStages = stageRepo.findAll();
+
+        for (ProductionStage stage : allStages) {
+            List<StageTracking> reworkTrackings = stageTrackingRepository
+                    .findByProductionStageIdOrderByTimestampAsc(stage.getId())
+                    .stream()
+                    .filter(t -> Boolean.TRUE.equals(t.getIsRework()))
+                    .collect(java.util.stream.Collectors.toList());
+
+            // If there are rework trackings but no START action, add one
+            if (!reworkTrackings.isEmpty()) {
+                boolean hasStart = reworkTrackings.stream()
+                        .anyMatch(t -> "START".equals(t.getAction()));
+
+                if (!hasStart) {
+                    // Get the earliest rework tracking to use its timestamp as reference
+                    StageTracking earliest = reworkTrackings.get(0);
+
+                    // Create initial START entry slightly before the first rework entry
+                    StageTracking startEntry = new StageTracking();
+                    startEntry.setProductionStage(stage);
+                    startEntry.setOperator(
+                            stage.getAssignedLeader() != null ? stage.getAssignedLeader() : earliest.getOperator());
+                    startEntry.setAction("START");
+                    startEntry.setQuantityCompleted(java.math.BigDecimal.ZERO);
+                    startEntry.setIsRework(true);
+                    startEntry.setNotes("Bắt đầu làm lại lỗi");
+                    // Set timestamp slightly before the first rework entry
+                    startEntry.setTimestamp(earliest.getTimestamp() != null
+                            ? earliest.getTimestamp().minusSeconds(1)
+                            : java.time.Instant.now());
+
+                    stageTrackingRepository.save(startEntry);
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
     @Transactional
     public void fixMissingReworkDetails() {
         List<ProductionOrder> allOrders = poRepo.findAll();

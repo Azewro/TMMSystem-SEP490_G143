@@ -63,6 +63,12 @@ public class DataInitializer implements CommandLineRunner {
             productionService.fixMissingReworkDetails();
             log.info("Startup: Fixed missing details for Supplementary Orders");
 
+            // Backfill initial 0% START entries for existing rework stages
+            int backfilledRework = productionService.backfillReworkInitialTracking();
+            if (backfilledRework > 0) {
+                log.info("Startup: Backfilled {} rework stages with initial 0% START entries", backfilledRework);
+            }
+
             // Enforce exclusive stage per type (except outsourced dyeing) - demote extra
             // actives to WAITING
             int demoted = productionService.enforceExclusiveStageConflicts();

@@ -147,7 +147,7 @@ public class ExecutionMapper {
                     if (!plans.isEmpty()) {
                         // Find the current version plan
                         for (ProductionPlan plan : plans) {
-                            if (Boolean.TRUE.equals(plan.getIsCurrentVersion()) && plan.getLot() != null) {
+                            if (Boolean.TRUE.equals(plan.getCurrentVersion()) && plan.getLot() != null) {
                                 lotCode = plan.getLot().getLotCode();
                                 break;
                             }
