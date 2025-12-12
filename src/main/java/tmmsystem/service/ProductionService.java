@@ -1075,6 +1075,21 @@ public class ProductionService {
             s.setStartAt(Instant.now());
         syncStageStatus(s, "IN_PROGRESS");
         stageRepo.save(s);
+
+        // FIX: Demote other READY_TO_PRODUCE stages of same type to WAITING
+        // This ensures only one lot can be "sẵn sàng", others show "chờ đến lượt"
+        if (!"DYEING".equalsIgnoreCase(s.getStageType())) { // Skip for parallel DYEING stages
+            List<ProductionStage> readyStages = stageRepo.findByStageTypeAndExecutionStatus(
+                    s.getStageType(), "READY_TO_PRODUCE");
+            for (ProductionStage other : readyStages) {
+                if (!other.getId().equals(s.getId())) {
+                    other.setExecutionStatus("WAITING");
+                    syncStageStatus(other, "WAITING");
+                    stageRepo.save(other);
+                }
+            }
+        }
+
         StageTracking tr = new StageTracking();
         tr.setProductionStage(s);
         tr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
