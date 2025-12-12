@@ -603,9 +603,9 @@ public class ProductionService {
     }
 
     public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
-        // Get PENDING defects only (exclude RESOLVED, PROCESSED)
+        // Show all defects except RESOLVED (so Tech can track defects they've sent)
         return issueRepo.findAll().stream()
-                .filter(i -> "PENDING".equals(i.getStatus())) // FIX: Only show PENDING defects
+                .filter(i -> !"RESOLVED".equals(i.getStatus())) // Show PENDING, PROCESSED, IN_PROGRESS etc.
                 .map(this::mapQualityIssueToDto)
                 .collect(java.util.stream.Collectors.toList());
     }
@@ -745,6 +745,7 @@ public class ProductionService {
                 d.setNotes(ins.getNotes());
                 d.setPhotoUrl(ins.getPhotoUrl());
                 d.setCheckpointName(ins.getQcCheckpoint() != null ? ins.getQcCheckpoint().getCheckpointName() : null);
+                d.setInspectedAt(ins.getInspectedAt()); // NEW: For grouping by inspection round
                 return d;
             }).collect(java.util.stream.Collectors.toList());
             dto.setInspections(inspectionDtos);
