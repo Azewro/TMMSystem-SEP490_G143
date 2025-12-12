@@ -603,10 +603,19 @@ public class ProductionController {
         return mapper.toDto(service.pauseStage(id, leaderUserId, pauseReason, pauseNotes));
     }
 
+    @Operation(summary = "Kiểm tra có stage nào đang hoạt động trước khi bắt đầu sửa lỗi")
+    @GetMapping("/stages/{id}/check-rework")
+    public ResponseEntity<Map<String, Object>> checkBeforeRework(@PathVariable Long id) {
+        return ResponseEntity.ok(executionService.checkActiveStagesBeforeRework(id));
+    }
+
     @Operation(summary = "Leader bắt đầu sửa lỗi (Pre-emption)")
     @PostMapping("/stages/{id}/start-rework")
-    public ProductionStageDto leaderStartRework(@PathVariable Long id, @RequestParam Long leaderUserId) {
-        return mapper.toDto(executionService.startRework(id, leaderUserId));
+    public ProductionStageDto leaderStartRework(
+            @PathVariable Long id,
+            @RequestParam Long leaderUserId,
+            @RequestParam(required = false, defaultValue = "true") boolean forceStop) {
+        return mapper.toDto(executionService.startRework(id, leaderUserId, forceStop));
     }
 
     @Operation(summary = "Leader tiếp tục công đoạn")
