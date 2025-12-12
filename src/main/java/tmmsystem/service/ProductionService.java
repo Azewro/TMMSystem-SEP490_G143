@@ -602,6 +602,36 @@ public class ProductionService {
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    /**
+     * Sync QualityIssue status based on stage QC status.
+     * Resolves issues for stages that have already passed QC.
+     * 
+     * @return number of issues fixed
+     */
+    @Transactional
+    public int syncQualityIssueStatus() {
+        List<QualityIssue> allIssues = issueRepo.findAll();
+        int fixed = 0;
+        for (QualityIssue issue : allIssues) {
+            if ("RESOLVED".equals(issue.getStatus())) {
+                continue; // Already resolved
+            }
+            ProductionStage stage = issue.getProductionStage();
+            if (stage == null) {
+                continue;
+            }
+            // If stage has passed QC, mark issue as RESOLVED
+            String stageStatus = stage.getExecutionStatus();
+            if (stageStatus != null && (stageStatus.contains("QC_PASSED") || stageStatus.equals("COMPLETED"))) {
+                issue.setStatus("RESOLVED");
+                issue.setResolvedAt(java.time.Instant.now());
+                issueRepo.save(issue);
+                fixed++;
+            }
+        }
+        return fixed;
+    }
+
     public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
         // Show all defects except RESOLVED (so Tech can track defects they've sent)
         return issueRepo.findAll().stream()

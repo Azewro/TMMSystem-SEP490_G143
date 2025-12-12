@@ -97,6 +97,12 @@ public class DataInitializer implements CommandLineRunner {
             }
             log.info("Startup: Ran stage promotion for all stage types");
 
+            // Sync QualityIssue status (resolve issues where stage already passed QC)
+            int fixedIssues = productionService.syncQualityIssueStatus();
+            if (fixedIssues > 0) {
+                log.info("Startup: Fixed {} QualityIssue status (marked as RESOLVED for passed stages)", fixedIssues);
+            }
+
             // Giữ nguyên các chức năng khác ở dưới trong comment, KHÔNG thực thi:
             // Seed QC Checkpoints (Updated)
             // seedQcCheckpoints();

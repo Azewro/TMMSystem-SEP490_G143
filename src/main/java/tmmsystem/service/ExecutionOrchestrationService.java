@@ -504,6 +504,21 @@ public class ExecutionOrchestrationService {
             stageRef.setExecutionStatus("QC_PASSED");
             stageRepo.save(stageRef);
 
+            // NEW: Resolve linked QualityIssues when QC PASS after rework
+            if (Boolean.TRUE.equals(stageRef.getIsRework())) {
+                List<tmmsystem.entity.QualityIssue> linkedIssues = issueRepo.findByProductionStageId(stageRef.getId());
+                for (tmmsystem.entity.QualityIssue issue : linkedIssues) {
+                    if (!"RESOLVED".equals(issue.getStatus())) {
+                        issue.setStatus("RESOLVED");
+                        issue.setResolvedAt(Instant.now());
+                        issueRepo.save(issue);
+                    }
+                }
+                // Clear rework flag now that it's resolved
+                stageRef.setIsRework(false);
+                stageRepo.save(stageRef);
+            }
+
             // NEW: Merge Back Logic for Supplementary Orders
             if (stageRef.getIsRework() != null && stageRef.getIsRework()) {
                 ProductionOrder currentPO = stageRef.getProductionOrder();
