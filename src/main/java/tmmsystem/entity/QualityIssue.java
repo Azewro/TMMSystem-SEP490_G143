@@ -61,6 +61,9 @@ public class QualityIssue {
     @Column(name = "processed_at")
     private Instant processedAt;
 
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
     @Column(name = "material_needed")
     private Boolean materialNeeded = false; // NEW: lỗi nặng cần cấp sợi
 

@@ -55,4 +55,9 @@ public class ProductionStageDto {
     private String defectDescription;
     private String defectSeverity;
     private String defectLevel; // NEW: Field name matching Entity for consistency
+
+    // NEW: Queue Status Display with Vietnamese stage name
+    // Example: "Sẵn sàng sản xuất công đoạn cuồng mắc", "Chuẩn bị sản xuất công
+    // đoạn dệt"
+    private String statusDisplay;
 }

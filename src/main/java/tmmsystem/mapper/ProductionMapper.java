@@ -157,6 +157,9 @@ public class ProductionMapper {
             dto.setEndTimeFormatted(formatInstant(s.getCompleteAt()));
         }
 
+        // NEW: Generate statusDisplay with Vietnamese stage name
+        dto.setStatusDisplay(generateStatusDisplay(s.getExecutionStatus(), s.getStageType()));
+
         return dto;
     }
 
@@ -273,5 +276,59 @@ public class ProductionMapper {
             }
         }
         return "Không xác định";
+    }
+
+    /**
+     * Generate statusDisplay with Vietnamese stage name
+     * Format: "[Trạng thái] sản xuất công đoạn [tên công đoạn]"
+     * - PENDING/WAITING: "Chuẩn bị sản xuất công đoạn xxx"
+     * - READY_TO_PRODUCE: "Sẵn sàng sản xuất công đoạn xxx"
+     * - IN_PROGRESS: "Đang sản xuất công đoạn xxx"
+     * - WAITING_QC: "Chờ kiểm tra công đoạn xxx"
+     * - QC_PASSED: "Đã hoàn thành công đoạn xxx"
+     * - etc.
+     */
+    private String generateStatusDisplay(String executionStatus, String stageType) {
+        String stageName = mapStageTypeToName(stageType);
+        if (stageName == null || stageName.isEmpty()) {
+            stageName = stageType;
+        }
+        // Lowercase for concatenation
+        String stageNameLower = stageName.toLowerCase();
+
+        if (executionStatus == null) {
+            return "Đợi công đoạn " + stageNameLower;
+        }
+
+        switch (executionStatus.toUpperCase()) {
+            case "PENDING":
+                return "Đợi công đoạn " + stageNameLower;
+            case "WAITING":
+                return "Chuẩn bị sản xuất công đoạn " + stageNameLower;
+            case "READY_TO_PRODUCE":
+                return "Sẵn sàng sản xuất công đoạn " + stageNameLower;
+            case "IN_PROGRESS":
+                return "Đang sản xuất công đoạn " + stageNameLower;
+            case "WAITING_QC":
+                return "Chờ kiểm tra công đoạn " + stageNameLower;
+            case "QC_IN_PROGRESS":
+                return "Đang kiểm tra công đoạn " + stageNameLower;
+            case "QC_PASSED":
+                return "Hoàn thành công đoạn " + stageNameLower;
+            case "QC_FAILED":
+                return "Lỗi kiểm tra công đoạn " + stageNameLower;
+            case "WAITING_REWORK":
+                return "Chờ sửa lỗi công đoạn " + stageNameLower;
+            case "REWORK_IN_PROGRESS":
+                return "Đang sửa lỗi công đoạn " + stageNameLower;
+            case "WAITING_MATERIAL":
+                return "Chờ cấp sợi công đoạn " + stageNameLower;
+            case "PAUSED":
+                return "Tạm dừng công đoạn " + stageNameLower;
+            case "COMPLETED":
+                return "Hoàn thành công đoạn " + stageNameLower;
+            default:
+                return executionStatus + " công đoạn " + stageNameLower;
+        }
     }
 }

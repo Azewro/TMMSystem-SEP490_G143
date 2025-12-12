@@ -587,9 +587,11 @@ public class ProductionService {
 
     // Leader Defect Methods
     public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(Long leaderUserId) {
-        // Get all MINOR defects assigned to this leader
+        // Get PENDING MINOR defects assigned to this leader (exclude RESOLVED,
+        // PROCESSED)
         return issueRepo.findAll().stream()
                 .filter(i -> "MINOR".equals(i.getSeverity()))
+                .filter(i -> "PENDING".equals(i.getStatus())) // FIX: Only show PENDING defects
                 .filter(i -> {
                     ProductionStage stage = i.getProductionStage();
                     return stage != null &&
@@ -601,8 +603,9 @@ public class ProductionService {
     }
 
     public List<tmmsystem.dto.qc.QualityIssueDto> getTechnicalDefects() {
-        // Get all defects (Technical sees everything)
+        // Get PENDING defects only (exclude RESOLVED, PROCESSED)
         return issueRepo.findAll().stream()
+                .filter(i -> "PENDING".equals(i.getStatus())) // FIX: Only show PENDING defects
                 .map(this::mapQualityIssueToDto)
                 .collect(java.util.stream.Collectors.toList());
     }
@@ -651,10 +654,28 @@ public class ProductionService {
             // Code
             if ((batchNumber == null || batchNumber.isEmpty() || batchNumber.startsWith("PO-"))
                     && issue.getProductionOrder() != null) {
-                // Try from Contract -> ProductionPlan
-                if (issue.getProductionOrder().getContract() != null) {
+                // FIX: Priority 1 - Try from PO.notes containing planCode (Plan: PLAN-XXXX)
+                ProductionOrder po = issue.getProductionOrder();
+                if (po.getNotes() != null && po.getNotes().contains("Plan: ")) {
+                    try {
+                        String notes = po.getNotes();
+                        String planCode = notes.substring(notes.indexOf("Plan: ") + 6).trim();
+                        tmmsystem.entity.ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode)
+                                .orElse(null);
+                        if (plan != null && plan.getLot() != null) {
+                            batchNumber = plan.getLot().getLotCode();
+                        }
+                    } catch (Exception e) {
+                        // Fallback to contract-based lookup
+                    }
+                }
+
+                // Fallback: Try from Contract -> ProductionPlan (may be inaccurate for
+                // multi-plan contracts)
+                if ((batchNumber == null || batchNumber.isEmpty() || batchNumber.startsWith("PO-"))
+                        && po.getContract() != null) {
                     List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
-                            .findByContractId(issue.getProductionOrder().getContract().getId());
+                            .findByContractId(po.getContract().getId());
                     tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
                             .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
                             .findFirst()
@@ -828,6 +849,21 @@ public class ProductionService {
         ProductionStage s = stageRepo.findById(stageId).orElseThrow();
         s.setQcLastResult("PASS");
         s.setQcLastCheckedAt(Instant.now());
+
+        // FIX: If this was a rework, mark linked QualityIssues as RESOLVED
+        if (Boolean.TRUE.equals(s.getIsRework())) {
+            List<QualityIssue> linkedIssues = issueRepo.findByProductionStageId(stageId);
+            for (QualityIssue issue : linkedIssues) {
+                if ("PENDING".equals(issue.getStatus()) || "IN_PROGRESS".equals(issue.getStatus())) {
+                    issue.setStatus("RESOLVED");
+                    issue.setResolvedAt(Instant.now());
+                    issueRepo.save(issue);
+                }
+            }
+            // Clear rework flag now that it's resolved
+            s.setIsRework(false);
+        }
+
         syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
 
