@@ -210,9 +210,10 @@ public class QcService {
      */
     @Transactional
     public QcInspection submitInspectionWithCriteria(Long stageId, Long inspectorId, String overallResult,
-            String defectLevel, String defectDescription, java.util.List<tmmsystem.dto.qc.QcInspectionDto> criteriaResults) {
+            String defectLevel, String defectDescription,
+            java.util.List<tmmsystem.dto.qc.QcInspectionDto> criteriaResults) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        
+
         // Create inspection records for each criterion
         for (tmmsystem.dto.qc.QcInspectionDto criterionDto : criteriaResults) {
             QcInspection inspection = new QcInspection();
@@ -229,7 +230,7 @@ public class QcService {
             inspection.setNotes(criterionDto.getNotes());
             inspection.setPhotoUrl(criterionDto.getPhotoUrl());
             QcInspection savedInspection = inspectionRepo.save(inspection);
-            
+
             // Create defect if FAIL
             if ("FAIL".equalsIgnoreCase(criterionDto.getResult())) {
                 QcDefect defect = new QcDefect();
@@ -240,13 +241,13 @@ public class QcService {
                 defectRepo.save(defect);
             }
         }
-        
+
         // Submit overall result - this will trigger notifications
         submitInspectionResult(stageId, overallResult, defectDescription, inspectorId);
-        
+
         return inspectionRepo.findByProductionStageId(stageId).stream()
-            .findFirst()
-            .orElseThrow(() -> new RuntimeException("Inspection not created"));
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Inspection not created"));
     }
 
     /**
@@ -256,21 +257,22 @@ public class QcService {
     @Transactional
     public ProductionStage startInspection(Long stageId, Long inspectorId) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
-        
+
         if (!"WAITING_QC".equals(stage.getExecutionStatus())) {
-            throw new RuntimeException("Stage không ở trạng thái chờ kiểm tra. Trạng thái hiện tại: " + stage.getExecutionStatus());
+            throw new RuntimeException(
+                    "Stage không ở trạng thái chờ kiểm tra. Trạng thái hiện tại: " + stage.getExecutionStatus());
         }
-        
+
         // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
         productionService.syncStageStatus(stage, "QC_IN_PROGRESS");
-        
+
         // Gán inspector nếu chưa có
         if (stage.getQcAssignee() == null) {
             User inspector = new User();
             inspector.setId(inspectorId);
             stage.setQcAssignee(inspector);
         }
-        
+
         return stageRepo.save(stage);
     }
 
@@ -287,114 +289,135 @@ public class QcService {
     public List<tmmsystem.dto.qc.TechnicalDefectDto> getTechnicalDefects() {
         // Lấy tất cả inspections có result = FAIL
         List<QcInspection> failedInspections = inspectionRepo.findAll().stream()
-            .filter(inspection -> "FAIL".equals(inspection.getResult()))
-            .collect(java.util.stream.Collectors.toList());
-        
+                .filter(inspection -> "FAIL".equals(inspection.getResult()))
+                .collect(java.util.stream.Collectors.toList());
+
         return failedInspections.stream()
-            .filter(inspection -> inspection.getProductionStage() != null)
-            .map(inspection -> {
-                ProductionStage stage = inspection.getProductionStage();
-                tmmsystem.dto.qc.TechnicalDefectDto dto = new tmmsystem.dto.qc.TechnicalDefectDto();
-                
-                // Lấy defect đầu tiên từ inspection này
-                List<QcDefect> defects = defectRepo.findByQcInspectionId(inspection.getId());
-                QcDefect defect = defects.isEmpty() ? null : defects.get(0);
-                
-                dto.setDefectId(defect != null ? defect.getId() : inspection.getId());
-                dto.setInspectionId(inspection.getId());
-                dto.setStageId(stage.getId());
-                dto.setSentAt(inspection.getInspectedAt());
-                
-                // Format sentAt for frontend (dd/MM/yyyy)
-                if (inspection.getInspectedAt() != null) {
-                    java.time.format.DateTimeFormatter formatter = 
-                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                    String formattedDate = inspection.getInspectedAt()
-                        .atZone(java.time.ZoneId.systemDefault())
-                        .format(formatter);
-                    dto.setSentAtFormatted(formattedDate);
-                }
-                
-                // Map severity
-                if (defect != null) {
-                    dto.setSeverity(defect.getSeverity());
-                    dto.setSeverityLabel(mapSeverityToLabel(defect.getSeverity()));
-                    dto.setDefectDescription(defect.getDefectDescription());
-                    dto.setDefectType(defect.getDefectType());
-                } else {
-                    dto.setSeverity("MAJOR");
-                    dto.setSeverityLabel("Lỗi nặng");
-                }
-                
-                // Map stage info
-                dto.setStageCode(stage.getStageType());
-                dto.setStageName(mapStageTypeToName(stage.getStageType()));
-                
-                // Lấy lotCode và product info từ ProductionOrder
-                try {
-                    // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
-                    ProductionOrder po = stage.getProductionOrder();
-                    // REMOVED: Fallback qua WorkOrderDetail - field đã bị xóa
-                    
-                    // Lấy lotCode từ ProductionPlan -> ProductionLot
-                    if (po != null && po.getContract() != null) {
-                        List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository.findByContractId(po.getContract().getId());
-                        tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
-                            .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
-                            .findFirst()
-                            .orElse(null);
-                        if (currentPlan != null && currentPlan.getLot() != null) {
-                            dto.setLotCode(currentPlan.getLot().getLotCode());
+                .filter(inspection -> inspection.getProductionStage() != null)
+                .map(inspection -> {
+                    ProductionStage stage = inspection.getProductionStage();
+                    tmmsystem.dto.qc.TechnicalDefectDto dto = new tmmsystem.dto.qc.TechnicalDefectDto();
+
+                    // Lấy defect đầu tiên từ inspection này
+                    List<QcDefect> defects = defectRepo.findByQcInspectionId(inspection.getId());
+                    QcDefect defect = defects.isEmpty() ? null : defects.get(0);
+
+                    dto.setDefectId(defect != null ? defect.getId() : inspection.getId());
+                    dto.setInspectionId(inspection.getId());
+                    dto.setStageId(stage.getId());
+                    dto.setSentAt(inspection.getInspectedAt());
+
+                    // Format sentAt for frontend (dd/MM/yyyy)
+                    if (inspection.getInspectedAt() != null) {
+                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                                .ofPattern("dd/MM/yyyy");
+                        String formattedDate = inspection.getInspectedAt()
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .format(formatter);
+                        dto.setSentAtFormatted(formattedDate);
+                    }
+
+                    // Map severity
+                    if (defect != null) {
+                        dto.setSeverity(defect.getSeverity());
+                        dto.setSeverityLabel(mapSeverityToLabel(defect.getSeverity()));
+                        dto.setDefectDescription(defect.getDefectDescription());
+                        dto.setDefectType(defect.getDefectType());
+                    } else {
+                        dto.setSeverity("MAJOR");
+                        dto.setSeverityLabel("Lỗi nặng");
+                    }
+
+                    // Map stage info
+                    dto.setStageCode(stage.getStageType());
+                    dto.setStageName(mapStageTypeToName(stage.getStageType()));
+
+                    // Lấy lotCode và product info từ ProductionOrder
+                    try {
+                        // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
+                        ProductionOrder po = stage.getProductionOrder();
+                        // REMOVED: Fallback qua WorkOrderDetail - field đã bị xóa
+
+                        // FIX: Lấy lotCode từ PO.notes chứa planCode (Plan: PLAN-XXXX)
+                        // Thay vì query theo Contract ID (gây trùng lặp sai lô)
+                        if (po != null && po.getNotes() != null && po.getNotes().contains("Plan: ")) {
+                            try {
+                                String notes = po.getNotes();
+                                String planCode = notes.substring(notes.indexOf("Plan: ") + 6).trim();
+                                tmmsystem.entity.ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode)
+                                        .orElse(null);
+                                if (plan != null && plan.getLot() != null) {
+                                    dto.setLotCode(plan.getLot().getLotCode());
+                                }
+                            } catch (Exception e2) {
+                                // Fallback: try contract-based lookup
+                            }
                         }
-                    }
-                    
-                    // Lấy productName và size từ ProductionOrderDetail
-                    List<tmmsystem.entity.ProductionOrderDetail> details = java.util.Collections.emptyList();
-                    if (po != null) {
-                        details = productionOrderDetailRepository.findByProductionOrderId(po.getId());
-                    }
-                    if (!details.isEmpty() && details.get(0).getProduct() != null) {
-                        dto.setProductName(details.get(0).getProduct().getName());
-                        String size = details.get(0).getProduct().getStandardDimensions();
-                        if (size == null || size.isEmpty()) {
-                            // Fallback to ProductionLot.sizeSnapshot
-                            if (po != null && po.getContract() != null) {
-                                List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository.findByContractId(po.getContract().getId());
-                                tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+
+                        // Fallback: Lấy lotCode từ Contract (old method, may be inaccurate for
+                        // multi-plan contracts)
+                        if ((dto.getLotCode() == null || dto.getLotCode().isEmpty()) && po != null
+                                && po.getContract() != null) {
+                            List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                                    .findByContractId(po.getContract().getId());
+                            tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
                                     .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
                                     .findFirst()
                                     .orElse(null);
-                                if (currentPlan != null && currentPlan.getLot() != null && 
-                                    currentPlan.getLot().getSizeSnapshot() != null) {
-                                    size = currentPlan.getLot().getSizeSnapshot();
-                                }
+                            if (currentPlan != null && currentPlan.getLot() != null) {
+                                dto.setLotCode(currentPlan.getLot().getLotCode());
                             }
                         }
-                        dto.setSize(size);
+
+                        // Lấy productName và size từ ProductionOrderDetail
+                        List<tmmsystem.entity.ProductionOrderDetail> details = java.util.Collections.emptyList();
+                        if (po != null) {
+                            details = productionOrderDetailRepository.findByProductionOrderId(po.getId());
+                        }
+                        if (!details.isEmpty() && details.get(0).getProduct() != null) {
+                            dto.setProductName(details.get(0).getProduct().getName());
+                            String size = details.get(0).getProduct().getStandardDimensions();
+                            if (size == null || size.isEmpty()) {
+                                // Fallback to ProductionLot.sizeSnapshot
+                                if (po != null && po.getContract() != null) {
+                                    List<tmmsystem.entity.ProductionPlan> plans = productionPlanRepository
+                                            .findByContractId(po.getContract().getId());
+                                    tmmsystem.entity.ProductionPlan currentPlan = plans.stream()
+                                            .filter(p -> Boolean.TRUE.equals(p.getCurrentVersion()))
+                                            .findFirst()
+                                            .orElse(null);
+                                    if (currentPlan != null && currentPlan.getLot() != null &&
+                                            currentPlan.getLot().getSizeSnapshot() != null) {
+                                        size = currentPlan.getLot().getSizeSnapshot();
+                                    }
+                                }
+                            }
+                            dto.setSize(size);
+                        }
+                    } catch (Exception e) {
+                        // Ignore errors, set defaults
+                        dto.setLotCode("N/A");
+                        dto.setProductName("N/A");
                     }
-                } catch (Exception e) {
-                    // Ignore errors, set defaults
-                    dto.setLotCode("N/A");
-                    dto.setProductName("N/A");
-                }
-                
-                // Status: pending nếu stage chưa được xử lý (chưa có rework hoặc resolved)
-                String executionStatus = stage.getExecutionStatus();
-                if ("QC_FAILED".equals(executionStatus) || "WAITING_REWORK".equals(executionStatus)) {
-                    dto.setStatus("pending");
-                    dto.setStatusLabel("Chờ xử lý");
-                } else {
-                    dto.setStatus("resolved");
-                    dto.setStatusLabel("Đã xử lý");
-                }
-                
-                return dto;
-            })
-            .collect(java.util.stream.Collectors.toList());
+
+                    // Status: pending nếu stage chưa được xử lý (chưa có rework hoặc resolved)
+                    String executionStatus = stage.getExecutionStatus();
+                    if ("QC_FAILED".equals(executionStatus) || "WAITING_REWORK".equals(executionStatus)) {
+                        dto.setStatus("pending");
+                        dto.setStatusLabel("Chờ xử lý");
+                    } else {
+                        dto.setStatus("resolved");
+                        dto.setStatusLabel("Đã xử lý");
+                    }
+
+                    return dto;
+                })
+                .collect(java.util.stream.Collectors.toList());
     }
-    
+
     private String mapSeverityToLabel(String severity) {
-        if (severity == null) return "Không xác định";
+        if (severity == null)
+            return "Không xác định";
         switch (severity.toUpperCase()) {
             case "MINOR":
                 return "Lỗi nhẹ";
@@ -406,9 +429,10 @@ public class QcService {
                 return severity;
         }
     }
-    
+
     private String mapStageTypeToName(String stageType) {
-        if (stageType == null) return "Không xác định";
+        if (stageType == null)
+            return "Không xác định";
         switch (stageType.toUpperCase()) {
             case "WARPING":
             case "CUONG_MAC":

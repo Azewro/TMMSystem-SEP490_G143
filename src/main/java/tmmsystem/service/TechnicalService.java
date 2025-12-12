@@ -53,6 +53,17 @@ public class TechnicalService {
 
             stageRepo.save(stage);
 
+            // FIX: Mark the QualityIssue as PROCESSED so it doesn't show up again
+            java.util.List<tmmsystem.entity.QualityIssue> issues = issueRepo.findByProductionStageId(stage.getId());
+            for (tmmsystem.entity.QualityIssue issue : issues) {
+                if ("PENDING".equals(issue.getStatus())) {
+                    issue.setStatus("PROCESSED");
+                    issue.setProcessedAt(java.time.Instant.now());
+                    issue.setProcessedBy(userRepo.findById(technicalUserId).orElse(null));
+                    issueRepo.save(issue);
+                }
+            }
+
             // Notify Leader
             if (stage.getAssignedLeader() != null) {
                 notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "WARNING", "Yêu cầu sửa lại",
