@@ -2569,7 +2569,12 @@ public class ProductionService {
         reworkPO.setStatus("WAITING_PRODUCTION");
         reworkPO.setExecutionStatus("WAITING_PRODUCTION");
         reworkPO.setPriority(originalPO.getPriority() + 1); // Higher priority
-        reworkPO.setNotes("Supplementary order for " + originalPO.getPoNumber() + ". Reason: " + req.getNotes());
+        // Preserve planCode from original order notes so lotCode can be extracted
+        String originalPlanCode = extractPlanCodeFromNotes(originalPO.getNotes());
+        String planCodeSuffix = originalPlanCode != null ? " Auto-generated from Production Plan: " + originalPlanCode
+                : "";
+        reworkPO.setNotes(
+                "Supplementary order for " + originalPO.getPoNumber() + ". Reason: " + req.getNotes() + planCodeSuffix);
         reworkPO.setCreatedBy(req.getRequestedBy());
         reworkPO.setApprovedBy(req.getApprovedBy());
         reworkPO.setApprovedAt(Instant.now());
