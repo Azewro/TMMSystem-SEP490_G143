@@ -2714,6 +2714,10 @@ public class ProductionService {
      * them.
      * This ensures "Lịch sử cập nhật tiến độ lỗi" shows "Bắt đầu 0%" from the
      * beginning.
+     * 
+     * NOTE: Uses native query to update timestamp because @CreationTimestamp
+     * overrides
+     * setter values.
      */
     @Transactional
     public int backfillReworkInitialTracking() {
@@ -2736,8 +2740,11 @@ public class ProductionService {
                 if (!hasStart) {
                     // Get the earliest rework tracking to use its timestamp as reference
                     StageTracking earliest = reworkTrackings.get(0);
+                    java.time.Instant targetTimestamp = earliest.getTimestamp() != null
+                            ? earliest.getTimestamp().minusSeconds(1)
+                            : java.time.Instant.now();
 
-                    // Create initial START entry slightly before the first rework entry
+                    // Create initial START entry
                     StageTracking startEntry = new StageTracking();
                     startEntry.setProductionStage(stage);
                     startEntry.setOperator(
@@ -2746,12 +2753,12 @@ public class ProductionService {
                     startEntry.setQuantityCompleted(java.math.BigDecimal.ZERO);
                     startEntry.setIsRework(true);
                     startEntry.setNotes("Bắt đầu làm lại lỗi");
-                    // Set timestamp slightly before the first rework entry
-                    startEntry.setTimestamp(earliest.getTimestamp() != null
-                            ? earliest.getTimestamp().minusSeconds(1)
-                            : java.time.Instant.now());
 
-                    stageTrackingRepository.save(startEntry);
+                    // Save first (timestamp will be set to NOW by @CreationTimestamp)
+                    StageTracking saved = stageTrackingRepository.save(startEntry);
+
+                    // Then update timestamp using native query to bypass @CreationTimestamp
+                    stageTrackingRepository.updateTimestampById(saved.getId(), targetTimestamp);
                     count++;
                 }
             }
