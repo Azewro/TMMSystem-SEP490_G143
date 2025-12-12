@@ -73,7 +73,12 @@ public class TechnicalService {
         } else if ("MATERIAL_REQUEST".equalsIgnoreCase(decision)) {
             // Major defect -> Request Material -> Notify PM
             tmmsystem.entity.MaterialRequisition req = new tmmsystem.entity.MaterialRequisition();
-            req.setRequisitionNumber("REQ-" + stage.getId() + "-" + System.currentTimeMillis());
+
+            // Generate REQ-YYYYMMDD-XXX format
+            String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+            long count = reqRepo.count() + 1; // Simple sequence number
+            req.setRequisitionNumber("REQ-" + dateStr + "-" + String.format("%03d", count % 1000));
+
             req.setProductionStage(stage);
             req.setRequestedBy(userRepo.findById(technicalUserId).orElseThrow());
             req.setQuantityRequested(quantity);

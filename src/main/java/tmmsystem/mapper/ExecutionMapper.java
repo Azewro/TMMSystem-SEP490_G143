@@ -109,6 +109,17 @@ public class ExecutionMapper {
 
         if (e.getProductionStage() != null) {
             dto.setStageType(e.getProductionStage().getStageType());
+
+            // Extract lotCode from stage.getBatchNumber() or fallback to PO number
+            String lotCode = null;
+            ProductionStage stage = e.getProductionStage();
+            if (stage.getBatchNumber() != null && !stage.getBatchNumber().isEmpty()
+                    && !stage.getBatchNumber().startsWith("PO-")) {
+                lotCode = stage.getBatchNumber();
+            } else if (stage.getProductionOrder() != null) {
+                lotCode = stage.getProductionOrder().getPoNumber();
+            }
+            dto.setLotCode(lotCode != null ? lotCode : "N/A");
         }
         if (e.getRequestedBy() != null) {
             dto.setRequestedByName(e.getRequestedBy().getName());
