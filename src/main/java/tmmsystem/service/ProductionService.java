@@ -641,6 +641,33 @@ public class ProductionService {
         dto.setStatus(issue.getStatus());
         dto.setCreatedAt(issue.getCreatedAt());
 
+        // NEW: Calculate attemptNumber dynamically based on createdAt order within same
+        // stage
+        if (issue.getProductionStage() != null && issue.getCreatedAt() != null) {
+            List<QualityIssue> stageIssues = issueRepo.findByProductionStageId(issue.getProductionStage().getId());
+            // Sort by createdAt ascending
+            stageIssues.sort((a, b) -> {
+                if (a.getCreatedAt() == null)
+                    return 1;
+                if (b.getCreatedAt() == null)
+                    return -1;
+                return a.getCreatedAt().compareTo(b.getCreatedAt());
+            });
+            // Find position of current issue (1-indexed)
+            int attemptNum = 1;
+            for (QualityIssue i : stageIssues) {
+                if (i.getId().equals(issue.getId())) {
+                    break;
+                }
+                attemptNum++;
+            }
+            dto.setAttemptNumber(attemptNum);
+            dto.setAttemptLabel("Lỗi lần " + attemptNum);
+        } else {
+            dto.setAttemptNumber(1);
+            dto.setAttemptLabel("Lỗi lần 1");
+        }
+
         if (issue.getProductionStage() != null) {
             dto.setStageId(issue.getProductionStage().getId());
             dto.setStageType(issue.getProductionStage().getStageType());

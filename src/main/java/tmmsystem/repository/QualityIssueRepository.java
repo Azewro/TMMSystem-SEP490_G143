@@ -9,6 +9,8 @@ import java.util.List;
 @Repository
 public interface QualityIssueRepository extends JpaRepository<QualityIssue, Long> {
     List<QualityIssue> findByStatus(String status);
+
     List<QualityIssue> findByProductionStageId(Long stageId);
+
     List<QualityIssue> findByProductionOrderId(Long orderId);
 }

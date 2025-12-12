@@ -217,4 +217,24 @@ public class QualityIssueDto {
     public void setMaterialRequisition(tmmsystem.dto.execution.MaterialRequisitionDto materialRequisition) {
         this.materialRequisition = materialRequisition;
     }
+
+    // NEW: Attempt tracking - calculated dynamically based on createdAt order
+    private Integer attemptNumber; // 1, 2, 3...
+    private String attemptLabel; // "Lỗi lần 1", "Lỗi lần 2"...
+
+    public Integer getAttemptNumber() {
+        return attemptNumber;
+    }
+
+    public void setAttemptNumber(Integer attemptNumber) {
+        this.attemptNumber = attemptNumber;
+    }
+
+    public String getAttemptLabel() {
+        return attemptLabel;
+    }
+
+    public void setAttemptLabel(String attemptLabel) {
+        this.attemptLabel = attemptLabel;
+    }
 }

@@ -24,5 +24,8 @@ public class TechnicalDefectDto {
     private String defectType; // Loại lỗi từ QcDefect
     private Long stageId; // ID của ProductionStage
     private Long inspectionId; // ID của QcInspection
-}
 
+    // NEW: Attempt tracking - calculated dynamically based on createdAt order
+    private Integer attemptNumber; // 1, 2, 3...
+    private String attemptLabel; // "Lỗi lần 1", "Lỗi lần 2"...
+}
