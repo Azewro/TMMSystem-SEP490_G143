@@ -7,9 +7,13 @@ import tmmsystem.entity.*;
 @Component
 public class ExecutionMapper {
     private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
+    private final tmmsystem.repository.ProductionPlanRepository productionPlanRepo;
 
-    public ExecutionMapper(tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo) {
+    public ExecutionMapper(
+            tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo,
+            tmmsystem.repository.ProductionPlanRepository productionPlanRepo) {
         this.reqDetailRepo = reqDetailRepo;
+        this.productionPlanRepo = productionPlanRepo;
     }
 
     public StageTrackingDto toDto(StageTracking e) {
@@ -110,14 +114,50 @@ public class ExecutionMapper {
         if (e.getProductionStage() != null) {
             dto.setStageType(e.getProductionStage().getStageType());
 
-            // Extract lotCode from stage.getBatchNumber() or fallback to PO number
+            // Extract lotCode from ProductionPlan → ProductionLot
             String lotCode = null;
             ProductionStage stage = e.getProductionStage();
+
+            // 1. Try stage.getBatchNumber() if it's a valid lot code
             if (stage.getBatchNumber() != null && !stage.getBatchNumber().isEmpty()
                     && !stage.getBatchNumber().startsWith("PO-")) {
                 lotCode = stage.getBatchNumber();
-            } else if (stage.getProductionOrder() != null) {
-                lotCode = stage.getProductionOrder().getPoNumber();
+            }
+
+            // 2. Try to get from ProductionOrder → ProductionPlan → Lot
+            if (lotCode == null && stage.getProductionOrder() != null) {
+                ProductionOrder po = stage.getProductionOrder();
+                // Extract planCode from notes (format: "Auto-generated from Production Plan:
+                // PP-2025-XXX")
+                if (po.getNotes() != null && po.getNotes().contains("Plan:")) {
+                    String[] parts = po.getNotes().split("Plan:");
+                    if (parts.length > 1) {
+                        String planCode = parts[1].trim().split("\\s")[0];
+                        // Look up ProductionPlan by planCode
+                        java.util.Optional<ProductionPlan> planOpt = productionPlanRepo.findByPlanCode(planCode);
+                        if (planOpt.isPresent() && planOpt.get().getLot() != null) {
+                            lotCode = planOpt.get().getLot().getLotCode();
+                        }
+                    }
+                }
+                // 3. Fallback to Contract lookup
+                if (lotCode == null && po.getContract() != null) {
+                    java.util.List<ProductionPlan> plans = productionPlanRepo
+                            .findByContractId(po.getContract().getId());
+                    if (!plans.isEmpty()) {
+                        // Find the current version plan
+                        for (ProductionPlan plan : plans) {
+                            if (Boolean.TRUE.equals(plan.getIsCurrentVersion()) && plan.getLot() != null) {
+                                lotCode = plan.getLot().getLotCode();
+                                break;
+                            }
+                        }
+                        // If no current version, use the latest
+                        if (lotCode == null && plans.get(plans.size() - 1).getLot() != null) {
+                            lotCode = plans.get(plans.size() - 1).getLot().getLotCode();
+                        }
+                    }
+                }
             }
             dto.setLotCode(lotCode != null ? lotCode : "N/A");
         }
