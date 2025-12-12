@@ -684,9 +684,24 @@ public class ExecutionOrchestrationService {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
         }
 
+        // FIX: Set startAt timestamp for rework
+        stage.setStartAt(Instant.now());
+        stage.setProgressPercent(0); // Reset progress for rework
+        stage.setCompleteAt(null); // Clear previous complete time
         stage.setExecutionStatus("REWORK_IN_PROGRESS");
-        stageRepo.save(stage);
-        return stage;
+        ProductionStage saved = stageRepo.save(stage);
+
+        // FIX: Create StageTracking record for rework start
+        User leader = userRepo.findById(leaderUserId).orElseThrow();
+        StageTracking tracking = new StageTracking();
+        tracking.setProductionStage(saved);
+        tracking.setOperator(leader);
+        tracking.setAction("START_REWORK");
+        tracking.setQuantityCompleted(java.math.BigDecimal.ZERO);
+        tracking.setIsRework(true);
+        stageTrackingRepository.save(tracking);
+
+        return saved;
     }
 
     /**
