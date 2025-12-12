@@ -2584,14 +2584,16 @@ public class ProductionService {
                 ProductionOrderDetail reworkDetail = new ProductionOrderDetail();
                 reworkDetail.setProductionOrder(savedReworkPO);
                 reworkDetail.setProduct(originalDetail.getProduct());
+                reworkDetail.setBom(originalDetail.getBom()); // Required field
+                reworkDetail.setBomVersion(originalDetail.getBomVersion()); // Copy BOM version
                 reworkDetail.setQuantity(reworkQuantityPcs); // Set quantity in PCS (BigDecimal)
                 reworkDetail.setUnit(originalDetail.getUnit());
-                // reworkDetail.setNotes("Rework detail from " + originalPO.getPoNumber()); //
-                // Removed as setNotes is undefined
+                reworkDetail.setNoteColor(originalDetail.getNoteColor()); // Copy color note
                 podRepo.save(reworkDetail);
             }
         } catch (Exception e) {
             System.err.println("Error cloning production order detail: " + e.getMessage());
+            e.printStackTrace(); // Print full stack trace for debugging
         }
 
         // 4. Clone Stages (Only up to the defective stage)
