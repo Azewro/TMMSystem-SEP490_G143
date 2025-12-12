@@ -460,6 +460,12 @@ public class ProductionController {
 
         // Lấy stage của leader này cho order này
         List<ProductionStage> leaderStages = service.getLeaderStagesForOrder(orderId, leaderUserId);
+
+        // NEW: Restrict access - If leader is not assigned to any stage, deny access
+        if (leaderStages.isEmpty()) {
+            throw new RuntimeException("Bạn không có quyền truy cập đơn hàng này do không được phân công.");
+        }
+
         if (!leaderStages.isEmpty()) {
             ProductionStage leaderStage = leaderStages.get(0);
             // Update the specific stage in the full list with extra info (Total Hours,
