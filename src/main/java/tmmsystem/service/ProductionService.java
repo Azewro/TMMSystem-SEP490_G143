@@ -944,97 +944,158 @@ public class ProductionService {
             syncStageStatus(next, "READY_TO_PRODUCE");
             next.setExecutionStatus("READY_TO_PRODUCE");
             stageRepo.save(next);
+        } else {
+            // No next stage in this order - check if this is a rework order
+            // If yes, we need to activate the next stage in the ORIGINAL order
+            if (Boolean.TRUE.equals(s.getIsRework())
+                    || (po.getPoNumber() != null && po.getPoNumber().contains("-REWORK"))) {
+                // Find the original stage this rework stage is linked to
+                ProductionStage originalStage = s.getOriginalStage();
+                if (originalStage != null) {
+                    ProductionOrder originalPO = originalStage.getProductionOrder();
+                    if (originalPO != null) {
+                        // Find the next stage in the original order (after the defective stage)
+                        int defectiveSequence = originalStage.getStageSequence() != null
+                                ? originalStage.getStageSequence()
+                                : 0;
+                        List<ProductionStage> originalStages = stageRepo
+                                .findByProductionOrderIdOrderByStageSequenceAsc(originalPO.getId());
+                        ProductionStage originalNext = originalStages.stream()
+                                .filter(x -> x.getStageSequence() != null
+                                        && x.getStageSequence() == defectiveSequence + 1)
+                                .findFirst().orElse(null);
 
-            String currentStageType = s.getStageType();
+                        if (originalNext != null) {
+                            // Activate the next stage in the original order
+                            syncStageStatus(originalNext, "READY_TO_PRODUCE");
+                            originalNext.setExecutionStatus("READY_TO_PRODUCE");
+                            stageRepo.save(originalNext);
 
-            // Workflow logic based on current stage
-            if ("WARPING".equalsIgnoreCase(currentStageType) || "CUONG_MAC".equalsIgnoreCase(currentStageType)) {
-                // Cuồng mắc PASS → notify Tổ Trưởng dệt
-                if (next.getAssignedLeader() != null) {
-                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Công đoạn cuồng mắc đạt",
-                            "Công đoạn cuồng mắc đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
-                            "PRODUCTION_STAGE", next.getId());
-                }
-            } else if ("WEAVING".equalsIgnoreCase(currentStageType) || "DET".equalsIgnoreCase(currentStageType)) {
-                // Dệt PASS → notify Production Manager (for nhuộm)
-                if ("DYEING".equalsIgnoreCase(next.getStageType()) || "NHUOM".equalsIgnoreCase(next.getStageType())) {
-                    notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "SUCCESS",
-                            "Công đoạn dệt đạt",
-                            "Công đoạn dệt đã đạt QC. Công đoạn nhuộm sẵn sàng bắt đầu.",
-                            "PRODUCTION_STAGE", next.getId());
-                } else if (next.getAssignedLeader() != null) {
-                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Công đoạn dệt đạt",
-                            "Công đoạn dệt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
-                            "PRODUCTION_STAGE", next.getId());
-                }
-            } else if ("DYEING".equalsIgnoreCase(currentStageType) || "NHUOM".equalsIgnoreCase(currentStageType)) {
-                // Nhuộm PASS → notify Tổ Trưởng cắt
-                if (next.getAssignedLeader() != null) {
-                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Công đoạn nhuộm đạt",
-                            "Công đoạn nhuộm đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
-                            "PRODUCTION_STAGE", next.getId());
-                }
-            } else if ("CUTTING".equalsIgnoreCase(currentStageType) || "CAT".equalsIgnoreCase(currentStageType)) {
-                // Cắt PASS → notify Tổ Trưởng May
-                if (next.getAssignedLeader() != null) {
-                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Công đoạn cắt đạt",
-                            "Công đoạn cắt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
-                            "PRODUCTION_STAGE", next.getId());
-                }
-            } else if ("HEMMING".equalsIgnoreCase(currentStageType) || "MAY".equalsIgnoreCase(currentStageType)) {
-                // May PASS → notify Tổ Trưởng đóng gói
-                if (next.getAssignedLeader() != null) {
-                    notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Công đoạn may đạt",
-                            "Công đoạn may đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
-                            "PRODUCTION_STAGE", next.getId());
-                }
-            } else if ("PACKAGING".equalsIgnoreCase(currentStageType)
-                    || "DONG_GOI".equalsIgnoreCase(currentStageType)) {
-                // Đóng gói PASS → notify Kho
-                notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS",
-                        "Công đoạn đóng gói đạt",
-                        "Công đoạn đóng gói đã đạt QC. Sản phẩm sẵn sàng nhập kho.",
-                        "PRODUCTION_STAGE", s.getId());
+                            // Mark original order as back in production
+                            originalPO.setExecutionStatus("IN_PROGRESS");
+                            poRepo.save(originalPO);
 
-                // Check if all stages completed
-                // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
-                ProductionOrder poForCheck = s.getProductionOrder();
-
-                if (poForCheck != null) {
-                    final Long orderId = poForCheck.getId(); // Make effectively final for lambda
-                    // NEW: Check all stages directly by ProductionOrder
-                    List<ProductionStage> allStagesForOrder = stageRepo.findStagesByOrderId(orderId);
-                    boolean allOk = true;
-
-                    if (!allStagesForOrder.isEmpty()) {
-                        // Check via ProductionOrder (new way)
-                        for (ProductionStage stg : allStagesForOrder) {
-                            if (!"COMPLETED".equals(stg.getExecutionStatus()) &&
-                                    !"QC_PASSED".equals(stg.getExecutionStatus())) {
-                                allOk = false;
-                                break;
+                            // Notify the leader
+                            if (originalNext.getAssignedLeader() != null) {
+                                notificationService.notifyUser(originalNext.getAssignedLeader(), "PRODUCTION",
+                                        "SUCCESS",
+                                        "Lô bổ sung hoàn thành",
+                                        "Lô bổ sung đã hoàn thành. Công đoạn " + originalNext.getStageType()
+                                                + " của lô chính sẵn sàng tiếp tục.",
+                                        "PRODUCTION_STAGE", originalNext.getId());
                             }
-                        }
-                    }
-                    // REMOVED: Fallback check via WorkOrderDetail - không còn dùng nữa
 
-                    if (allOk) {
-                        poForCheck.setStatus("ORDER_COMPLETED");
-                        poRepo.save(poForCheck);
-                        notificationService.notifyOrderCompleted(poForCheck);
+                            System.out.println("[REWORK MERGE] Activated stage " + originalNext.getStageType() +
+                                    " (id=" + originalNext.getId() + ") in original order " + originalPO.getPoNumber());
+                        }
+
+                        // Mark rework order as completed
+                        po.setStatus("ORDER_COMPLETED");
+                        po.setExecutionStatus("IN_SUPPLEMENTARY"); // Keep as supplementary completed
+                        poRepo.save(po);
+
+                        System.out.println("[REWORK COMPLETE] Rework order " + po.getPoNumber()
+                                + " completed, merged back to " + originalPO.getPoNumber());
                     }
                 }
             }
         }
 
-        // NEW: Promote next order for this stage type (cross-PO promotion)
-        // This enables the next lot in queue to start the same stage type
-        promoteNextOrderForStageType(s.getStageType());
+        String currentStageType = s.getStageType();
+
+        // Workflow logic based on current stage - only if there's a next stage
+        if (next != null
+                && ("WARPING".equalsIgnoreCase(currentStageType) || "CUONG_MAC".equalsIgnoreCase(currentStageType))) {
+            // Cuồng mắc PASS → notify Tổ Trưởng dệt
+            if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn cuồng mắc đạt",
+                        "Công đoạn cuồng mắc đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                        "PRODUCTION_STAGE", next.getId());
+            }
+        } else if (next != null
+                && ("WEAVING".equalsIgnoreCase(currentStageType) || "DET".equalsIgnoreCase(currentStageType))) {
+            // Dệt PASS → notify Production Manager (for nhuộm)
+            if ("DYEING".equalsIgnoreCase(next.getStageType()) || "NHUOM".equalsIgnoreCase(next.getStageType())) {
+                notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "SUCCESS",
+                        "Công đoạn dệt đạt",
+                        "Công đoạn dệt đã đạt QC. Công đoạn nhuộm sẵn sàng bắt đầu.",
+                        "PRODUCTION_STAGE", next.getId());
+            } else if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn dệt đạt",
+                        "Công đoạn dệt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                        "PRODUCTION_STAGE", next.getId());
+            }
+        } else if (next != null
+                && ("DYEING".equalsIgnoreCase(currentStageType) || "NHUOM".equalsIgnoreCase(currentStageType))) {
+            // Nhuộm PASS → notify Tổ Trưởng cắt
+            if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn nhuộm đạt",
+                        "Công đoạn nhuộm đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                        "PRODUCTION_STAGE", next.getId());
+            }
+        } else if (next != null
+                && ("CUTTING".equalsIgnoreCase(currentStageType) || "CAT".equalsIgnoreCase(currentStageType))) {
+            // Cắt PASS → notify Tổ Trưởng May
+            if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn cắt đạt",
+                        "Công đoạn cắt đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                        "PRODUCTION_STAGE", next.getId());
+            }
+        } else if (next != null
+                && ("HEMMING".equalsIgnoreCase(currentStageType) || "MAY".equalsIgnoreCase(currentStageType))) {
+            // May PASS → notify Tổ Trưởng đóng gói
+            if (next.getAssignedLeader() != null) {
+                notificationService.notifyUser(next.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                        "Công đoạn may đạt",
+                        "Công đoạn may đã đạt QC. Bạn có thể bắt đầu công đoạn " + next.getStageType(),
+                        "PRODUCTION_STAGE", next.getId());
+            }
+        } else if ("PACKAGING".equalsIgnoreCase(currentStageType)
+                || "DONG_GOI".equalsIgnoreCase(currentStageType)) {
+            // Đóng gói PASS → notify Kho
+            notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS",
+                    "Công đoạn đóng gói đạt",
+                    "Công đoạn đóng gói đã đạt QC. Sản phẩm sẵn sàng nhập kho.",
+                    "PRODUCTION_STAGE", s.getId());
+
+            // Check if all stages completed
+            // NEW: Lấy ProductionOrder trực tiếp từ ProductionStage
+            ProductionOrder poForCheck = s.getProductionOrder();
+
+            if (poForCheck != null) {
+                final Long orderId = poForCheck.getId(); // Make effectively final for lambda
+                // NEW: Check all stages directly by ProductionOrder
+                List<ProductionStage> allStagesForOrder = stageRepo.findStagesByOrderId(orderId);
+                boolean allOk = true;
+
+                if (!allStagesForOrder.isEmpty()) {
+                    // Check via ProductionOrder (new way)
+                    for (ProductionStage stg : allStagesForOrder) {
+                        if (!"COMPLETED".equals(stg.getExecutionStatus()) &&
+                                !"QC_PASSED".equals(stg.getExecutionStatus())) {
+                            allOk = false;
+                            break;
+                        }
+                    }
+                }
+                // REMOVED: Fallback check via WorkOrderDetail - không còn dùng nữa
+
+                if (allOk) {
+                    poForCheck.setStatus("ORDER_COMPLETED");
+                    poRepo.save(poForCheck);
+                    notificationService.notifyOrderCompleted(poForCheck);
+                }
+            }
+        }
+    }
+
+    // NEW: Promote next order for this stage type (cross-PO promotion)
+    // This enables the next lot in queue to start the same stage type
+    promoteNextOrderForStageType(s.getStageType());
     }
 
     // Dyeing hook on start/complete
