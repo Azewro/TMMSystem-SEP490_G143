@@ -2367,6 +2367,17 @@ public class ProductionService {
         // Enhanced fields
         if (req.getProductionStage() != null) {
             dto.setStageName(req.getProductionStage().getStageType()); // Or a more descriptive name if available
+
+            // Extract lotCode and poNumber from production order
+            ProductionOrder po = req.getProductionStage().getProductionOrder();
+            if (po != null) {
+                dto.setPoNumber(po.getPoNumber());
+                // Get lotCode from enriched DTO
+                ProductionOrderDto enrichedPo = enrichProductionOrderDto(po);
+                if (enrichedPo != null && enrichedPo.getLotCode() != null) {
+                    dto.setLotCode(enrichedPo.getLotCode());
+                }
+            }
         }
         if (req.getRequestedBy() != null) {
             dto.setRequesterName(req.getRequestedBy().getName());
@@ -2537,37 +2548,64 @@ public class ProductionService {
             totalApproved = req.getQuantityApproved();
         }
 
+        System.out.println("[REWORK DEBUG] totalApproved (kg): " + totalApproved);
+
         // Convert kg (approvedQuantity) to pcs (totalQuantity)
-        // Formula: Pcs = Kg / Weight_per_piece_in_kg
+        // Formula: Pcs = Kg * 1000 / Weight_per_piece_in_grams
         BigDecimal reworkQuantityPcs = totalApproved;
         try {
             List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(originalPO.getId());
+            System.out.println("[REWORK DEBUG] ProductionOrderDetails found: " + details.size());
             if (!details.isEmpty()) {
                 Product product = details.get(0).getProduct();
-                BigDecimal standardWeight = product.getStandardWeight();
+                System.out.println("[REWORK DEBUG] Product: " + (product != null ? product.getName() : "NULL"));
+
+                BigDecimal standardWeight = product != null ? product.getStandardWeight() : null;
+                System.out.println("[REWORK DEBUG] standardWeight (grams): " + standardWeight);
+
                 if (standardWeight != null && standardWeight.compareTo(BigDecimal.ZERO) > 0) {
-                    // Assuming standardWeight is in GRAMS (common for towels).
+                    // standardWeight is in GRAMS. Convert to kg for division
                     BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
                             java.math.RoundingMode.HALF_UP);
+                    System.out.println("[REWORK DEBUG] weightInKg: " + weightInKg);
                     if (weightInKg.compareTo(BigDecimal.ZERO) > 0) {
                         reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
+                        System.out.println("[REWORK DEBUG] Calculated reworkQuantityPcs: " + reworkQuantityPcs);
                     }
+                } else {
+                    System.out
+                            .println("[REWORK DEBUG] WARNING: standardWeight is null or 0, cannot calculate quantity!");
                 }
             }
         } catch (Exception e) {
             // Fallback or log error
-            System.err.println("Error converting unit: " + e.getMessage());
+            System.err.println("[REWORK DEBUG] Error converting unit: " + e.getMessage());
+            e.printStackTrace();
         }
 
         if (reworkQuantityPcs.compareTo(BigDecimal.ZERO) <= 0) {
             reworkQuantityPcs = BigDecimal.ONE; // Default to 1 if calculation fails
+            System.out.println("[REWORK DEBUG] Fallback to 1 because reworkQuantityPcs <= 0");
         }
+        System.out.println("[REWORK DEBUG] Final reworkQuantityPcs: " + reworkQuantityPcs);
+
         reworkPO.setTotalQuantity(reworkQuantityPcs); // Quantity for rework in PCS
 
         reworkPO.setPlannedStartDate(java.time.LocalDate.now());
         reworkPO.setPlannedEndDate(java.time.LocalDate.now().plusDays((long) Math.ceil(estimatedDays)));
-        reworkPO.setStatus("WAITING_PRODUCTION");
-        reworkPO.setExecutionStatus("WAITING_PRODUCTION");
+
+        // Determine rework order status based on WARPING availability
+        // Check if any rework order is currently at WARPING stage with IN_PROGRESS
+        // status
+        boolean warpingBusy = isWarpingBusyForRework();
+        if (warpingBusy) {
+            reworkPO.setStatus("WAITING_SUPPLEMENTARY");
+            reworkPO.setExecutionStatus("WAITING_SUPPLEMENTARY");
+        } else {
+            reworkPO.setStatus("READY_SUPPLEMENTARY");
+            reworkPO.setExecutionStatus("READY_SUPPLEMENTARY");
+        }
+
         reworkPO.setPriority(originalPO.getPriority() + 1); // Higher priority
         // Preserve planCode from original order notes so lotCode can be extracted
         String originalPlanCode = extractPlanCodeFromNotes(originalPO.getNotes());
@@ -2580,6 +2618,10 @@ public class ProductionService {
         reworkPO.setApprovedAt(Instant.now());
 
         ProductionOrder savedReworkPO = poRepo.save(reworkPO);
+
+        // Update original order status - no longer waiting for material approval
+        originalPO.setExecutionStatus("SUPPLEMENTARY_CREATED");
+        poRepo.save(originalPO);
 
         // 3.1. Clone ProductionOrderDetail
         try {
@@ -2660,16 +2702,67 @@ public class ProductionService {
             throw new RuntimeException("Not a supplementary order");
         }
 
-        if (!"WAITING_PRODUCTION".equals(order.getStatus())) {
-            throw new RuntimeException("Order is not in WAITING_PRODUCTION status");
+        // Allow starting from READY_SUPPLEMENTARY or WAITING_SUPPLEMENTARY (legacy:
+        // WAITING_PRODUCTION)
+        if (!"READY_SUPPLEMENTARY".equals(order.getExecutionStatus())
+                && !"WAITING_SUPPLEMENTARY".equals(order.getExecutionStatus())
+                && !"WAITING_PRODUCTION".equals(order.getStatus())) {
+            throw new RuntimeException("Order is not ready to start");
         }
 
+        // Set this order to IN_SUPPLEMENTARY (Đang sản xuất bổ sung)
         order.setStatus("IN_PROGRESS");
-        order.setExecutionStatus("IN_PROGRESS");
-        // order.setActualStartDate(java.time.LocalDate.now()); // Field removed/not
-        // present
+        order.setExecutionStatus("IN_SUPPLEMENTARY");
+        poRepo.save(order);
 
-        return poRepo.save(order);
+        // Demote all other READY_SUPPLEMENTARY orders to WAITING_SUPPLEMENTARY
+        List<ProductionOrder> allReworkOrders = poRepo.findAll().stream()
+                .filter(o -> o.getPoNumber() != null && o.getPoNumber().contains("-REWORK"))
+                .filter(o -> !o.getId().equals(order.getId()))
+                .filter(o -> "READY_SUPPLEMENTARY".equals(o.getExecutionStatus()))
+                .collect(java.util.stream.Collectors.toList());
+
+        for (ProductionOrder other : allReworkOrders) {
+            other.setExecutionStatus("WAITING_SUPPLEMENTARY");
+            poRepo.save(other);
+        }
+
+        // Start the first stage (WARPING)
+        List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(order.getId());
+        if (!stages.isEmpty()) {
+            ProductionStage firstStage = stages.get(0);
+            syncStageStatus(firstStage, "IN_PROGRESS");
+            stageRepo.save(firstStage);
+        }
+
+        return order;
+    }
+
+    /**
+     * Check if any rework order is currently doing WARPING stage (IN_PROGRESS)
+     */
+    private boolean isWarpingBusyForRework() {
+        // Find all rework orders that are IN_SUPPLEMENTARY (currently being produced)
+        List<ProductionOrder> activeReworkOrders = poRepo.findAll().stream()
+                .filter(o -> o.getPoNumber() != null && o.getPoNumber().contains("-REWORK"))
+                .filter(o -> "IN_SUPPLEMENTARY".equals(o.getExecutionStatus())
+                        || "IN_PROGRESS".equals(o.getExecutionStatus()))
+                .collect(java.util.stream.Collectors.toList());
+
+        for (ProductionOrder reworkOrder : activeReworkOrders) {
+            // Check if first stage (WARPING) is IN_PROGRESS
+            List<ProductionStage> stages = stageRepo
+                    .findByProductionOrderIdOrderByStageSequenceAsc(reworkOrder.getId());
+            if (!stages.isEmpty()) {
+                ProductionStage firstStage = stages.get(0);
+                if ("IN_PROGRESS".equals(firstStage.getExecutionStatus())
+                        && ("WARPING".equals(firstStage.getStageType())
+                                || "CUONG_MAC".equals(firstStage.getStageType()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Transactional
@@ -2779,16 +2872,19 @@ public class ProductionService {
         for (ProductionOrder po : allOrders) {
             if (po.getPoNumber().contains("-REWORK")) {
                 List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(po.getId());
-                // Fix if details missing OR quantity is 0
+                // Fix if details missing OR quantity is 0 OR quantity is 1 (default fallback)
                 boolean needsFix = details.isEmpty();
                 ProductionOrderDetail detailToFix = null;
                 if (!details.isEmpty()) {
                     detailToFix = details.get(0);
+                    // Recalculate if quantity is null, 0, or 1 (1 is the default fallback when
+                    // calculation failed)
                     if (detailToFix.getQuantity() == null
-                            || detailToFix.getQuantity().compareTo(BigDecimal.ZERO) == 0) {
+                            || detailToFix.getQuantity().compareTo(BigDecimal.ZERO) == 0
+                            || detailToFix.getQuantity().compareTo(BigDecimal.ONE) == 0) {
                         needsFix = true;
                     } else {
-                        // Already has quantity, skip
+                        // Already has valid quantity > 1, skip
                         needsFix = false;
                     }
                 }
@@ -2868,6 +2964,13 @@ public class ProductionService {
 
                                 reworkDetail.setQuantity(reworkQty);
                                 podRepo.save(reworkDetail);
+
+                                // Also update ProductionOrder.totalQuantity
+                                po.setTotalQuantity(reworkQty);
+                                poRepo.save(po);
+
+                                System.out.println(
+                                        "[FIX] Rework order " + po.getPoNumber() + " quantity updated to " + reworkQty);
                                 count++;
                             }
                         }
@@ -2880,6 +2983,71 @@ public class ProductionService {
         if (count > 0) {
             System.out.println("Fixed " + count + " rework orders with missing details.");
         }
+    }
+
+    /**
+     * Fix existing rework order statuses to use new supplementary status values
+     * - WAITING_PRODUCTION -> READY_SUPPLEMENTARY (if no warping busy) or
+     * WAITING_SUPPLEMENTARY
+     * - Also updates original orders from WAITING_MATERIAL_APPROVAL to
+     * SUPPLEMENTARY_CREATED if they have rework order
+     */
+    @Transactional
+    public int fixReworkOrderStatuses() {
+        int count = 0;
+        List<ProductionOrder> allOrders = poRepo.findAll();
+
+        for (ProductionOrder po : allOrders) {
+            // Fix rework orders with old WAITING_PRODUCTION status
+            if (po.getPoNumber() != null && po.getPoNumber().contains("-REWORK")) {
+                if ("WAITING_PRODUCTION".equals(po.getExecutionStatus())) {
+                    // Check if WARPING is busy
+                    boolean warpingBusy = isWarpingBusyForRework();
+                    if (warpingBusy) {
+                        po.setExecutionStatus("WAITING_SUPPLEMENTARY");
+                        po.setStatus("WAITING_SUPPLEMENTARY");
+                    } else {
+                        po.setExecutionStatus("READY_SUPPLEMENTARY");
+                        po.setStatus("READY_SUPPLEMENTARY");
+                    }
+                    poRepo.save(po);
+                    System.out.println(
+                            "[FIX] Rework order " + po.getPoNumber() + " status updated to " + po.getExecutionStatus());
+                    count++;
+                }
+            }
+
+            // Fix original orders stuck at WAITING_MATERIAL_APPROVAL when rework exists
+            if ("WAITING_MATERIAL_APPROVAL".equals(po.getExecutionStatus())) {
+                // Check if there's an APPROVED material request for this order's stages
+                List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
+                boolean hasApprovedRequest = false;
+                for (ProductionStage stage : stages) {
+                    List<MaterialRequisition> reqs = reqRepo.findByProductionStageId(stage.getId());
+                    for (MaterialRequisition req : reqs) {
+                        if ("APPROVED".equals(req.getStatus())) {
+                            hasApprovedRequest = true;
+                            break;
+                        }
+                    }
+                    if (hasApprovedRequest)
+                        break;
+                }
+
+                if (hasApprovedRequest) {
+                    po.setExecutionStatus("SUPPLEMENTARY_CREATED");
+                    poRepo.save(po);
+                    System.out.println(
+                            "[FIX] Original order " + po.getPoNumber() + " status updated to SUPPLEMENTARY_CREATED");
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0) {
+            System.out.println("Fixed " + count + " rework/original order statuses.");
+        }
+        return count;
     }
 
     public QualityIssue getDefectForStage(Long stageId) {

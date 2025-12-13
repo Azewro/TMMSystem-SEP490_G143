@@ -20,6 +20,8 @@ public class MaterialRequisitionResponseDto {
     private String stageName;
     private String requesterName;
     private String approverName;
+    private String lotCode; // Lot code for display
+    private String poNumber; // Production order number
 
     // Defect info
     private SourceIssueDto sourceIssue;
