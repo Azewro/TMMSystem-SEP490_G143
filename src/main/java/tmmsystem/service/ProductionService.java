@@ -984,18 +984,12 @@ public class ProductionService {
                                                 + " của lô chính sẵn sàng tiếp tục.",
                                         "PRODUCTION_STAGE", originalNext.getId());
                             }
-
-                            System.out.println("[REWORK MERGE] Activated stage " + originalNext.getStageType() +
-                                    " (id=" + originalNext.getId() + ") in original order " + originalPO.getPoNumber());
                         }
 
                         // Mark rework order as completed
                         po.setStatus("ORDER_COMPLETED");
                         po.setExecutionStatus("IN_SUPPLEMENTARY"); // Keep as supplementary completed
                         poRepo.save(po);
-
-                        System.out.println("[REWORK COMPLETE] Rework order " + po.getPoNumber()
-                                + " completed, merged back to " + originalPO.getPoNumber());
                     }
                 }
             }
@@ -2579,25 +2573,47 @@ public class ProductionService {
 
         java.math.BigDecimal totalApproved = java.math.BigDecimal.ZERO;
 
-        // Update Details
+        // Use quantityRequested from details (not quantityApproved since it may not be
+        // set)
         if (dto.getDetails() != null) {
             for (tmmsystem.dto.execution.MaterialRequisitionDetailDto detailDto : dto.getDetails()) {
                 if (detailDto.getId() != null) {
                     tmmsystem.entity.MaterialRequisitionDetail detail = reqDetailRepo.findById(detailDto.getId())
                             .orElse(null);
                     if (detail != null && detail.getRequisition().getId().equals(requestId)) {
-                        detail.setQuantityApproved(detailDto.getQuantityApproved());
+                        // Set approved = requested if approved is not provided
+                        BigDecimal approvedQty = detailDto.getQuantityApproved();
+                        if (approvedQty == null || approvedQty.compareTo(BigDecimal.ZERO) == 0) {
+                            approvedQty = detail.getQuantityRequested();
+                        }
+                        detail.setQuantityApproved(approvedQty);
                         reqDetailRepo.save(detail);
-                        if (detail.getQuantityApproved() != null) {
-                            totalApproved = totalApproved.add(detail.getQuantityApproved());
+                        if (approvedQty != null) {
+                            totalApproved = totalApproved.add(approvedQty);
                         }
                     }
                 }
             }
-        } else {
-            // Fallback for legacy calls or empty details (should not happen with new UI)
-            // If needed, we could set totalApproved from a field in DTO, but let's rely on
-            // details sum
+        }
+
+        // FALLBACK: If still 0, read from DB details using quantityRequested
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0) {
+            List<tmmsystem.entity.MaterialRequisitionDetail> dbDetails = reqDetailRepo.findByRequisitionId(requestId);
+            for (tmmsystem.entity.MaterialRequisitionDetail dbDetail : dbDetails) {
+                // Use quantityRequested if quantityApproved is not set
+                BigDecimal qty = dbDetail.getQuantityApproved();
+                if (qty == null || qty.compareTo(BigDecimal.ZERO) == 0) {
+                    qty = dbDetail.getQuantityRequested();
+                }
+                if (qty != null) {
+                    totalApproved = totalApproved.add(qty);
+                }
+            }
+        }
+
+        // ULTIMATE FALLBACK: Use parent requisition's quantityRequested
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0 && req.getQuantityRequested() != null) {
+            totalApproved = req.getQuantityRequested();
         }
 
         // 1. Time Validation (Standard Capacity Check)
@@ -2651,7 +2667,6 @@ public class ProductionService {
                     totalApproved = totalApproved.add(dbDetail.getQuantityApproved());
                 }
             }
-            System.out.println("[REWORK DEBUG] Fallback totalApproved from DB: " + totalApproved);
         }
 
         req.setQuantityApproved(totalApproved);
@@ -2675,39 +2690,26 @@ public class ProductionService {
         BigDecimal reworkQuantityPcs = totalApproved;
         try {
             List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(originalPO.getId());
-            System.out.println("[REWORK DEBUG] ProductionOrderDetails found: " + details.size());
             if (!details.isEmpty()) {
                 Product product = details.get(0).getProduct();
-                System.out.println("[REWORK DEBUG] Product: " + (product != null ? product.getName() : "NULL"));
-
                 BigDecimal standardWeight = product != null ? product.getStandardWeight() : null;
-                System.out.println("[REWORK DEBUG] standardWeight (grams): " + standardWeight);
 
                 if (standardWeight != null && standardWeight.compareTo(BigDecimal.ZERO) > 0) {
                     // standardWeight is in GRAMS. Convert to kg for division
                     BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
                             java.math.RoundingMode.HALF_UP);
-                    System.out.println("[REWORK DEBUG] weightInKg: " + weightInKg);
                     if (weightInKg.compareTo(BigDecimal.ZERO) > 0) {
                         reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
-                        System.out.println("[REWORK DEBUG] Calculated reworkQuantityPcs: " + reworkQuantityPcs);
                     }
-                } else {
-                    System.out
-                            .println("[REWORK DEBUG] WARNING: standardWeight is null or 0, cannot calculate quantity!");
                 }
             }
         } catch (Exception e) {
-            // Fallback or log error
-            System.err.println("[REWORK DEBUG] Error converting unit: " + e.getMessage());
-            e.printStackTrace();
+            // Log error silently - calculation will fallback
         }
 
         if (reworkQuantityPcs.compareTo(BigDecimal.ZERO) <= 0) {
             reworkQuantityPcs = BigDecimal.ONE; // Default to 1 if calculation fails
-            System.out.println("[REWORK DEBUG] Fallback to 1 because reworkQuantityPcs <= 0");
         }
-        System.out.println("[REWORK DEBUG] Final reworkQuantityPcs: " + reworkQuantityPcs);
 
         reworkPO.setTotalQuantity(reworkQuantityPcs); // Quantity for rework in PCS
 
@@ -3058,17 +3060,26 @@ public class ProductionService {
                                         for (tmmsystem.entity.MaterialRequisition req : reqs) {
                                             if ("APPROVED".equals(req.getStatus())
                                                     && "YARN_SUPPLY".equals(req.getRequisitionType())) {
-                                                // Found it!
+                                                // Found it! Use quantityRequested as fallback for quantityApproved
                                                 BigDecimal approvedKg = req.getQuantityApproved();
+                                                if (approvedKg == null || approvedKg.compareTo(BigDecimal.ZERO) == 0) {
+                                                    approvedKg = req.getQuantityRequested();
+                                                }
 
-                                                // Fallback: If parent quantity is null/zero, sum from details
+                                                // Fallback: If parent quantity is still null/zero, sum from details
                                                 if (approvedKg == null || approvedKg.compareTo(BigDecimal.ZERO) == 0) {
                                                     List<tmmsystem.entity.MaterialRequisitionDetail> reqDetails = reqDetailRepo
                                                             .findByRequisitionId(req.getId());
                                                     approvedKg = reqDetails.stream()
-                                                            .map(d -> d.getQuantityApproved() != null
-                                                                    ? d.getQuantityApproved()
-                                                                    : BigDecimal.ZERO)
+                                                            .map(d -> {
+                                                                // Use approved if available, else requested
+                                                                BigDecimal qty = d.getQuantityApproved();
+                                                                if (qty == null
+                                                                        || qty.compareTo(BigDecimal.ZERO) == 0) {
+                                                                    qty = d.getQuantityRequested();
+                                                                }
+                                                                return qty != null ? qty : BigDecimal.ZERO;
+                                                            })
                                                             .reduce(BigDecimal.ZERO, BigDecimal::add);
                                                 }
 
