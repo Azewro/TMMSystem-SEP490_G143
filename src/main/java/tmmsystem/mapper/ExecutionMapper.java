@@ -8,12 +8,15 @@ import tmmsystem.entity.*;
 public class ExecutionMapper {
     private final tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo;
     private final tmmsystem.repository.ProductionPlanRepository productionPlanRepo;
+    private final tmmsystem.repository.ProductionOrderDetailRepository productionOrderDetailRepo;
 
     public ExecutionMapper(
             tmmsystem.repository.MaterialRequisitionDetailRepository reqDetailRepo,
-            tmmsystem.repository.ProductionPlanRepository productionPlanRepo) {
+            tmmsystem.repository.ProductionPlanRepository productionPlanRepo,
+            tmmsystem.repository.ProductionOrderDetailRepository productionOrderDetailRepo) {
         this.reqDetailRepo = reqDetailRepo;
         this.productionPlanRepo = productionPlanRepo;
+        this.productionOrderDetailRepo = productionOrderDetailRepo;
     }
 
     public StageTrackingDto toDto(StageTracking e) {
@@ -160,6 +163,20 @@ public class ExecutionMapper {
                 }
             }
             dto.setLotCode(lotCode != null ? lotCode : "N/A");
+
+            // NEW: Extract productName and size from ProductionOrderDetail
+            if (stage.getProductionOrder() != null) {
+                ProductionOrder po = stage.getProductionOrder();
+                java.util.List<ProductionOrderDetail> details = productionOrderDetailRepo
+                        .findByProductionOrderId(po.getId());
+                if (details != null && !details.isEmpty()) {
+                    ProductionOrderDetail firstDetail = details.get(0);
+                    if (firstDetail.getProduct() != null) {
+                        dto.setProductName(firstDetail.getProduct().getName());
+                        dto.setSize(firstDetail.getProduct().getStandardDimensions());
+                    }
+                }
+            }
         }
         if (e.getRequestedBy() != null) {
             dto.setRequestedByName(e.getRequestedBy().getName());

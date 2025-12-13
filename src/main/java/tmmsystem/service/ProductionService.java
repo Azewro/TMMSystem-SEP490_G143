@@ -2761,10 +2761,13 @@ public class ProductionService {
             }
         }
 
-        // FIX: Update original order's executionStatus so frontend doesn't show "Chờ
-        // phê duyệt cấp sợi" anymore
+        // FIX: Update original order's executionStatus to match rework order's status
+        // This ensures frontend shows correct status: "Sẵn sàng SX bổ sung" or "Chờ SX
+        // bổ sung"
         if (originalPO != null && "WAITING_MATERIAL_APPROVAL".equals(originalPO.getExecutionStatus())) {
-            originalPO.setExecutionStatus("SUPPLEMENTARY_CREATED");
+            // Use same status as the rework order (READY_SUPPLEMENTARY or
+            // WAITING_SUPPLEMENTARY)
+            originalPO.setExecutionStatus(savedReworkPO.getExecutionStatus());
             poRepo.save(originalPO);
         }
 
