@@ -62,6 +62,11 @@ public interface ProductionStageRepository extends JpaRepository<ProductionStage
         // NEW: Count active stages for capacity check
         long countByStageTypeAndExecutionStatusIn(String stageType, List<String> executionStatuses);
 
+        // NEW: Find active stages for capacity check (with order info)
+        @Query("select s from ProductionStage s join fetch s.productionOrder po where s.stageType = :stageType and s.executionStatus in :statuses")
+        List<ProductionStage> findByStageTypeAndExecutionStatusIn(@Param("stageType") String stageType,
+                        @Param("statuses") List<String> executionStatuses);
+
         // NEW: Count active (progress < 100) stages of same type excluding a specific
         // stage
         @Query("select count(s) from ProductionStage s where s.stageType = :stageType and s.id <> :stageId and (s.progressPercent is null or s.progressPercent < 100) and s.executionStatus in :executionStatuses")

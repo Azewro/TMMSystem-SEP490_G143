@@ -1573,8 +1573,48 @@ public class ProductionService {
         final long MAX_WARPING_QUEUE = 3;
 
         if (activeWarpingCount >= MAX_WARPING_QUEUE) {
-            throw new RuntimeException("Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
-                    + activeWarpingCount + "/" + MAX_WARPING_QUEUE + "). Vui lòng đợi lô trước hoàn thành.");
+            // Build detailed message with lot codes
+            List<ProductionStage> activeWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
+                    activeStatuses);
+            StringBuilder occupyingLots = new StringBuilder();
+            StringBuilder waitingLots = new StringBuilder();
+
+            for (ProductionStage stage : activeWarpingStages) {
+                String lotCode = "N/A";
+                if (stage.getProductionOrder() != null) {
+                    lotCode = stage.getProductionOrder().getPoNumber();
+                    // Try to get lotCode from plan
+                    String planCode = extractPlanCodeFromNotes(stage.getProductionOrder().getNotes());
+                    if (planCode != null) {
+                        ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                        if (plan != null && plan.getLot() != null) {
+                            lotCode = plan.getLot().getLotCode();
+                        }
+                    }
+                }
+
+                if ("IN_PROGRESS".equals(stage.getExecutionStatus())) {
+                    if (occupyingLots.length() > 0)
+                        occupyingLots.append(", ");
+                    occupyingLots.append(lotCode);
+                } else {
+                    if (waitingLots.length() > 0)
+                        waitingLots.append(", ");
+                    waitingLots.append(lotCode);
+                }
+            }
+
+            String message = "Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
+                    + activeWarpingCount + "/" + MAX_WARPING_QUEUE + ").";
+            if (occupyingLots.length() > 0) {
+                message += " Đang chiếm dụng: " + occupyingLots + ".";
+            }
+            if (waitingLots.length() > 0) {
+                message += " Đang chờ: " + waitingLots + ".";
+            }
+            message += " Vui lòng đợi lô trước hoàn thành.";
+
+            throw new RuntimeException(message);
         }
 
         // 2. Update Order Status - mark as in production queue
@@ -2600,6 +2640,20 @@ public class ProductionService {
         req.setApprovedBy(
                 userRepository.findById(directorId).orElseThrow(() -> new RuntimeException("Director not found")));
         req.setApprovedAt(Instant.now());
+
+        // Fallback: If totalApproved is still 0, try to read from existing database
+        // details
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0) {
+            List<tmmsystem.entity.MaterialRequisitionDetail> dbDetails = reqDetailRepo.findByRequisitionId(requestId);
+            System.out.println("[REWORK DEBUG] Fallback: Reading from DB. Found " + dbDetails.size() + " details");
+            for (tmmsystem.entity.MaterialRequisitionDetail dbDetail : dbDetails) {
+                if (dbDetail.getQuantityApproved() != null) {
+                    totalApproved = totalApproved.add(dbDetail.getQuantityApproved());
+                }
+            }
+            System.out.println("[REWORK DEBUG] Fallback totalApproved from DB: " + totalApproved);
+        }
+
         req.setQuantityApproved(totalApproved);
         req.setNotes(dto.getNotes()); // Update notes if provided
         reqRepo.save(req);
@@ -2613,11 +2667,6 @@ public class ProductionService {
         ProductionOrder reworkPO = new ProductionOrder();
         reworkPO.setPoNumber(originalPO.getPoNumber() + "-REWORK-" + System.currentTimeMillis() % 1000);
         reworkPO.setContract(originalPO.getContract());
-
-        // Calculate total approved quantity
-        if (totalApproved.compareTo(BigDecimal.ZERO) == 0 && req.getQuantityApproved() != null) {
-            totalApproved = req.getQuantityApproved();
-        }
 
         System.out.println("[REWORK DEBUG] totalApproved (kg): " + totalApproved);
 
