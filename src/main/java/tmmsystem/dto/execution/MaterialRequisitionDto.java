@@ -9,6 +9,8 @@ public class MaterialRequisitionDto {
     private Long id;
     private String requisitionNumber;
     private String lotCode; // NEW: Mã lô để hiển thị
+    private String productName; // NEW: Tên sản phẩm để hiển thị
+    private String size; // NEW: Kích thước sản phẩm
     private Long productionStageId;
     private String stageType; // Useful for display
     private String requestedByName;
