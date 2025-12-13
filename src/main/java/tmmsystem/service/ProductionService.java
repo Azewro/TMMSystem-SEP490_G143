@@ -3018,7 +3018,14 @@ public class ProductionService {
             }
 
             // Fix original orders stuck at WAITING_MATERIAL_APPROVAL when rework exists
-            if ("WAITING_MATERIAL_APPROVAL".equals(po.getExecutionStatus())) {
+            // Also check orders that have approved requests but status not yet updated
+            String currentStatus = po.getExecutionStatus();
+            boolean needsStatusFix = "WAITING_MATERIAL_APPROVAL".equals(currentStatus)
+                    || (currentStatus != null && !currentStatus.equals("SUPPLEMENTARY_CREATED")
+                            && !currentStatus.equals("COMPLETED") && !currentStatus.equals("ORDER_COMPLETED")
+                            && !po.getPoNumber().contains("-REWORK"));
+
+            if (needsStatusFix) {
                 // Check if there's an APPROVED material request for this order's stages
                 List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
                 boolean hasApprovedRequest = false;
@@ -3034,11 +3041,12 @@ public class ProductionService {
                         break;
                 }
 
-                if (hasApprovedRequest) {
+                if (hasApprovedRequest && !"SUPPLEMENTARY_CREATED".equals(po.getExecutionStatus())) {
                     po.setExecutionStatus("SUPPLEMENTARY_CREATED");
                     poRepo.save(po);
                     System.out.println(
-                            "[FIX] Original order " + po.getPoNumber() + " status updated to SUPPLEMENTARY_CREATED");
+                            "[FIX] Original order " + po.getPoNumber()
+                                    + " status updated to SUPPLEMENTARY_CREATED (was: " + currentStatus + ")");
                     count++;
                 }
             }
