@@ -1091,11 +1091,10 @@ public class ProductionService {
                 }
             }
         }
-    }
 
-    // NEW: Promote next order for this stage type (cross-PO promotion)
-    // This enables the next lot in queue to start the same stage type
-    promoteNextOrderForStageType(s.getStageType());
+        // NEW: Promote next order for this stage type (cross-PO promotion)
+        // This enables the next lot in queue to start the same stage type
+        promoteNextOrderForStageType(s.getStageType());
     }
 
     // Dyeing hook on start/complete
