@@ -1993,6 +1993,17 @@ public class ProductionService {
             // Tính totalHours từ StageTracking
             java.math.BigDecimal totalHours = calculateTotalHoursForStage(stage.getId());
             stageDto.setTotalHours(totalHours);
+
+            // NEW: Check if blocked by another lot at same stage type
+            String execStatus = stage.getExecutionStatus();
+            if ("WAITING".equals(execStatus) || "READY".equals(execStatus) || "READY_TO_PRODUCE".equals(execStatus)) {
+                BlockingInfo blockInfo = checkStageBlocked(stage);
+                stageDto.setIsBlocked(blockInfo.isBlocked);
+                stageDto.setBlockedBy(blockInfo.blockedByLotCode);
+            } else {
+                stageDto.setIsBlocked(false);
+            }
+
             return stageDto;
         }).collect(java.util.stream.Collectors.toList());
         dto.setStages(stageDtos);
@@ -3248,5 +3259,78 @@ public class ProductionService {
             planCode = planCode.substring(0, spaceIndex);
         }
         return planCode.isEmpty() ? null : planCode;
+    }
+
+    // ==================== BLOCKING CHECK ====================
+
+    /**
+     * Helper record to hold blocking information
+     */
+    private record BlockingInfo(boolean isBlocked, String blockedByLotCode) {
+    }
+
+    /**
+     * Check if a stage is blocked by another lot doing the same stage type.
+     * A stage is blocked if:
+     * 1. It's a non-parallel stage (not DYEING)
+     * 2. Another lot has IN_PROGRESS or REWORK_IN_PROGRESS at the same stage type
+     */
+    private BlockingInfo checkStageBlocked(ProductionStage stage) {
+        // DYEING is outsourced/parallel - never blocked
+        String stageType = stage.getStageType();
+        if (stageType == null) {
+            return new BlockingInfo(false, null);
+        }
+        boolean isParallelStage = "DYEING".equalsIgnoreCase(stageType) || "NHUOM".equalsIgnoreCase(stageType);
+        if (isParallelStage) {
+            return new BlockingInfo(false, null);
+        }
+
+        // Find all stages of same type that are IN_PROGRESS or REWORK_IN_PROGRESS
+        List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
+
+        for (ProductionStage activeStage : activeStages) {
+            if (activeStage.getId().equals(stage.getId()))
+                continue; // Skip self
+
+            // Check if same stage type (considering aliases)
+            String activeType = activeStage.getStageType() != null ? activeStage.getStageType().toUpperCase() : "";
+            String thisType = stageType.toUpperCase();
+
+            boolean sameType = activeType.equals(thisType);
+            if (!sameType && STAGE_TYPE_ALIASES.containsKey(thisType)) {
+                sameType = activeType.equals(STAGE_TYPE_ALIASES.get(thisType));
+            }
+            if (!sameType && STAGE_TYPE_ALIASES.containsKey(activeType)) {
+                sameType = thisType.equals(STAGE_TYPE_ALIASES.get(activeType));
+            }
+
+            if (sameType) {
+                // This stage is blocked by activeStage
+                String blockedByLotCode = getLotCodeForStage(activeStage);
+                return new BlockingInfo(true, blockedByLotCode);
+            }
+        }
+
+        return new BlockingInfo(false, null);
+    }
+
+    /**
+     * Get lotCode for a stage's production order
+     */
+    private String getLotCodeForStage(ProductionStage stage) {
+        if (stage.getProductionOrder() == null)
+            return "N/A";
+
+        ProductionOrder po = stage.getProductionOrder();
+        String planCode = extractPlanCodeFromNotes(po.getNotes());
+        if (planCode != null) {
+            tmmsystem.entity.ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+            if (plan != null && plan.getLot() != null) {
+                return plan.getLot().getLotCode();
+            }
+        }
+        return po.getPoNumber() != null ? po.getPoNumber() : "N/A";
     }
 }

@@ -60,4 +60,8 @@ public class ProductionStageDto {
     // Example: "Sẵn sàng sản xuất công đoạn cuồng mắc", "Chuẩn bị sản xuất công
     // đoạn dệt"
     private String statusDisplay;
+
+    // NEW: Blocking status - for frontend to show "Chờ đến lượt" vs "Sẵn sàng"
+    private Boolean isBlocked; // true if another lot is using the same stage type
+    private String blockedBy; // lotCode of the blocking lot
 }
