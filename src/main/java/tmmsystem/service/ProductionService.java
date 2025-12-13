@@ -2701,6 +2701,13 @@ public class ProductionService {
             }
         }
 
+        // FIX: Update original order's executionStatus so frontend doesn't show "Chờ
+        // phê duyệt cấp sợi" anymore
+        if (originalPO != null && "WAITING_MATERIAL_APPROVAL".equals(originalPO.getExecutionStatus())) {
+            originalPO.setExecutionStatus("SUPPLEMENTARY_CREATED");
+            poRepo.save(originalPO);
+        }
+
         return savedReworkPO;
     }
 
