@@ -988,6 +988,43 @@ public class ProductionService {
             syncStageStatus(next, "READY_TO_PRODUCE");
             next.setExecutionStatus("READY_TO_PRODUCE");
             stageRepo.save(next);
+
+            // AMBULANCE PRIORITY: If this is a rework order, pause ALL other stages at next
+            // stage type
+            if (isReworkStage && !"DYEING".equalsIgnoreCase(next.getStageType())) {
+                List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+                List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(
+                        next.getStageType(), statusesToPause);
+
+                for (ProductionStage other : stagesToPause) {
+                    if (!other.getId().equals(next.getId())) {
+                        // Skip if this is also a rework stage
+                        boolean otherIsRework = Boolean.TRUE.equals(other.getIsRework()) ||
+                                (other.getProductionOrder() != null && other.getProductionOrder().getPoNumber() != null
+                                        &&
+                                        other.getProductionOrder().getPoNumber().contains("-REWORK"));
+                        if (otherIsRework) {
+                            continue;
+                        }
+
+                        other.setExecutionStatus("PAUSED");
+                        other.setStatus("PAUSED");
+                        stageRepo.save(other);
+
+                        // Notify leader
+                        if (other.getAssignedLeader() != null) {
+                            notificationService.notifyUser(other.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                    "Tạm dừng - Ưu tiên lô bổ sung",
+                                    "Công đoạn " + other.getStageType() + " của lô " +
+                                            other.getProductionOrder().getPoNumber() +
+                                            " bị tạm dừng để ưu tiên lô bổ sung. Chờ lô bổ sung hoàn thành.",
+                                    "PRODUCTION_STAGE", other.getId());
+                        }
+                    }
+                }
+                System.out.println("Ambulance priority: Paused stages at " + next.getStageType() +
+                        " for rework order " + po.getPoNumber());
+            }
         } else {
             // No next stage in this order - check if this is a rework order
             // If yes, we need to activate the next stage in the ORIGINAL order
