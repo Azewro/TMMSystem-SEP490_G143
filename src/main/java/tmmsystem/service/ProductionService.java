@@ -587,11 +587,15 @@ public class ProductionService {
 
     // Leader Defect Methods
     public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(Long leaderUserId) {
-        // Get PENDING MINOR defects assigned to this leader (exclude RESOLVED,
-        // PROCESSED)
+        // Leader only sees MINOR defects AFTER Tech has processed them (sent rework
+        // request)
+        // PENDING = QA sent to Tech, Tech hasn't acted yet -> Leader should NOT see
+        // Other statuses = Tech has sent rework request -> Leader can see
         return issueRepo.findAll().stream()
                 .filter(i -> "MINOR".equals(i.getSeverity()))
-                .filter(i -> "PENDING".equals(i.getStatus())) // FIX: Only show PENDING defects
+                .filter(i -> !"PENDING".equals(i.getStatus()) && !"RESOLVED".equals(i.getStatus())) // FIX: Only show
+                                                                                                    // AFTER Tech
+                                                                                                    // processed
                 .filter(i -> {
                     ProductionStage stage = i.getProductionStage();
                     return stage != null &&
@@ -752,6 +756,9 @@ public class ProductionService {
 
             if (issue.getProductionStage().getAssignedLeader() != null) {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
+                dto.setLeaderName(issue.getProductionStage().getAssignedLeader().getFullName() != null
+                        ? issue.getProductionStage().getAssignedLeader().getFullName()
+                        : issue.getProductionStage().getAssignedLeader().getName());
             }
         }
 

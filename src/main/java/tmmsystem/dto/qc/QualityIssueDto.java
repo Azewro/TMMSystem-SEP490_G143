@@ -237,4 +237,15 @@ public class QualityIssueDto {
     public void setAttemptLabel(String attemptLabel) {
         this.attemptLabel = attemptLabel;
     }
+
+    // Leader assigned to the stage
+    private String leaderName;
+
+    public String getLeaderName() {
+        return leaderName;
+    }
+
+    public void setLeaderName(String leaderName) {
+        this.leaderName = leaderName;
+    }
 }
