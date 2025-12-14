@@ -1131,6 +1131,15 @@ public class ProductionService {
 
         if (s.getStartAt() == null)
             s.setStartAt(Instant.now());
+
+        // FIX: Reset progress when starting/restarting a stage
+        // This handles restart from PAUSED state or re-running a completed stage
+        if (s.getProgressPercent() != null && s.getProgressPercent() >= 100) {
+            s.setProgressPercent(0);
+            s.setStartAt(Instant.now()); // Also reset start time for new run
+            s.setCompleteAt(null); // Clear completion time
+        }
+
         syncStageStatus(s, "IN_PROGRESS");
         stageRepo.save(s);
 
