@@ -756,9 +756,7 @@ public class ProductionService {
 
             if (issue.getProductionStage().getAssignedLeader() != null) {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
-                dto.setLeaderName(issue.getProductionStage().getAssignedLeader().getFullName() != null
-                        ? issue.getProductionStage().getAssignedLeader().getFullName()
-                        : issue.getProductionStage().getAssignedLeader().getName());
+                dto.setLeaderName(issue.getProductionStage().getAssignedLeader().getName());
             }
         }
 
