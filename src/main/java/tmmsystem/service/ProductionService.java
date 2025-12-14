@@ -928,6 +928,50 @@ public class ProductionService {
         syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
 
+        // NEW: Resume paused stages when rework stage completes
+        // When a rework stage passes QC, resume all PAUSED stages of the same type
+        boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
+                    "PAUSED");
+
+            // Resume the oldest paused stage (by createdAt) to READY_TO_PRODUCE
+            ProductionStage toResume = pausedStages.stream()
+                    .filter(ps -> !ps.getId().equals(s.getId()))
+                    .min((a, b) -> {
+                        Instant aCreated = a.getCreatedAt() != null ? a.getCreatedAt() : Instant.MAX;
+                        Instant bCreated = b.getCreatedAt() != null ? b.getCreatedAt() : Instant.MAX;
+                        return aCreated.compareTo(bCreated);
+                    })
+                    .orElse(null);
+
+            if (toResume != null) {
+                toResume.setExecutionStatus("READY_TO_PRODUCE");
+                toResume.setStatus("READY_TO_PRODUCE");
+                stageRepo.save(toResume);
+
+                // Notify leader that they can resume
+                if (toResume.getAssignedLeader() != null) {
+                    notificationService.notifyUser(toResume.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Có thể tiếp tục sản xuất",
+                            "Lô bổ sung đã hoàn thành công đoạn " + s.getStageType() +
+                                    ". Lô " + toResume.getProductionOrder().getPoNumber() +
+                                    " có thể tiếp tục sản xuất.",
+                            "PRODUCTION_STAGE", toResume.getId());
+                }
+
+                System.out.println("Resumed stage " + toResume.getId() + " for order " +
+                        toResume.getProductionOrder().getPoNumber() + " after rework completion at "
+                        + s.getStageType());
+            }
+
+            // Other paused stages remain PAUSED (will be promoted via
+            // promoteNextOrderForStageType)
+        }
+
         // Determine next stage in same ProductionOrder (NEW: không qua WorkOrderDetail)
         ProductionOrder po = s.getProductionOrder();
         if (po == null) {
@@ -1112,6 +1156,31 @@ public class ProductionService {
             }
         }
 
+        // NEW: Block normal orders if a rework order is active at this stage type
+        boolean thisIsRework = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (!thisIsRework && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            // Check if any rework order is currently IN_PROGRESS at this stage type
+            List<ProductionStage> reworkStagesInProgress = stageRepo.findByStageTypeAndExecutionStatus(
+                    s.getStageType(), "IN_PROGRESS");
+            for (ProductionStage reworkStage : reworkStagesInProgress) {
+                boolean isRework = Boolean.TRUE.equals(reworkStage.getIsRework()) ||
+                        (reworkStage.getProductionOrder() != null &&
+                                reworkStage.getProductionOrder().getPoNumber() != null &&
+                                reworkStage.getProductionOrder().getPoNumber().contains("-REWORK"));
+                if (isRework) {
+                    String reworkPO = reworkStage.getProductionOrder() != null
+                            ? reworkStage.getProductionOrder().getPoNumber()
+                            : "lô bổ sung";
+                    throw new RuntimeException("Công đoạn " + s.getStageType() +
+                            " đang ưu tiên cho lô bổ sung " + reworkPO +
+                            ". Vui lòng chờ lô bổ sung hoàn thành công đoạn này.");
+                }
+            }
+        }
+
         // Enforce single-lot rule per stage type (except outsourced dyeing)
         // Only block if there's a stage truly IN production (not WAITING/PENDING)
         boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
@@ -1186,37 +1255,58 @@ public class ProductionService {
             machineAssignmentRepository.save(ma);
         }
 
-        // NEW: Rework Preemption Logic
-        // If this is a Rework Stage, PAUSE all other IN_PROGRESS stages of the same
-        // type (except DYEING)
-        if (Boolean.TRUE.equals(s.getIsRework()) && !"DYEING".equalsIgnoreCase(s.getStageType())) {
-            List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
-                    "IN_PROGRESS");
-            for (ProductionStage active : activeStages) {
-                if (!active.getId().equals(s.getId())) {
-                    active.setExecutionStatus("PAUSED");
-                    active.setStatus("PAUSED"); // Sync status
-                    stageRepo.save(active);
+        // NEW: Full Rework Preemption Logic
+        // If this is a Rework Stage, PAUSE ALL other stages of the same type (except
+        // DYEING)
+        // This includes IN_PROGRESS, WAITING, and READY_TO_PRODUCE stages
+        boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            // Pause ALL stages of same type that are not this rework stage
+            List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+            List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(s.getStageType(),
+                    statusesToPause);
+
+            for (ProductionStage other : stagesToPause) {
+                if (!other.getId().equals(s.getId())) {
+                    // Skip if this is also a rework stage (don't pause other rework orders)
+                    boolean otherIsRework = Boolean.TRUE.equals(other.getIsRework()) ||
+                            (other.getProductionOrder() != null && other.getProductionOrder().getPoNumber() != null &&
+                                    other.getProductionOrder().getPoNumber().contains("-REWORK"));
+                    if (otherIsRework) {
+                        continue; // Don't pause other rework orders
+                    }
+
+                    other.setExecutionStatus("PAUSED");
+                    other.setStatus("PAUSED");
+                    stageRepo.save(other);
 
                     // Log tracking
                     StageTracking pauseTr = new StageTracking();
-                    pauseTr.setProductionStage(active);
+                    pauseTr.setProductionStage(other);
                     pauseTr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
-                    pauseTr.setAction("PAUSED_BY_PRIORITY");
-                    pauseTr.setNotes("Tạm dừng do ưu tiên đơn hàng bù: " + s.getProductionOrder().getPoNumber());
+                    pauseTr.setAction("PAUSED_BY_REWORK_PRIORITY");
+                    pauseTr.setNotes(
+                            "Tạm dừng do ưu tiên lô sản xuất bổ sung: " + s.getProductionOrder().getPoNumber());
                     stageTrackingRepository.save(pauseTr);
 
                     // Notify Leader of paused stage
-                    if (active.getAssignedLeader() != null) {
-                        notificationService.notifyUser(active.getAssignedLeader(), "PRODUCTION", "WARNING",
-                                "Tạm dừng sản xuất",
-                                "Công đoạn " + active.getStageType() + " của đơn "
-                                        + active.getProductionOrder().getPoNumber() +
-                                        " bị tạm dừng để ưu tiên đơn hàng bù " + s.getProductionOrder().getPoNumber(),
-                                "PRODUCTION_STAGE", active.getId());
+                    if (other.getAssignedLeader() != null) {
+                        notificationService.notifyUser(other.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                "Tạm dừng sản xuất - Ưu tiên lô bổ sung",
+                                "Công đoạn " + other.getStageType() + " của lô "
+                                        + other.getProductionOrder().getPoNumber() +
+                                        " bị tạm dừng để ưu tiên lô bổ sung " + s.getProductionOrder().getPoNumber() +
+                                        ". Vui lòng chờ lô bổ sung hoàn thành công đoạn này.",
+                                "PRODUCTION_STAGE", other.getId());
                     }
                 }
             }
+
+            System.out.println("Rework preemption: Paused " + (stagesToPause.size() - 1) + " stages for rework order "
+                    + s.getProductionOrder().getPoNumber() + " at stage " + s.getStageType());
         }
 
         // NEW: Trigger event-driven stage promotion for other stage types
@@ -1566,49 +1656,97 @@ public class ProductionService {
         // Fixed max: 3 lots in WARPING pipeline at any time
         final long MAX_WARPING_QUEUE = 3;
 
-        if (activeWarpingCount >= MAX_WARPING_QUEUE) {
-            // Build detailed message with lot codes
-            List<ProductionStage> activeWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
-                    activeStatuses);
-            StringBuilder occupyingLots = new StringBuilder();
-            StringBuilder waitingLots = new StringBuilder();
+        // REWORK ORDERS GET PRIORITY - bypass queue limit and preempt if needed
+        boolean isReworkOrder = po.getPoNumber() != null && po.getPoNumber().contains("-REWORK");
 
-            for (ProductionStage stage : activeWarpingStages) {
-                String lotCode = "N/A";
-                if (stage.getProductionOrder() != null) {
-                    lotCode = stage.getProductionOrder().getPoNumber();
-                    // Try to get lotCode from plan
-                    String planCode = extractPlanCodeFromNotes(stage.getProductionOrder().getNotes());
-                    if (planCode != null) {
-                        ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
-                        if (plan != null && plan.getLot() != null) {
-                            lotCode = plan.getLot().getLotCode();
+        if (activeWarpingCount >= MAX_WARPING_QUEUE) {
+            if (isReworkOrder) {
+                // Rework order: preempt the oldest WAITING normal order to make room
+                List<ProductionStage> waitingWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
+                        List.of("WAITING"));
+                // Find oldest non-rework order to preempt
+                ProductionStage toPreempt = waitingWarpingStages.stream()
+                        .filter(s -> s.getProductionOrder() != null &&
+                                (s.getProductionOrder().getPoNumber() == null ||
+                                        !s.getProductionOrder().getPoNumber().contains("-REWORK")))
+                        .min((a, b) -> {
+                            Instant aCreated = a.getCreatedAt() != null ? a.getCreatedAt() : Instant.MAX;
+                            Instant bCreated = b.getCreatedAt() != null ? b.getCreatedAt() : Instant.MAX;
+                            return aCreated.compareTo(bCreated);
+                        })
+                        .orElse(null);
+
+                if (toPreempt != null) {
+                    // Pause this normal order to make room for rework
+                    toPreempt.setExecutionStatus("PENDING");
+                    toPreempt.setStatus("PENDING");
+                    stageRepo.save(toPreempt);
+
+                    // Also update the production order status
+                    ProductionOrder preemptedPO = toPreempt.getProductionOrder();
+                    if (preemptedPO != null) {
+                        preemptedPO.setExecutionStatus("WAITING_PRODUCTION");
+                        poRepo.save(preemptedPO);
+
+                        // Notify the leader
+                        if (toPreempt.getAssignedLeader() != null) {
+                            notificationService.notifyUser(toPreempt.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                    "Lô bị tạm dừng",
+                                    "Lô " + preemptedPO.getPoNumber()
+                                            + " đã bị tạm dừng để ưu tiên lô bổ sung (sửa lỗi).",
+                                    "PRODUCTION_ORDER", preemptedPO.getId());
                         }
+                    }
+                    System.out
+                            .println("Preempted normal order " + (preemptedPO != null ? preemptedPO.getPoNumber() : "?")
+                                    + " to make room for rework order " + po.getPoNumber());
+                }
+                // Continue with starting the rework order even if preemption failed
+            } else {
+                // Normal order: block if queue is full
+                // Build detailed message with lot codes
+                List<ProductionStage> activeWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
+                        activeStatuses);
+                StringBuilder occupyingLots = new StringBuilder();
+                StringBuilder waitingLots = new StringBuilder();
+
+                for (ProductionStage stage : activeWarpingStages) {
+                    String lotCode = "N/A";
+                    if (stage.getProductionOrder() != null) {
+                        lotCode = stage.getProductionOrder().getPoNumber();
+                        // Try to get lotCode from plan
+                        String planCode = extractPlanCodeFromNotes(stage.getProductionOrder().getNotes());
+                        if (planCode != null) {
+                            ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                            if (plan != null && plan.getLot() != null) {
+                                lotCode = plan.getLot().getLotCode();
+                            }
+                        }
+                    }
+
+                    if ("IN_PROGRESS".equals(stage.getExecutionStatus())) {
+                        if (occupyingLots.length() > 0)
+                            occupyingLots.append(", ");
+                        occupyingLots.append(lotCode);
+                    } else {
+                        if (waitingLots.length() > 0)
+                            waitingLots.append(", ");
+                        waitingLots.append(lotCode);
                     }
                 }
 
-                if ("IN_PROGRESS".equals(stage.getExecutionStatus())) {
-                    if (occupyingLots.length() > 0)
-                        occupyingLots.append(", ");
-                    occupyingLots.append(lotCode);
-                } else {
-                    if (waitingLots.length() > 0)
-                        waitingLots.append(", ");
-                    waitingLots.append(lotCode);
+                String message = "Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
+                        + activeWarpingCount + "/" + MAX_WARPING_QUEUE + ").";
+                if (occupyingLots.length() > 0) {
+                    message += " Đang chiếm dụng: " + occupyingLots + ".";
                 }
-            }
+                if (waitingLots.length() > 0) {
+                    message += " Đang chờ: " + waitingLots + ".";
+                }
+                message += " Vui lòng đợi lô trước hoàn thành.";
 
-            String message = "Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
-                    + activeWarpingCount + "/" + MAX_WARPING_QUEUE + ").";
-            if (occupyingLots.length() > 0) {
-                message += " Đang chiếm dụng: " + occupyingLots + ".";
+                throw new RuntimeException(message);
             }
-            if (waitingLots.length() > 0) {
-                message += " Đang chờ: " + waitingLots + ".";
-            }
-            message += " Vui lòng đợi lô trước hoàn thành.";
-
-            throw new RuntimeException(message);
         }
 
         // 2. Update Order Status - mark as in production queue
