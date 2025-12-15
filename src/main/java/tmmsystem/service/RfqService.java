@@ -183,6 +183,7 @@ public class RfqService {
         Rfq savedRfq = rfqRepository.save(rfq);
         if (details != null && !details.isEmpty()) {
             for (RfqDetailDto detailDto : details) {
+                validateQuantity(detailDto.getQuantity());
                 RfqDetail detail = new RfqDetail();
                 detail.setRfq(savedRfq);
                 if (detailDto.getProductId() != null) {
@@ -205,6 +206,21 @@ public class RfqService {
     public Rfq createFromLoggedIn(RfqCreateDto dto) {
         if (dto.getCustomerId() == null)
             throw new IllegalArgumentException("customerId is required");
+
+        // Validate: if customer provides different phone/email, it must not belong to
+        // another customer
+        String normEmail = normalizeEmail(dto.getContactEmail());
+        String normPhone = normalizePhone(dto.getContactPhone());
+
+        if (normEmail != null && customerRepository.existsByEmailAndIdNot(normEmail, dto.getCustomerId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email này đã được sử dụng bởi tài khoản khác. Vui lòng sử dụng email của bạn.");
+        }
+        if (normPhone != null && customerRepository.existsByPhoneNumberAndIdNot(normPhone, dto.getCustomerId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số điện thoại này đã được sử dụng bởi tài khoản khác. Vui lòng sử dụng số điện thoại của bạn.");
+        }
+
         Rfq rfq = new Rfq();
         rfq.setRfqNumber(dto.getRfqNumber());
         Customer c = new Customer();
@@ -309,13 +325,20 @@ public class RfqService {
 
         String effectiveMethod = validateAndDetermineMethod(dto.getContactMethod(), normEmail, normPhone);
 
+        // FOR GUEST USERS: Do not allow using email or phone that already exists in
+        // system
+        // They must either login with their account or use different contact info
+        if (normEmail != null && customerRepository.existsByEmail(normEmail)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email này đã được đăng ký trong hệ thống. Vui lòng đăng nhập hoặc sử dụng email khác.");
+        }
+        if (normPhone != null && customerRepository.existsByPhoneNumber(normPhone)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số điện thoại này đã được đăng ký trong hệ thống. Vui lòng đăng nhập hoặc sử dụng số điện thoại khác.");
+        }
+
+        // Create new customer for guest
         Customer customer = null;
-        if (normEmail != null) {
-            customer = customerRepository.findByEmail(normEmail).orElse(null);
-        }
-        if (customer == null && normPhone != null) {
-            customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
-        }
 
         if (customer == null) {
             Customer newCustomer = new Customer();
@@ -404,11 +427,19 @@ public class RfqService {
         String email = normalizeEmail(req.getContactEmail());
         String phone = normalizePhone(req.getContactPhone());
         String method = validateAndDetermineMethod(req.getContactMethod(), email, phone);
-        Customer customer = null;
-        if (email != null)
-            customer = customerRepository.findByEmail(email).orElse(null);
-        if (customer == null && phone != null)
-            customer = customerRepository.findByPhoneNumber(phone).orElse(null);
+
+        // Validate: email and phone must not belong to different customers
+        Customer customerByEmail = email != null ? customerRepository.findByEmail(email).orElse(null) : null;
+        Customer customerByPhone = phone != null ? customerRepository.findByPhoneNumber(phone).orElse(null) : null;
+
+        if (customerByEmail != null && customerByPhone != null
+                && !customerByEmail.getId().equals(customerByPhone.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email và số điện thoại thuộc về hai tài khoản khách hàng khác nhau. Vui lòng kiểm tra lại thông tin.");
+        }
+
+        // Use existing customer if found, or create new
+        Customer customer = customerByEmail != null ? customerByEmail : customerByPhone;
         if (customer == null) {
             customer = new Customer();
             String prefix = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
@@ -493,6 +524,20 @@ public class RfqService {
         return p;
     }
 
+    // Validate quantity - max 99,999,999 (8 digits for precision 10, scale 2)
+    private static final java.math.BigDecimal MAX_QUANTITY = new java.math.BigDecimal("99999999");
+
+    private void validateQuantity(java.math.BigDecimal quantity) {
+        if (quantity != null && quantity.compareTo(MAX_QUANTITY) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số lượng sản phẩm không được vượt quá 99,999,999. Vui lòng kiểm tra lại.");
+        }
+        if (quantity != null && quantity.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số lượng sản phẩm phải lớn hơn 0.");
+        }
+    }
+
     @Transactional
     public Rfq update(Long id, Rfq updated) {
         Rfq existing = rfqRepository.findById(id).orElseThrow();
@@ -538,11 +583,25 @@ public class RfqService {
             }
             if (dto.getContactEmail() != null) {
                 String normEmail = normalizeEmail(dto.getContactEmail());
+                // Check for duplicate email
+                if (normEmail != null && !normEmail.equals(cust.getEmail())) {
+                    if (customerRepository.existsByEmailAndIdNot(normEmail, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Email đã được sử dụng bởi khách hàng khác: " + normEmail);
+                    }
+                }
                 cust.setEmail(normEmail);
                 rfq.setContactEmailSnapshot(normEmail);
             }
             if (dto.getContactPhone() != null) {
                 String normPhone = normalizePhone(dto.getContactPhone());
+                // Check for duplicate phone number
+                if (normPhone != null && !normPhone.equals(cust.getPhoneNumber())) {
+                    if (customerRepository.existsByPhoneNumberAndIdNot(normPhone, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Số điện thoại đã được sử dụng bởi khách hàng khác: " + normPhone);
+                    }
+                }
                 cust.setPhoneNumber(normPhone);
                 rfq.setContactPhoneSnapshot(normPhone);
             }
@@ -560,6 +619,7 @@ public class RfqService {
         if (dto.getDetails() != null) {
             detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
             for (tmmsystem.dto.sales.RfqDetailDto detailDto : dto.getDetails()) {
+                validateQuantity(detailDto.getQuantity());
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
                 if (detailDto.getProductId() != null) {
@@ -597,6 +657,7 @@ public class RfqService {
         if (isImmutableStatus(rfq.getStatus())) {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
+        validateQuantity(dto.getQuantity());
         RfqDetail detail = new RfqDetail();
         detail.setRfq(rfq);
         if (dto.getProductId() != null) {
@@ -619,6 +680,7 @@ public class RfqService {
         if (isImmutableStatus(rfq.getStatus())) {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
+        validateQuantity(dto.getQuantity());
         if (dto.getProductId() != null) {
             Product product = productRepository.findById(dto.getProductId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -716,7 +778,11 @@ public class RfqService {
     public Rfq cancelRfq(Long id) {
         Rfq rfq = rfqRepository.findById(id).orElseThrow();
         if ("CANCELED".equals(rfq.getStatus())) {
-            throw new IllegalStateException("RFQ is already canceled");
+            throw new IllegalStateException("Yêu cầu báo giá này đã bị hủy.");
+        }
+        // Only allow canceling when status is DRAFT or SENT (Chờ xác nhận)
+        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ có thể hủy yêu cầu báo giá khi đang ở trạng thái 'Chờ xác nhận'.");
         }
         rfq.setStatus("CANCELED");
         Rfq savedRfq = rfqRepository.save(rfq);
@@ -975,10 +1041,28 @@ public class RfqService {
             Customer cust = rfq.getCustomer();
             if (req.getContactPerson() != null)
                 cust.setContactPerson(req.getContactPerson());
-            if (req.getContactEmail() != null)
-                cust.setEmail(normalizeEmail(req.getContactEmail()));
-            if (req.getContactPhone() != null)
-                cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
+            if (req.getContactEmail() != null) {
+                String normEmail = normalizeEmail(req.getContactEmail());
+                // Check for duplicate email
+                if (normEmail != null && !normEmail.equals(cust.getEmail())) {
+                    if (customerRepository.existsByEmailAndIdNot(normEmail, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Email đã được sử dụng bởi khách hàng khác: " + normEmail);
+                    }
+                }
+                cust.setEmail(normEmail);
+            }
+            if (req.getContactPhone() != null) {
+                String normPhone = normalizePhone(req.getContactPhone());
+                // Check for duplicate phone number
+                if (normPhone != null && !normPhone.equals(cust.getPhoneNumber())) {
+                    if (customerRepository.existsByPhoneNumberAndIdNot(normPhone, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Số điện thoại đã được sử dụng bởi khách hàng khác: " + normPhone);
+                    }
+                }
+                cust.setPhoneNumber(normPhone);
+            }
             if (req.getContactAddress() != null)
                 cust.setAddress(req.getContactAddress());
             customerRepository.save(cust);
@@ -1005,6 +1089,7 @@ public class RfqService {
         if (req.getDetails() != null) {
             detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
             for (RfqDetailDto d : req.getDetails()) {
+                validateQuantity(d.getQuantity());
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
                 if (d.getProductId() != null) {

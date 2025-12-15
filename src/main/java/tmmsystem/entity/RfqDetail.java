@@ -1,14 +1,18 @@
 package tmmsystem.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter; import lombok.Setter;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
-@Entity @Table(name = "rfq_detail")
-@Getter @Setter
+@Entity
+@Table(name = "rfq_detail")
+@Getter
+@Setter
 public class RfqDetail {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -31,5 +35,3 @@ public class RfqDetail {
     @Column(columnDefinition = "text")
     private String notes;
 }
-
-

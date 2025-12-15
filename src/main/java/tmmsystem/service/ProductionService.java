@@ -753,6 +753,7 @@ public class ProductionService {
 
             if (issue.getProductionStage().getAssignedLeader() != null) {
                 dto.setReportedBy(issue.getProductionStage().getAssignedLeader().getName());
+                dto.setLeaderName(issue.getProductionStage().getAssignedLeader().getName());
             }
         }
 
@@ -929,6 +930,50 @@ public class ProductionService {
         syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
 
+        // NEW: Resume paused stages when rework stage completes
+        // When a rework stage passes QC, resume all PAUSED stages of the same type
+        boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
+                    "PAUSED");
+
+            // Resume the oldest paused stage (by createdAt) to READY_TO_PRODUCE
+            ProductionStage toResume = pausedStages.stream()
+                    .filter(ps -> !ps.getId().equals(s.getId()))
+                    .min((a, b) -> {
+                        Instant aCreated = a.getCreatedAt() != null ? a.getCreatedAt() : Instant.MAX;
+                        Instant bCreated = b.getCreatedAt() != null ? b.getCreatedAt() : Instant.MAX;
+                        return aCreated.compareTo(bCreated);
+                    })
+                    .orElse(null);
+
+            if (toResume != null) {
+                toResume.setExecutionStatus("READY_TO_PRODUCE");
+                toResume.setStatus("READY_TO_PRODUCE");
+                stageRepo.save(toResume);
+
+                // Notify leader that they can resume
+                if (toResume.getAssignedLeader() != null) {
+                    notificationService.notifyUser(toResume.getAssignedLeader(), "PRODUCTION", "SUCCESS",
+                            "Có thể tiếp tục sản xuất",
+                            "Lô bổ sung đã hoàn thành công đoạn " + s.getStageType() +
+                                    ". Lô " + toResume.getProductionOrder().getPoNumber() +
+                                    " có thể tiếp tục sản xuất.",
+                            "PRODUCTION_STAGE", toResume.getId());
+                }
+
+                System.out.println("Resumed stage " + toResume.getId() + " for order " +
+                        toResume.getProductionOrder().getPoNumber() + " after rework completion at "
+                        + s.getStageType());
+            }
+
+            // Other paused stages remain PAUSED (will be promoted via
+            // promoteNextOrderForStageType)
+        }
+
         // Determine next stage in same ProductionOrder (NEW: không qua WorkOrderDetail)
         ProductionOrder po = s.getProductionOrder();
         if (po == null) {
@@ -945,6 +990,43 @@ public class ProductionService {
             syncStageStatus(next, "READY_TO_PRODUCE");
             next.setExecutionStatus("READY_TO_PRODUCE");
             stageRepo.save(next);
+
+            // AMBULANCE PRIORITY: If this is a rework order, pause ALL other stages at next
+            // stage type
+            if (isReworkStage && !"DYEING".equalsIgnoreCase(next.getStageType())) {
+                List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+                List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(
+                        next.getStageType(), statusesToPause);
+
+                for (ProductionStage other : stagesToPause) {
+                    if (!other.getId().equals(next.getId())) {
+                        // Skip if this is also a rework stage
+                        boolean otherIsRework = Boolean.TRUE.equals(other.getIsRework()) ||
+                                (other.getProductionOrder() != null && other.getProductionOrder().getPoNumber() != null
+                                        &&
+                                        other.getProductionOrder().getPoNumber().contains("-REWORK"));
+                        if (otherIsRework) {
+                            continue;
+                        }
+
+                        other.setExecutionStatus("PAUSED");
+                        other.setStatus("PAUSED");
+                        stageRepo.save(other);
+
+                        // Notify leader
+                        if (other.getAssignedLeader() != null) {
+                            notificationService.notifyUser(other.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                    "Tạm dừng - Ưu tiên lô bổ sung",
+                                    "Công đoạn " + other.getStageType() + " của lô " +
+                                            other.getProductionOrder().getPoNumber() +
+                                            " bị tạm dừng để ưu tiên lô bổ sung. Chờ lô bổ sung hoàn thành.",
+                                    "PRODUCTION_STAGE", other.getId());
+                        }
+                    }
+                }
+                System.out.println("Ambulance priority: Paused stages at " + next.getStageType() +
+                        " for rework order " + po.getPoNumber());
+            }
         } else {
             // No next stage in this order - check if this is a rework order
             // If yes, we need to activate the next stage in the ORIGINAL order
@@ -985,18 +1067,12 @@ public class ProductionService {
                                                 + " của lô chính sẵn sàng tiếp tục.",
                                         "PRODUCTION_STAGE", originalNext.getId());
                             }
-
-                            System.out.println("[REWORK MERGE] Activated stage " + originalNext.getStageType() +
-                                    " (id=" + originalNext.getId() + ") in original order " + originalPO.getPoNumber());
                         }
 
                         // Mark rework order as completed
                         po.setStatus("ORDER_COMPLETED");
                         po.setExecutionStatus("IN_SUPPLEMENTARY"); // Keep as supplementary completed
                         poRepo.save(po);
-
-                        System.out.println("[REWORK COMPLETE] Rework order " + po.getPoNumber()
-                                + " completed, merged back to " + originalPO.getPoNumber());
                     }
                 }
             }
@@ -1119,6 +1195,31 @@ public class ProductionService {
             }
         }
 
+        // NEW: Block normal orders if a rework order is active at this stage type
+        boolean thisIsRework = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (!thisIsRework && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            // Check if any rework order is currently IN_PROGRESS at this stage type
+            List<ProductionStage> reworkStagesInProgress = stageRepo.findByStageTypeAndExecutionStatus(
+                    s.getStageType(), "IN_PROGRESS");
+            for (ProductionStage reworkStage : reworkStagesInProgress) {
+                boolean isRework = Boolean.TRUE.equals(reworkStage.getIsRework()) ||
+                        (reworkStage.getProductionOrder() != null &&
+                                reworkStage.getProductionOrder().getPoNumber() != null &&
+                                reworkStage.getProductionOrder().getPoNumber().contains("-REWORK"));
+                if (isRework) {
+                    String reworkPO = reworkStage.getProductionOrder() != null
+                            ? reworkStage.getProductionOrder().getPoNumber()
+                            : "lô bổ sung";
+                    throw new RuntimeException("Công đoạn " + s.getStageType() +
+                            " đang ưu tiên cho lô bổ sung " + reworkPO +
+                            ". Vui lòng chờ lô bổ sung hoàn thành công đoạn này.");
+                }
+            }
+        }
+
         // Enforce single-lot rule per stage type (except outsourced dyeing)
         // Only block if there's a stage truly IN production (not WAITING/PENDING)
         boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
@@ -1202,37 +1303,58 @@ public class ProductionService {
             machineAssignmentRepository.save(ma);
         }
 
-        // NEW: Rework Preemption Logic
-        // If this is a Rework Stage, PAUSE all other IN_PROGRESS stages of the same
-        // type (except DYEING)
-        if (Boolean.TRUE.equals(s.getIsRework()) && !"DYEING".equalsIgnoreCase(s.getStageType())) {
-            List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
-                    "IN_PROGRESS");
-            for (ProductionStage active : activeStages) {
-                if (!active.getId().equals(s.getId())) {
-                    active.setExecutionStatus("PAUSED");
-                    active.setStatus("PAUSED"); // Sync status
-                    stageRepo.save(active);
+        // NEW: Full Rework Preemption Logic
+        // If this is a Rework Stage, PAUSE ALL other stages of the same type (except
+        // DYEING)
+        // This includes IN_PROGRESS, WAITING, and READY_TO_PRODUCE stages
+        boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
+                (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
+                        s.getProductionOrder().getPoNumber().contains("-REWORK"));
+
+        if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
+            // Pause ALL stages of same type that are not this rework stage
+            List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+            List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(s.getStageType(),
+                    statusesToPause);
+
+            for (ProductionStage other : stagesToPause) {
+                if (!other.getId().equals(s.getId())) {
+                    // Skip if this is also a rework stage (don't pause other rework orders)
+                    boolean otherIsRework = Boolean.TRUE.equals(other.getIsRework()) ||
+                            (other.getProductionOrder() != null && other.getProductionOrder().getPoNumber() != null &&
+                                    other.getProductionOrder().getPoNumber().contains("-REWORK"));
+                    if (otherIsRework) {
+                        continue; // Don't pause other rework orders
+                    }
+
+                    other.setExecutionStatus("PAUSED");
+                    other.setStatus("PAUSED");
+                    stageRepo.save(other);
 
                     // Log tracking
                     StageTracking pauseTr = new StageTracking();
-                    pauseTr.setProductionStage(active);
+                    pauseTr.setProductionStage(other);
                     pauseTr.setOperator(userRepository.findById(leaderUserId).orElseThrow());
-                    pauseTr.setAction("PAUSED_BY_PRIORITY");
-                    pauseTr.setNotes("Tạm dừng do ưu tiên đơn hàng bù: " + s.getProductionOrder().getPoNumber());
+                    pauseTr.setAction("PAUSED_BY_REWORK_PRIORITY");
+                    pauseTr.setNotes(
+                            "Tạm dừng do ưu tiên lô sản xuất bổ sung: " + s.getProductionOrder().getPoNumber());
                     stageTrackingRepository.save(pauseTr);
 
                     // Notify Leader of paused stage
-                    if (active.getAssignedLeader() != null) {
-                        notificationService.notifyUser(active.getAssignedLeader(), "PRODUCTION", "WARNING",
-                                "Tạm dừng sản xuất",
-                                "Công đoạn " + active.getStageType() + " của đơn "
-                                        + active.getProductionOrder().getPoNumber() +
-                                        " bị tạm dừng để ưu tiên đơn hàng bù " + s.getProductionOrder().getPoNumber(),
-                                "PRODUCTION_STAGE", active.getId());
+                    if (other.getAssignedLeader() != null) {
+                        notificationService.notifyUser(other.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                "Tạm dừng sản xuất - Ưu tiên lô bổ sung",
+                                "Công đoạn " + other.getStageType() + " của lô "
+                                        + other.getProductionOrder().getPoNumber() +
+                                        " bị tạm dừng để ưu tiên lô bổ sung " + s.getProductionOrder().getPoNumber() +
+                                        ". Vui lòng chờ lô bổ sung hoàn thành công đoạn này.",
+                                "PRODUCTION_STAGE", other.getId());
                     }
                 }
             }
+
+            System.out.println("Rework preemption: Paused " + (stagesToPause.size() - 1) + " stages for rework order "
+                    + s.getProductionOrder().getPoNumber() + " at stage " + s.getStageType());
         }
 
         // NEW: Trigger event-driven stage promotion for other stage types
@@ -1582,9 +1704,97 @@ public class ProductionService {
         // Fixed max: 3 lots in WARPING pipeline at any time
         final long MAX_WARPING_QUEUE = 3;
 
+        // REWORK ORDERS GET PRIORITY - bypass queue limit and preempt if needed
+        boolean isReworkOrder = po.getPoNumber() != null && po.getPoNumber().contains("-REWORK");
+
         if (activeWarpingCount >= MAX_WARPING_QUEUE) {
-            throw new RuntimeException("Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
-                    + activeWarpingCount + "/" + MAX_WARPING_QUEUE + "). Vui lòng đợi lô trước hoàn thành.");
+            if (isReworkOrder) {
+                // Rework order: preempt the oldest WAITING normal order to make room
+                List<ProductionStage> waitingWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
+                        List.of("WAITING"));
+                // Find oldest non-rework order to preempt
+                ProductionStage toPreempt = waitingWarpingStages.stream()
+                        .filter(s -> s.getProductionOrder() != null &&
+                                (s.getProductionOrder().getPoNumber() == null ||
+                                        !s.getProductionOrder().getPoNumber().contains("-REWORK")))
+                        .min((a, b) -> {
+                            Instant aCreated = a.getCreatedAt() != null ? a.getCreatedAt() : Instant.MAX;
+                            Instant bCreated = b.getCreatedAt() != null ? b.getCreatedAt() : Instant.MAX;
+                            return aCreated.compareTo(bCreated);
+                        })
+                        .orElse(null);
+
+                if (toPreempt != null) {
+                    // Pause this normal order to make room for rework
+                    toPreempt.setExecutionStatus("PENDING");
+                    toPreempt.setStatus("PENDING");
+                    stageRepo.save(toPreempt);
+
+                    // Also update the production order status
+                    ProductionOrder preemptedPO = toPreempt.getProductionOrder();
+                    if (preemptedPO != null) {
+                        preemptedPO.setExecutionStatus("WAITING_PRODUCTION");
+                        poRepo.save(preemptedPO);
+
+                        // Notify the leader
+                        if (toPreempt.getAssignedLeader() != null) {
+                            notificationService.notifyUser(toPreempt.getAssignedLeader(), "PRODUCTION", "WARNING",
+                                    "Lô bị tạm dừng",
+                                    "Lô " + preemptedPO.getPoNumber()
+                                            + " đã bị tạm dừng để ưu tiên lô bổ sung (sửa lỗi).",
+                                    "PRODUCTION_ORDER", preemptedPO.getId());
+                        }
+                    }
+                    System.out
+                            .println("Preempted normal order " + (preemptedPO != null ? preemptedPO.getPoNumber() : "?")
+                                    + " to make room for rework order " + po.getPoNumber());
+                }
+                // Continue with starting the rework order even if preemption failed
+            } else {
+                // Normal order: block if queue is full
+                // Build detailed message with lot codes
+                List<ProductionStage> activeWarpingStages = stageRepo.findByStageTypeAndExecutionStatusIn("WARPING",
+                        activeStatuses);
+                StringBuilder occupyingLots = new StringBuilder();
+                StringBuilder waitingLots = new StringBuilder();
+
+                for (ProductionStage stage : activeWarpingStages) {
+                    String lotCode = "N/A";
+                    if (stage.getProductionOrder() != null) {
+                        lotCode = stage.getProductionOrder().getPoNumber();
+                        // Try to get lotCode from plan
+                        String planCode = extractPlanCodeFromNotes(stage.getProductionOrder().getNotes());
+                        if (planCode != null) {
+                            ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                            if (plan != null && plan.getLot() != null) {
+                                lotCode = plan.getLot().getLotCode();
+                            }
+                        }
+                    }
+
+                    if ("IN_PROGRESS".equals(stage.getExecutionStatus())) {
+                        if (occupyingLots.length() > 0)
+                            occupyingLots.append(", ");
+                        occupyingLots.append(lotCode);
+                    } else {
+                        if (waitingLots.length() > 0)
+                            waitingLots.append(", ");
+                        waitingLots.append(lotCode);
+                    }
+                }
+
+                String message = "Không thể bắt đầu lệnh. Hàng chờ Cuồng mắc đã đầy ("
+                        + activeWarpingCount + "/" + MAX_WARPING_QUEUE + ").";
+                if (occupyingLots.length() > 0) {
+                    message += " Đang chiếm dụng: " + occupyingLots + ".";
+                }
+                if (waitingLots.length() > 0) {
+                    message += " Đang chờ: " + waitingLots + ".";
+                }
+                message += " Vui lòng đợi lô trước hoàn thành.";
+
+                throw new RuntimeException(message);
+            }
         }
 
         // 2. Update Order Status - mark as in production queue
@@ -2549,25 +2759,47 @@ public class ProductionService {
 
         java.math.BigDecimal totalApproved = java.math.BigDecimal.ZERO;
 
-        // Update Details
+        // Use quantityRequested from details (not quantityApproved since it may not be
+        // set)
         if (dto.getDetails() != null) {
             for (tmmsystem.dto.execution.MaterialRequisitionDetailDto detailDto : dto.getDetails()) {
                 if (detailDto.getId() != null) {
                     tmmsystem.entity.MaterialRequisitionDetail detail = reqDetailRepo.findById(detailDto.getId())
                             .orElse(null);
                     if (detail != null && detail.getRequisition().getId().equals(requestId)) {
-                        detail.setQuantityApproved(detailDto.getQuantityApproved());
+                        // Set approved = requested if approved is not provided
+                        BigDecimal approvedQty = detailDto.getQuantityApproved();
+                        if (approvedQty == null || approvedQty.compareTo(BigDecimal.ZERO) == 0) {
+                            approvedQty = detail.getQuantityRequested();
+                        }
+                        detail.setQuantityApproved(approvedQty);
                         reqDetailRepo.save(detail);
-                        if (detail.getQuantityApproved() != null) {
-                            totalApproved = totalApproved.add(detail.getQuantityApproved());
+                        if (approvedQty != null) {
+                            totalApproved = totalApproved.add(approvedQty);
                         }
                     }
                 }
             }
-        } else {
-            // Fallback for legacy calls or empty details (should not happen with new UI)
-            // If needed, we could set totalApproved from a field in DTO, but let's rely on
-            // details sum
+        }
+
+        // FALLBACK: If still 0, read from DB details using quantityRequested
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0) {
+            List<tmmsystem.entity.MaterialRequisitionDetail> dbDetails = reqDetailRepo.findByRequisitionId(requestId);
+            for (tmmsystem.entity.MaterialRequisitionDetail dbDetail : dbDetails) {
+                // Use quantityRequested if quantityApproved is not set
+                BigDecimal qty = dbDetail.getQuantityApproved();
+                if (qty == null || qty.compareTo(BigDecimal.ZERO) == 0) {
+                    qty = dbDetail.getQuantityRequested();
+                }
+                if (qty != null) {
+                    totalApproved = totalApproved.add(qty);
+                }
+            }
+        }
+
+        // ULTIMATE FALLBACK: Use parent requisition's quantityRequested
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0 && req.getQuantityRequested() != null) {
+            totalApproved = req.getQuantityRequested();
         }
 
         // 1. Time Validation (Standard Capacity Check)
@@ -2610,6 +2842,19 @@ public class ProductionService {
         req.setApprovedBy(
                 userRepository.findById(directorId).orElseThrow(() -> new RuntimeException("Director not found")));
         req.setApprovedAt(Instant.now());
+
+        // Fallback: If totalApproved is still 0, try to read from existing database
+        // details
+        if (totalApproved.compareTo(BigDecimal.ZERO) == 0) {
+            List<tmmsystem.entity.MaterialRequisitionDetail> dbDetails = reqDetailRepo.findByRequisitionId(requestId);
+            System.out.println("[REWORK DEBUG] Fallback: Reading from DB. Found " + dbDetails.size() + " details");
+            for (tmmsystem.entity.MaterialRequisitionDetail dbDetail : dbDetails) {
+                if (dbDetail.getQuantityApproved() != null) {
+                    totalApproved = totalApproved.add(dbDetail.getQuantityApproved());
+                }
+            }
+        }
+
         req.setQuantityApproved(totalApproved);
         req.setNotes(dto.getNotes()); // Update notes if provided
         reqRepo.save(req);
@@ -2624,11 +2869,6 @@ public class ProductionService {
         reworkPO.setPoNumber(originalPO.getPoNumber() + "-REWORK-" + System.currentTimeMillis() % 1000);
         reworkPO.setContract(originalPO.getContract());
 
-        // Calculate total approved quantity
-        if (totalApproved.compareTo(BigDecimal.ZERO) == 0 && req.getQuantityApproved() != null) {
-            totalApproved = req.getQuantityApproved();
-        }
-
         System.out.println("[REWORK DEBUG] totalApproved (kg): " + totalApproved);
 
         // Convert kg (approvedQuantity) to pcs (totalQuantity)
@@ -2636,39 +2876,26 @@ public class ProductionService {
         BigDecimal reworkQuantityPcs = totalApproved;
         try {
             List<ProductionOrderDetail> details = podRepo.findByProductionOrderId(originalPO.getId());
-            System.out.println("[REWORK DEBUG] ProductionOrderDetails found: " + details.size());
             if (!details.isEmpty()) {
                 Product product = details.get(0).getProduct();
-                System.out.println("[REWORK DEBUG] Product: " + (product != null ? product.getName() : "NULL"));
-
                 BigDecimal standardWeight = product != null ? product.getStandardWeight() : null;
-                System.out.println("[REWORK DEBUG] standardWeight (grams): " + standardWeight);
 
                 if (standardWeight != null && standardWeight.compareTo(BigDecimal.ZERO) > 0) {
                     // standardWeight is in GRAMS. Convert to kg for division
                     BigDecimal weightInKg = standardWeight.divide(new BigDecimal(1000), 4,
                             java.math.RoundingMode.HALF_UP);
-                    System.out.println("[REWORK DEBUG] weightInKg: " + weightInKg);
                     if (weightInKg.compareTo(BigDecimal.ZERO) > 0) {
                         reworkQuantityPcs = totalApproved.divide(weightInKg, 0, java.math.RoundingMode.HALF_UP);
-                        System.out.println("[REWORK DEBUG] Calculated reworkQuantityPcs: " + reworkQuantityPcs);
                     }
-                } else {
-                    System.out
-                            .println("[REWORK DEBUG] WARNING: standardWeight is null or 0, cannot calculate quantity!");
                 }
             }
         } catch (Exception e) {
-            // Fallback or log error
-            System.err.println("[REWORK DEBUG] Error converting unit: " + e.getMessage());
-            e.printStackTrace();
+            // Log error silently - calculation will fallback
         }
 
         if (reworkQuantityPcs.compareTo(BigDecimal.ZERO) <= 0) {
             reworkQuantityPcs = BigDecimal.ONE; // Default to 1 if calculation fails
-            System.out.println("[REWORK DEBUG] Fallback to 1 because reworkQuantityPcs <= 0");
         }
-        System.out.println("[REWORK DEBUG] Final reworkQuantityPcs: " + reworkQuantityPcs);
 
         reworkPO.setTotalQuantity(reworkQuantityPcs); // Quantity for rework in PCS
 
@@ -3019,17 +3246,26 @@ public class ProductionService {
                                         for (tmmsystem.entity.MaterialRequisition req : reqs) {
                                             if ("APPROVED".equals(req.getStatus())
                                                     && "YARN_SUPPLY".equals(req.getRequisitionType())) {
-                                                // Found it!
+                                                // Found it! Use quantityRequested as fallback for quantityApproved
                                                 BigDecimal approvedKg = req.getQuantityApproved();
+                                                if (approvedKg == null || approvedKg.compareTo(BigDecimal.ZERO) == 0) {
+                                                    approvedKg = req.getQuantityRequested();
+                                                }
 
-                                                // Fallback: If parent quantity is null/zero, sum from details
+                                                // Fallback: If parent quantity is still null/zero, sum from details
                                                 if (approvedKg == null || approvedKg.compareTo(BigDecimal.ZERO) == 0) {
                                                     List<tmmsystem.entity.MaterialRequisitionDetail> reqDetails = reqDetailRepo
                                                             .findByRequisitionId(req.getId());
                                                     approvedKg = reqDetails.stream()
-                                                            .map(d -> d.getQuantityApproved() != null
-                                                                    ? d.getQuantityApproved()
-                                                                    : BigDecimal.ZERO)
+                                                            .map(d -> {
+                                                                // Use approved if available, else requested
+                                                                BigDecimal qty = d.getQuantityApproved();
+                                                                if (qty == null
+                                                                        || qty.compareTo(BigDecimal.ZERO) == 0) {
+                                                                    qty = d.getQuantityRequested();
+                                                                }
+                                                                return qty != null ? qty : BigDecimal.ZERO;
+                                                            })
                                                             .reduce(BigDecimal.ZERO, BigDecimal::add);
                                                 }
 

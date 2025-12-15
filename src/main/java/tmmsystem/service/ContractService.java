@@ -118,6 +118,11 @@ public class ContractService {
         return repository.findByAssignedPlanning_Id(userId);
     }
 
+    // Find contract by quotation ID
+    public Contract findByQuotationId(Long quotationId) {
+        return repository.findFirstByQuotation_Id(quotationId);
+    }
+
     @Transactional
     public Contract create(Contract c) {
         return repository.save(c);
@@ -378,6 +383,7 @@ public class ContractService {
                 .customerId(contract.getCustomer().getId())
                 .customerName(contract.getCustomer().getContactPerson())
                 .phoneNumber(contract.getCustomer().getPhoneNumber())
+                .email(contract.getCustomer().getEmail())
                 .companyName(contract.getCustomer().getCompanyName())
                 .taxCode(contract.getCustomer().getTaxCode())
                 .address(contract.getCustomer().getAddress())
