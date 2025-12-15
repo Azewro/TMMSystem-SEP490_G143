@@ -17,24 +17,25 @@ public class OrderDetailsDto {
     private LocalDate deliveryDate;
     private BigDecimal totalAmount;
     private String filePath;
-    
+
     // Customer info
     private CustomerInfo customerInfo;
-    
+
     // Order items (from quotation details)
     private List<OrderItemDto> orderItems;
-    
+
     @Data
     @Builder
     public static class CustomerInfo {
         private Long customerId;
         private String customerName;
         private String phoneNumber;
+        private String email;
         private String companyName;
         private String taxCode;
         private String address;
     }
-    
+
     @Data
     @Builder
     public static class OrderItemDto {
