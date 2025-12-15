@@ -587,13 +587,12 @@ public class ProductionService {
 
     // Leader Defect Methods
     public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(Long leaderUserId) {
-        // Leader sees MINOR defects AFTER Tech has processed them (sent rework request)
-        // PENDING = QA sent to Tech, Tech hasn't acted yet -> Leader should NOT see
-        // Other statuses (including RESOLVED) = Tech has sent rework request -> Leader
-        // can see
+        // Get MINOR defects assigned to this leader
+        // Include PROCESSED (after Technical processed), IN_PROGRESS (being worked on)
+        // Exclude PENDING (waiting for Technical) and RESOLVED (completed)
         return issueRepo.findAll().stream()
                 .filter(i -> "MINOR".equals(i.getSeverity()))
-                .filter(i -> !"PENDING".equals(i.getStatus())) // Only exclude PENDING, keep RESOLVED for history
+                .filter(i -> "PROCESSED".equals(i.getStatus()) || "IN_PROGRESS".equals(i.getStatus()))
                 .filter(i -> {
                     ProductionStage stage = i.getProductionStage();
                     return stage != null &&
@@ -3603,9 +3602,10 @@ public class ProductionService {
             return new BlockingInfo(false, null);
         }
 
-        // Find all stages of same type that are IN_PROGRESS or REWORK_IN_PROGRESS
+        // Find all stages of same type that are IN_PROGRESS, REWORK_IN_PROGRESS, WAITING_QC, or QC_IN_PROGRESS
+        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still "occupying" the machine until QC completes
         List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
 
         for (ProductionStage activeStage : activeStages) {
             if (activeStage.getId().equals(stage.getId()))

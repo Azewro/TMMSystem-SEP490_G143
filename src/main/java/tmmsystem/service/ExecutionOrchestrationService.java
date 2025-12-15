@@ -708,6 +708,16 @@ public class ExecutionOrchestrationService {
         stage.setExecutionStatus("REWORK_IN_PROGRESS");
         ProductionStage saved = stageRepo.save(stage);
 
+        // FIX: Update QualityIssue status to IN_PROGRESS
+        // This ensures the defect list shows correct status "Đang xử lý"
+        List<QualityIssue> issues = issueRepo.findByProductionStageId(stageId);
+        for (QualityIssue issue : issues) {
+            if ("PROCESSED".equals(issue.getStatus()) || "PENDING".equals(issue.getStatus())) {
+                issue.setStatus("IN_PROGRESS");
+                issueRepo.save(issue);
+            }
+        }
+
         // FIX: Create StageTracking record for rework start
         User leader = userRepo.findById(leaderUserId).orElseThrow();
         StageTracking tracking = new StageTracking();
@@ -977,10 +987,10 @@ public class ExecutionOrchestrationService {
             return result;
         }
 
-        // Check if any other stage of the same type is IN_PROGRESS or
-        // REWORK_IN_PROGRESS
+        // Check if any other stage of the same type is blocking
+        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still "occupying" the machine until QC completes
         java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK"));
+                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK", "WAITING_QC", "QC_IN_PROGRESS"));
 
         for (ProductionStage s : activeStages) {
             if (s.getId().equals(stageId))
