@@ -101,12 +101,9 @@ public class ProductionPlanMapper {
         dto.setCapacityPerHour(stage.getCapacityPerHour());
         dto.setNotes(stage.getNotes());
 
-        // Calculate duration
+        // Map duration directly from saved value
         if (stage.getMinRequiredDurationMinutes() != null) {
             dto.setDurationMinutes(stage.getMinRequiredDurationMinutes().longValue());
-        } else if (stage.getPlannedStartTime() != null && stage.getPlannedEndTime() != null) {
-            dto.setDurationMinutes(java.time.Duration.between(
-                    stage.getPlannedStartTime(), stage.getPlannedEndTime()).toMinutes());
         }
 
         // Calculate estimated output
