@@ -183,12 +183,7 @@ public class RfqService {
         Rfq savedRfq = rfqRepository.save(rfq);
         if (details != null && !details.isEmpty()) {
             for (RfqDetailDto detailDto : details) {
-                // Validate quantity - max 99,999,999 (8 digits for precision 10, scale 2)
-                if (detailDto.getQuantity() != null &&
-                        detailDto.getQuantity().compareTo(new java.math.BigDecimal("99999999")) > 0) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Số lượng sản phẩm không được vượt quá 99,999,999. Vui lòng kiểm tra lại.");
-                }
+                validateQuantity(detailDto.getQuantity());
                 RfqDetail detail = new RfqDetail();
                 detail.setRfq(savedRfq);
                 if (detailDto.getProductId() != null) {
@@ -529,6 +524,20 @@ public class RfqService {
         return p;
     }
 
+    // Validate quantity - max 99,999,999 (8 digits for precision 10, scale 2)
+    private static final java.math.BigDecimal MAX_QUANTITY = new java.math.BigDecimal("99999999");
+
+    private void validateQuantity(java.math.BigDecimal quantity) {
+        if (quantity != null && quantity.compareTo(MAX_QUANTITY) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số lượng sản phẩm không được vượt quá 99,999,999. Vui lòng kiểm tra lại.");
+        }
+        if (quantity != null && quantity.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số lượng sản phẩm phải lớn hơn 0.");
+        }
+    }
+
     @Transactional
     public Rfq update(Long id, Rfq updated) {
         Rfq existing = rfqRepository.findById(id).orElseThrow();
@@ -610,6 +619,7 @@ public class RfqService {
         if (dto.getDetails() != null) {
             detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
             for (tmmsystem.dto.sales.RfqDetailDto detailDto : dto.getDetails()) {
+                validateQuantity(detailDto.getQuantity());
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
                 if (detailDto.getProductId() != null) {
@@ -647,6 +657,7 @@ public class RfqService {
         if (isImmutableStatus(rfq.getStatus())) {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
+        validateQuantity(dto.getQuantity());
         RfqDetail detail = new RfqDetail();
         detail.setRfq(rfq);
         if (dto.getProductId() != null) {
@@ -669,6 +680,7 @@ public class RfqService {
         if (isImmutableStatus(rfq.getStatus())) {
             throw new IllegalStateException("RFQ is not editable at current status");
         }
+        validateQuantity(dto.getQuantity());
         if (dto.getProductId() != null) {
             Product product = productRepository.findById(dto.getProductId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -766,7 +778,11 @@ public class RfqService {
     public Rfq cancelRfq(Long id) {
         Rfq rfq = rfqRepository.findById(id).orElseThrow();
         if ("CANCELED".equals(rfq.getStatus())) {
-            throw new IllegalStateException("RFQ is already canceled");
+            throw new IllegalStateException("Yêu cầu báo giá này đã bị hủy.");
+        }
+        // Only allow canceling when status is DRAFT or SENT (Chờ xác nhận)
+        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ có thể hủy yêu cầu báo giá khi đang ở trạng thái 'Chờ xác nhận'.");
         }
         rfq.setStatus("CANCELED");
         Rfq savedRfq = rfqRepository.save(rfq);
@@ -1073,6 +1089,7 @@ public class RfqService {
         if (req.getDetails() != null) {
             detailRepository.findByRfqId(rfq.getId()).forEach(d -> detailRepository.deleteById(d.getId()));
             for (RfqDetailDto d : req.getDetails()) {
+                validateQuantity(d.getQuantity());
                 RfqDetail nd = new RfqDetail();
                 nd.setRfq(rfq);
                 if (d.getProductId() != null) {
