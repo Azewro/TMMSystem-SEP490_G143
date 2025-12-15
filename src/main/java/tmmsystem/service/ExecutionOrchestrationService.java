@@ -430,7 +430,8 @@ public class ExecutionOrchestrationService {
             stageRepo.save(stage);
         }
 
-        QcSession existing = sessionRepo.findByProductionStageIdAndStatus(stageId, "IN_PROGRESS").orElse(null);
+        QcSession existing = sessionRepo.findFirstByProductionStageIdAndStatusOrderByIdDesc(stageId, "IN_PROGRESS")
+                .orElse(null);
         if (existing != null)
             return existing;
         QcSession session = new QcSession();

@@ -10,5 +10,6 @@ import java.util.Optional;
 @Repository
 public interface QcSessionRepository extends JpaRepository<QcSession, Long> {
     List<QcSession> findByProductionStageId(Long stageId);
-    Optional<QcSession> findByProductionStageIdAndStatus(Long stageId, String status);
+
+    Optional<QcSession> findFirstByProductionStageIdAndStatusOrderByIdDesc(Long stageId, String status);
 }
