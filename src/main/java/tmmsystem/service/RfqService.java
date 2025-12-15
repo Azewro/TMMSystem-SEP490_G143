@@ -309,13 +309,20 @@ public class RfqService {
 
         String effectiveMethod = validateAndDetermineMethod(dto.getContactMethod(), normEmail, normPhone);
 
+        // FOR GUEST USERS: Do not allow using email or phone that already exists in
+        // system
+        // They must either login with their account or use different contact info
+        if (normEmail != null && customerRepository.existsByEmail(normEmail)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email này đã được đăng ký trong hệ thống. Vui lòng đăng nhập hoặc sử dụng email khác.");
+        }
+        if (normPhone != null && customerRepository.existsByPhoneNumber(normPhone)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số điện thoại này đã được đăng ký trong hệ thống. Vui lòng đăng nhập hoặc sử dụng số điện thoại khác.");
+        }
+
+        // Create new customer for guest
         Customer customer = null;
-        if (normEmail != null) {
-            customer = customerRepository.findByEmail(normEmail).orElse(null);
-        }
-        if (customer == null && normPhone != null) {
-            customer = customerRepository.findByPhoneNumber(normPhone).orElse(null);
-        }
 
         if (customer == null) {
             Customer newCustomer = new Customer();
@@ -404,11 +411,19 @@ public class RfqService {
         String email = normalizeEmail(req.getContactEmail());
         String phone = normalizePhone(req.getContactPhone());
         String method = validateAndDetermineMethod(req.getContactMethod(), email, phone);
-        Customer customer = null;
-        if (email != null)
-            customer = customerRepository.findByEmail(email).orElse(null);
-        if (customer == null && phone != null)
-            customer = customerRepository.findByPhoneNumber(phone).orElse(null);
+
+        // Validate: email and phone must not belong to different customers
+        Customer customerByEmail = email != null ? customerRepository.findByEmail(email).orElse(null) : null;
+        Customer customerByPhone = phone != null ? customerRepository.findByPhoneNumber(phone).orElse(null) : null;
+
+        if (customerByEmail != null && customerByPhone != null
+                && !customerByEmail.getId().equals(customerByPhone.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email và số điện thoại thuộc về hai tài khoản khách hàng khác nhau. Vui lòng kiểm tra lại thông tin.");
+        }
+
+        // Use existing customer if found, or create new
+        Customer customer = customerByEmail != null ? customerByEmail : customerByPhone;
         if (customer == null) {
             customer = new Customer();
             String prefix = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
@@ -538,11 +553,25 @@ public class RfqService {
             }
             if (dto.getContactEmail() != null) {
                 String normEmail = normalizeEmail(dto.getContactEmail());
+                // Check for duplicate email
+                if (normEmail != null && !normEmail.equals(cust.getEmail())) {
+                    if (customerRepository.existsByEmailAndIdNot(normEmail, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Email đã được sử dụng bởi khách hàng khác: " + normEmail);
+                    }
+                }
                 cust.setEmail(normEmail);
                 rfq.setContactEmailSnapshot(normEmail);
             }
             if (dto.getContactPhone() != null) {
                 String normPhone = normalizePhone(dto.getContactPhone());
+                // Check for duplicate phone number
+                if (normPhone != null && !normPhone.equals(cust.getPhoneNumber())) {
+                    if (customerRepository.existsByPhoneNumberAndIdNot(normPhone, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Số điện thoại đã được sử dụng bởi khách hàng khác: " + normPhone);
+                    }
+                }
                 cust.setPhoneNumber(normPhone);
                 rfq.setContactPhoneSnapshot(normPhone);
             }
@@ -975,10 +1004,28 @@ public class RfqService {
             Customer cust = rfq.getCustomer();
             if (req.getContactPerson() != null)
                 cust.setContactPerson(req.getContactPerson());
-            if (req.getContactEmail() != null)
-                cust.setEmail(normalizeEmail(req.getContactEmail()));
-            if (req.getContactPhone() != null)
-                cust.setPhoneNumber(normalizePhone(req.getContactPhone()));
+            if (req.getContactEmail() != null) {
+                String normEmail = normalizeEmail(req.getContactEmail());
+                // Check for duplicate email
+                if (normEmail != null && !normEmail.equals(cust.getEmail())) {
+                    if (customerRepository.existsByEmailAndIdNot(normEmail, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Email đã được sử dụng bởi khách hàng khác: " + normEmail);
+                    }
+                }
+                cust.setEmail(normEmail);
+            }
+            if (req.getContactPhone() != null) {
+                String normPhone = normalizePhone(req.getContactPhone());
+                // Check for duplicate phone number
+                if (normPhone != null && !normPhone.equals(cust.getPhoneNumber())) {
+                    if (customerRepository.existsByPhoneNumberAndIdNot(normPhone, cust.getId())) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Số điện thoại đã được sử dụng bởi khách hàng khác: " + normPhone);
+                    }
+                }
+                cust.setPhoneNumber(normPhone);
+            }
             if (req.getContactAddress() != null)
                 cust.setAddress(req.getContactAddress());
             customerRepository.save(cust);
