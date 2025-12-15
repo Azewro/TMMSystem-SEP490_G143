@@ -183,6 +183,12 @@ public class RfqService {
         Rfq savedRfq = rfqRepository.save(rfq);
         if (details != null && !details.isEmpty()) {
             for (RfqDetailDto detailDto : details) {
+                // Validate quantity - max 99,999,999 (8 digits for precision 10, scale 2)
+                if (detailDto.getQuantity() != null &&
+                        detailDto.getQuantity().compareTo(new java.math.BigDecimal("99999999")) > 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Số lượng sản phẩm không được vượt quá 99,999,999. Vui lòng kiểm tra lại.");
+                }
                 RfqDetail detail = new RfqDetail();
                 detail.setRfq(savedRfq);
                 if (detailDto.getProductId() != null) {
@@ -205,6 +211,21 @@ public class RfqService {
     public Rfq createFromLoggedIn(RfqCreateDto dto) {
         if (dto.getCustomerId() == null)
             throw new IllegalArgumentException("customerId is required");
+
+        // Validate: if customer provides different phone/email, it must not belong to
+        // another customer
+        String normEmail = normalizeEmail(dto.getContactEmail());
+        String normPhone = normalizePhone(dto.getContactPhone());
+
+        if (normEmail != null && customerRepository.existsByEmailAndIdNot(normEmail, dto.getCustomerId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email này đã được sử dụng bởi tài khoản khác. Vui lòng sử dụng email của bạn.");
+        }
+        if (normPhone != null && customerRepository.existsByPhoneNumberAndIdNot(normPhone, dto.getCustomerId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số điện thoại này đã được sử dụng bởi tài khoản khác. Vui lòng sử dụng số điện thoại của bạn.");
+        }
+
         Rfq rfq = new Rfq();
         rfq.setRfqNumber(dto.getRfqNumber());
         Customer c = new Customer();
