@@ -575,34 +575,38 @@ public class ExecutionOrchestrationService {
             }
 
         } else {
-            stageRef.setExecutionStatus("QC_FAILED");
-            stageRef.setDefectLevel(defectLevel); // Persist defect level
-            stageRef.setDefectDescription(defectDescription); // Persist defect description
-            stageRepo.save(stageRef);
-            QualityIssue issue = new QualityIssue();
-            issue.setProductionStage(stageRef);
-            issue.setProductionOrder(resolveOrder(stageRef));
-            issue.setSeverity(defectLevel != null ? defectLevel : "MINOR");
-            issue.setIssueType("REWORK");
-            issue.setDescription(defectDescription != null ? defectDescription : notes);
-
-            // Populate evidence photo from inspections if available
+            // Check for mandatory photo BEFORE saving anything
             boolean photoFound = false;
+            String firstPhotoUrl = null;
             if (criteriaResults != null) {
                 for (QcInspectionDto dto : criteriaResults) {
                     if (dto.getPhotoUrl() != null && !dto.getPhotoUrl().isEmpty()) {
-                        issue.setEvidencePhoto(dto.getPhotoUrl());
+                        firstPhotoUrl = dto.getPhotoUrl();
                         photoFound = true;
                         break; // Use the first photo found
                     }
                 }
             }
 
-            // NEW: Enforce mandatory photo for FAIL result
+            // Enforce mandatory photo for FAIL result
             if (!photoFound) {
                 throw new RuntimeException(
                         "QC_FAIL_NO_PHOTO: Bắt buộc phải có hình ảnh minh chứng khi đánh giá không đạt (FAIL).");
             }
+
+            // Now safe to save stage and issue together
+            stageRef.setExecutionStatus("QC_FAILED");
+            stageRef.setDefectLevel(defectLevel); // Persist defect level
+            stageRef.setDefectDescription(defectDescription); // Persist defect description
+            stageRepo.save(stageRef);
+            
+            QualityIssue issue = new QualityIssue();
+            issue.setProductionStage(stageRef);
+            issue.setProductionOrder(resolveOrder(stageRef));
+            issue.setSeverity(defectLevel != null ? defectLevel : "MINOR");
+            issue.setIssueType("REWORK");
+            issue.setDescription(defectDescription != null ? defectDescription : notes);
+            issue.setEvidencePhoto(firstPhotoUrl);
 
             issueRepo.save(issue);
 
