@@ -1006,20 +1006,67 @@ public class RfqService {
         rfq.setCapacityStatus(capacityStatus);
         rfq.setCapacityReason(reason);
         rfq.setProposedNewDeliveryDate(proposedNewDate);
-        // Khi không đủ năng lực, chuyển status về SENT để Sales có thể chỉnh sửa hoặc
-        // hủy
+        // Khi không đủ năng lực, set status = CAPACITY_INSUFFICIENT
+        // Planning vẫn thấy RFQ với trạng thái "Không đủ năng lực"
+        // Sales cũng thấy trạng thái "Không đủ năng lực"
+        // Customer vẫn thấy trạng thái "Đã xác nhận" (mapped separately)
         if ("INSUFFICIENT".equalsIgnoreCase(capacityStatus)) {
-            rfq.setStatus("SENT");
+            rfq.setStatus("CAPACITY_INSUFFICIENT");
             notificationService.notifyCapacityInsufficient(rfq);
         }
         rfqRepository.save(rfq);
     }
 
+    /**
+     * Sales xác nhận lại sau khi đã cập nhật ngày giao hàng (sau khi đàm phán với
+     * khách hàng)
+     * Chuyển status từ CAPACITY_INSUFFICIENT -> RECEIVED_BY_PLANNING
+     * Clear capacityStatus để Planning có thể kiểm tra lại
+     */
+    @Transactional
+    public Rfq salesReconfirmAfterInsufficient(Long rfqId, Long salesUserId, java.time.LocalDate newDeliveryDate) {
+        Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
+
+        if (!"CAPACITY_INSUFFICIENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("RFQ phải ở trạng thái CAPACITY_INSUFFICIENT để xác nhận lại");
+        }
+
+        if (rfq.getAssignedSales() == null || !salesUserId.equals(rfq.getAssignedSales().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không được phân công cho RFQ này");
+        }
+
+        // Validate new delivery date >= proposed date
+        if (rfq.getProposedNewDeliveryDate() != null && newDeliveryDate != null) {
+            if (newDeliveryDate.isBefore(rfq.getProposedNewDeliveryDate())) {
+                throw new IllegalStateException(
+                        "Ngày giao hàng mới phải >= ngày đề xuất (" + rfq.getProposedNewDeliveryDate() + ")");
+            }
+        }
+
+        // Update delivery date if provided
+        if (newDeliveryDate != null) {
+            rfq.setExpectedDeliveryDate(newDeliveryDate);
+        }
+
+        // Reset capacity status and change status back to RECEIVED_BY_PLANNING
+        rfq.setCapacityStatus(null);
+        rfq.setCapacityReason(null);
+        rfq.setProposedNewDeliveryDate(null);
+        rfq.setStatus("RECEIVED_BY_PLANNING");
+
+        // Notify Planning
+        notificationService.notifyRfqForwardedToPlanning(rfq);
+
+        return rfqRepository.save(rfq);
+    }
+
     @Transactional
     public Rfq salesEditRfqAndCustomer(Long rfqId, Long salesUserId, SalesRfqEditRequest req) {
         Rfq rfq = rfqRepository.findById(rfqId).orElseThrow();
-        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())) {
-            throw new IllegalStateException("Chỉ sửa khi RFQ ở DRAFT hoặc SENT trước preliminary-check");
+        // Allow editing for DRAFT, SENT, or CAPACITY_INSUFFICIENT status
+        if (!"DRAFT".equals(rfq.getStatus()) && !"SENT".equals(rfq.getStatus())
+                && !"CAPACITY_INSUFFICIENT".equals(rfq.getStatus())) {
+            throw new IllegalStateException("Chỉ sửa khi RFQ ở DRAFT, SENT hoặc CAPACITY_INSUFFICIENT");
         }
         if (Boolean.TRUE.equals(rfq.getLocked())) {
             throw new IllegalStateException("RFQ locked");
@@ -1106,9 +1153,13 @@ public class RfqService {
         }
 
         // Reset capacity status so Planning can re-evaluate
-        rfq.setCapacityStatus(null);
-        rfq.setCapacityReason(null);
-        rfq.setProposedNewDeliveryDate(null);
+        // BUT only if not in CAPACITY_INSUFFICIENT status (Sales needs
+        // proposedNewDeliveryDate for validation)
+        if (!"CAPACITY_INSUFFICIENT".equals(rfq.getStatus())) {
+            rfq.setCapacityStatus(null);
+            rfq.setCapacityReason(null);
+            rfq.setProposedNewDeliveryDate(null);
+        }
 
         return rfqRepository.save(rfq);
 
