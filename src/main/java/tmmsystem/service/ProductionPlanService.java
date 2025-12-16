@@ -810,7 +810,9 @@ public class ProductionPlanService {
         if (stages.isEmpty())
             return;
 
-        // 1. Find Best Leader - PRODUCT PROCESS LEADER with LEAST Production Orders
+        // 1. Find Best Leader - PRODUCT PROCESS LEADER with LEAST Production Plans
+        // Changed from counting Production Orders to counting Plans - this ensures fair
+        // distribution even when plans are created but not yet sent/approved
         List<User> leaders = userRepo.findByRoleNameIgnoreCase("PRODUCT PROCESS LEADER");
         if (leaders.isEmpty()) {
             leaders = userRepo.findByRoleNameIgnoreCase("ROLE_PRODUCT_PROCESS_LEADER");
@@ -821,19 +823,18 @@ public class ProductionPlanService {
         User selectedLeader = null;
         if (!leaders.isEmpty()) {
             User bestLeader = null;
-            long minPoCount = Long.MAX_VALUE;
+            long minStageCount = Long.MAX_VALUE;
             for (User leader : leaders) {
                 if (!Boolean.TRUE.equals(leader.getActive()))
                     continue;
 
-                // NEW RULE: Assign leader with LEAST number of Production Orders
-                // No strict-free check - production is sequential, so busy leaders will just
-                // queue work
-                long poCount = productionService.countProductionOrdersForLeader(leader.getId());
-                System.out.println("AutoAssign: Leader " + leader.getName() + " poCount=" + poCount);
+                // NEW RULE: Assign leader with LEAST number of Production Plan Stages
+                // This ensures fair distribution when plans are created but not yet approved
+                long stageCount = stageRepo.countByInChargeUserId(leader.getId());
+                System.out.println("AutoAssign: Leader " + leader.getName() + " stageCount=" + stageCount);
 
-                if (poCount < minPoCount) {
-                    minPoCount = poCount;
+                if (stageCount < minStageCount) {
+                    minStageCount = stageCount;
                     bestLeader = leader;
                 }
             }
