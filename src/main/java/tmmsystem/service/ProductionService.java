@@ -3071,7 +3071,7 @@ public class ProductionService {
         List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(order.getId());
         if (!stages.isEmpty()) {
             ProductionStage firstStage = stages.get(0);
-            syncStageStatus(firstStage, "IN_PROGRESS");
+            syncStageStatus(firstStage, "WAITING");
             stageRepo.save(firstStage);
         }
 
