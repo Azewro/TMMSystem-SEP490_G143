@@ -3624,12 +3624,11 @@ public class ProductionService {
             return new BlockingInfo(false, null);
         }
 
-        // Find all stages of same type that are IN_PROGRESS, REWORK_IN_PROGRESS,
-        // WAITING_QC, or QC_IN_PROGRESS
-        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still
-        // "occupying" the machine until QC completes
+        // Find all stages of same type that are IN_PROGRESS or REWORK_IN_PROGRESS
+        // NOTE: WAITING_QC and QC_IN_PROGRESS do NOT block because the machine is
+        // now free for the next lot to start (Leader finished, waiting for QC)
         List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
 
         for (ProductionStage activeStage : activeStages) {
             if (activeStage.getId().equals(stage.getId()))
