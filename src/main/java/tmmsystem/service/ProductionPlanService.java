@@ -715,8 +715,11 @@ public class ProductionPlanService {
         QuantityBreakdown breakdown = classifyQuantity(lot.getProduct().getName(), quantity);
         SequentialCapacityResult result = sequentialCapacityCalculator.calculate(totalWeight, breakdown.face(),
                 breakdown.bath(), breakdown.sport());
-        java.time.LocalDate startDate = lot.getContractDateMin() != null ? lot.getContractDateMin()
+        // startDate should never be in the past - use max of contractDateMin and today
+        java.time.LocalDate contractStartDate = lot.getContractDateMin() != null ? lot.getContractDateMin()
                 : java.time.LocalDate.now();
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate startDate = contractStartDate.isBefore(today) ? today : contractStartDate;
         var timelines = timelineCalculator.buildTimeline(startDate, result);
 
         var stages = stageRepo.findByPlanIdOrderBySequenceNo(plan.getId());
