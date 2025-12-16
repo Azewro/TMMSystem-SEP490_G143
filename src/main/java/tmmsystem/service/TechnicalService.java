@@ -95,6 +95,14 @@ public class TechnicalService {
                 // For now, grabbing the first one is acceptable if 1:1, but let's be safe.
                 tmmsystem.entity.QualityIssue issue = issues.get(0);
                 req.setSourceIssue(issue);
+
+                // FIX: Mark QualityIssue as PROCESSED after creating material request
+                if ("PENDING".equals(issue.getStatus())) {
+                    issue.setStatus("PROCESSED");
+                    issue.setProcessedAt(java.time.Instant.now());
+                    issue.setProcessedBy(userRepo.findById(technicalUserId).orElse(null));
+                    issueRepo.save(issue);
+                }
             }
 
             tmmsystem.entity.MaterialRequisition savedReq = reqRepo.save(req);
