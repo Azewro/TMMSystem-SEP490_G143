@@ -587,12 +587,28 @@ public class ProductionService {
 
     // Leader Defect Methods
     public List<tmmsystem.dto.qc.QualityIssueDto> getLeaderDefects(Long leaderUserId) {
-        // Get MINOR defects assigned to this leader
-        // Include PROCESSED (after Technical processed), IN_PROGRESS (being worked on)
-        // Exclude PENDING (waiting for Technical) and RESOLVED (completed)
+        // Get defects assigned to this leader:
+        // 1. MINOR defects: PROCESSED (after Technical processed) or IN_PROGRESS (being
+        // worked on)
+        // 2. MAJOR defects: PROCESSED (after material requisition approved by PM)
+        // Exclude PENDING (waiting for Technical/PM) and RESOLVED (completed)
         return issueRepo.findAll().stream()
-                .filter(i -> "MINOR".equals(i.getSeverity()))
-                .filter(i -> "PROCESSED".equals(i.getStatus()) || "IN_PROGRESS".equals(i.getStatus()))
+                .filter(i -> {
+                    String severity = i.getSeverity();
+                    String status = i.getStatus();
+
+                    // For MINOR defects: show PROCESSED or IN_PROGRESS
+                    if ("MINOR".equals(severity)) {
+                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status);
+                    }
+
+                    // For MAJOR defects: show PROCESSED (PM has approved material requisition)
+                    if ("MAJOR".equals(severity)) {
+                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status);
+                    }
+
+                    return false;
+                })
                 .filter(i -> {
                     ProductionStage stage = i.getProductionStage();
                     return stage != null &&
@@ -2159,7 +2175,13 @@ public class ProductionService {
             return java.util.Collections.emptyList();
         }
 
-        return poRepo.findAllById(orderIds);
+        List<ProductionOrder> orders = poRepo.findAllById(orderIds);
+
+        // Filter out WAITING_PRODUCTION and PENDING_APPROVAL
+        return orders.stream()
+                .filter(o -> !"WAITING_PRODUCTION".equals(o.getExecutionStatus()) &&
+                        !"PENDING_APPROVAL".equals(o.getExecutionStatus()))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /**
@@ -3602,8 +3624,10 @@ public class ProductionService {
             return new BlockingInfo(false, null);
         }
 
-        // Find all stages of same type that are IN_PROGRESS, REWORK_IN_PROGRESS, WAITING_QC, or QC_IN_PROGRESS
-        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still "occupying" the machine until QC completes
+        // Find all stages of same type that are IN_PROGRESS, REWORK_IN_PROGRESS,
+        // WAITING_QC, or QC_IN_PROGRESS
+        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still
+        // "occupying" the machine until QC completes
         List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
                 List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
 
