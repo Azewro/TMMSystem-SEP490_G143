@@ -176,6 +176,15 @@ public class CapacityCheckService {
                             + "Năng lực tối đa: " + maxCapacityKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
                             + availableDays
                             + " ngày). Cần dời ngày giao hàng.");
+
+            // Calculate proposed new delivery date = today + 7 (start buffer) + required
+            // days + 7 (end buffer)
+            long requiredDaysLong = requiredDays.setScale(0, RoundingMode.CEILING).longValue();
+            LocalDate proposedNewDate = LocalDate.now()
+                    .plusDays(7) // production start buffer
+                    .plusDays(requiredDaysLong) // production time
+                    .plusDays(7); // delivery buffer
+            machineCapacity.setProposedNewDeliveryDate(proposedNewDate);
         }
         result.setMachineCapacity(machineCapacity);
 

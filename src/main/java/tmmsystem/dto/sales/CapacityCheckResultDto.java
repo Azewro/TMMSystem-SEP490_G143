@@ -48,6 +48,9 @@ public class CapacityCheckResultDto {
 
         // Bảng công suất các công đoạn (để giải thích bottleneck)
         private List<StageCapacityDto> stageCapacities;
+
+        // Ngày giao hàng đề xuất khi không đủ năng lực
+        private LocalDate proposedNewDeliveryDate;
     }
 
     @Getter
