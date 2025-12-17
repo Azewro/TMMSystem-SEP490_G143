@@ -74,65 +74,110 @@ public class CapacityCheckService {
         // Also calculate stage breakdown for display purposes
         SequentialCapacityResult newOrderCapacity = calculateCapacityForDetails(rfqDetails);
 
-        // 2. Calculate Backlog Weight (kg) from all overlapping quotations
+        // 2. Calculate Backlog Weight (kg) using QUEUE-BASED approach
+        // 
+        // REAL PRODUCTION LOGIC:
+        // - All pending orders go through the same production line (bottleneck: Mắc cuồng)
+        // - Orders are processed by PRIORITY (earliest delivery date first)
+        // - To know when WE can deliver, we need to know:
+        //   a) How much work is ahead of us in the queue (higher priority orders)
+        //   b) Time to clear that backlog + produce our order
+        //
+        // IMPORTANT: We calculate backlog based on a FIXED reference point (today)
+        // NOT based on our target delivery date. This prevents the snowball effect.
+        
         LocalDate targetDate = rfq.getExpectedDeliveryDate();
         LocalDate productionStartDate = LocalDate.now().plusDays(7);
         LocalDate productionDeadline = targetDate.minusDays(7);
 
-        // Get all quotations that overlap with production window
-        List<Quotation> backlogQuotations = quotationRepository.findByStatusIn(CAPACITY_BLOCKING_STATUSES);
-        BigDecimal backlogWeightKg = BigDecimal.ZERO;
+        // Get ALL active quotations
+        List<Quotation> allActiveQuotations = quotationRepository.findByStatusIn(CAPACITY_BLOCKING_STATUSES);
+        
+        // Separate into: blocking backlog (higher priority) vs non-blocking (lower priority)
+        BigDecimal blockingBacklogKg = BigDecimal.ZERO;  // Orders that MUST be done before us
+        BigDecimal totalQueueKg = BigDecimal.ZERO;       // ALL pending orders (for proposed date calculation)
         List<CapacityCheckResultDto.BacklogOrderDto> backlogOrdersList = new ArrayList<>();
 
-        for (Quotation q : backlogQuotations) {
+        for (Quotation q : allActiveQuotations) {
             // Skip if this is the same RFQ we're checking
             if (q.getRfq() != null && q.getRfq().getId().equals(rfqId)) {
                 continue;
             }
-            // Check if quotation's delivery date overlaps with our production window
+            
             LocalDate qDeliveryDate = q.getRfq() != null ? q.getRfq().getExpectedDeliveryDate() : null;
-            if (qDeliveryDate != null) {
-                // Only count if delivery date is within our production period
-                if (!qDeliveryDate.isBefore(productionStartDate) && !qDeliveryDate.isAfter(targetDate)) {
-                    BigDecimal qWeight = calculateQuotationWeight(q);
-                    backlogWeightKg = backlogWeightKg.add(qWeight);
-
-                    // Build backlog order entry
-                    CapacityCheckResultDto.BacklogOrderDto backlogOrder = new CapacityCheckResultDto.BacklogOrderDto();
-                    backlogOrder.setQuotationCode(q.getQuotationNumber());
-                    backlogOrder.setCustomerName(q.getRfq().getCustomer() != null
-                            ? q.getRfq().getCustomer().getCompanyName()
-                            : "RFQ-" + q.getRfq().getId());
-                    backlogOrder.setDeliveryDate(qDeliveryDate);
-                    backlogOrder.setWeightKg(qWeight.setScale(2, RoundingMode.HALF_UP));
-                    backlogOrder.setStatus(q.getStatus());
-                    backlogOrdersList.add(backlogOrder);
-                }
+            if (qDeliveryDate == null) {
+                continue;
             }
+            
+            BigDecimal qWeight = calculateQuotationWeight(q);
+            
+            // Always count towards total queue (for proposed date calculation)
+            totalQueueKg = totalQueueKg.add(qWeight);
+            
+            // PRIORITY-BASED BACKLOG:
+            // Only orders with delivery date BEFORE OR EQUAL to our target date block us
+            // These orders have HIGHER priority (earlier deadline = higher priority)
+            // Orders with later deadlines will be produced AFTER us
+            boolean isBlockingOrder = !qDeliveryDate.isAfter(targetDate);
+            
+            if (isBlockingOrder) {
+                blockingBacklogKg = blockingBacklogKg.add(qWeight);
+            }
+            
+            // Build backlog order entry for display (show all for transparency)
+            CapacityCheckResultDto.BacklogOrderDto backlogOrder = new CapacityCheckResultDto.BacklogOrderDto();
+            backlogOrder.setQuotationCode(q.getQuotationNumber());
+            backlogOrder.setCustomerName(q.getRfq().getCustomer() != null
+                    ? q.getRfq().getCustomer().getCompanyName()
+                    : "RFQ-" + q.getRfq().getId());
+            backlogOrder.setDeliveryDate(qDeliveryDate);
+            backlogOrder.setWeightKg(qWeight.setScale(2, RoundingMode.HALF_UP));
+            backlogOrder.setStatus(q.getStatus());
+            // Mark if this order blocks us
+            backlogOrder.setStatus(isBlockingOrder ? q.getStatus() + " (ưu tiên cao hơn)" : q.getStatus());
+            backlogOrdersList.add(backlogOrder);
         }
-
-        // 3. Total Load (kg)
-        BigDecimal totalLoadKg = newOrderWeightKg.add(backlogWeightKg);
-
-        // 4. Get Bottleneck Capacity (kg/day)
+        
+        // Sort backlog by delivery date (earliest first = highest priority)
+        backlogOrdersList.sort((a, b) -> a.getDeliveryDate().compareTo(b.getDeliveryDate()));
+        
+        // 3. Get Bottleneck Capacity (kg/day)
         BigDecimal bottleneckCapacity = sequentialCapacityCalculator.getBottleneckCapacityPerDay();
-
-        // 5. Calculate Required Days based on bottleneck
+        
+        // 4. Calculate EARLIEST POSSIBLE delivery date (independent of target date)
+        // This prevents snowball effect by giving a FIXED answer
+        // Logic: All pending work + our order must go through bottleneck
+        BigDecimal totalQueueLoad = totalQueueKg.add(newOrderWeightKg);
+        BigDecimal daysToCompleteAllWork;
+        if (bottleneckCapacity.compareTo(BigDecimal.ZERO) > 0) {
+            daysToCompleteAllWork = totalQueueLoad.divide(bottleneckCapacity, 2, RoundingMode.HALF_UP);
+        } else {
+            daysToCompleteAllWork = newOrderCapacity.getTotalDays();
+        }
+        
+        LocalDate earliestPossibleDelivery = LocalDate.now()
+                .plusDays(7)  // production start buffer
+                .plusDays(daysToCompleteAllWork.setScale(0, RoundingMode.CEILING).longValue())
+                .plusDays(7); // delivery buffer
+        
+        // 5. Calculate required days for BLOCKING backlog only (for display)
+        BigDecimal backlogWeightKg = blockingBacklogKg;
+        BigDecimal totalLoadKg = newOrderWeightKg.add(backlogWeightKg);
         BigDecimal requiredDays;
         if (bottleneckCapacity.compareTo(BigDecimal.ZERO) > 0) {
             requiredDays = totalLoadKg.divide(bottleneckCapacity, 2, RoundingMode.HALF_UP);
         } else {
-            // Fallback: use calculated processing days
             requiredDays = newOrderCapacity.getTotalDays();
         }
 
-        // 6. Available Days
+        // 6. Available Days (from target date)
         long availableDaysCount = ChronoUnit.DAYS.between(productionStartDate, productionDeadline);
         BigDecimal availableDays = BigDecimal.valueOf(Math.max(0, availableDaysCount));
         BigDecimal maxCapacityKg = availableDays.multiply(bottleneckCapacity);
 
-        // 7. Result
-        boolean isSufficient = requiredDays.compareTo(availableDays) <= 0;
+        // 7. Result - Compare target date with earliest possible delivery
+        // This is the KEY fix: use earliest possible delivery to avoid snowball
+        boolean isSufficient = !targetDate.isBefore(earliestPossibleDelivery);
 
         // Construct Result DTO
         CapacityCheckResultDto result = new CapacityCheckResultDto();
@@ -164,27 +209,22 @@ public class CapacityCheckService {
         if (isSufficient) {
             machineCapacity.setStatus("SUFFICIENT");
             machineCapacity.setMergeSuggestion(
-                    "Đủ năng lực. Tổng tải: " + totalLoadKg.setScale(2, RoundingMode.HALF_UP) + " kg (" + requiredDays
-                            + " ngày). "
-                            + "Năng lực tối đa: " + maxCapacityKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
-                            + availableDays + " ngày).");
+                    "Đủ năng lực. Ngày giao sớm nhất có thể: " + earliestPossibleDelivery + ". "
+                            + "Tổng hàng đợi: " + totalQueueLoad.setScale(2, RoundingMode.HALF_UP) + " kg ("
+                            + daysToCompleteAllWork.setScale(0, RoundingMode.HALF_UP) + " ngày).");
         } else {
             machineCapacity.setStatus("INSUFFICIENT");
             machineCapacity
-                    .setMergeSuggestion("Quá tải! Tổng tải: " + totalLoadKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
-                            + requiredDays + " ngày) > "
-                            + "Năng lực tối đa: " + maxCapacityKg.setScale(2, RoundingMode.HALF_UP) + " kg ("
-                            + availableDays
-                            + " ngày). Cần dời ngày giao hàng.");
+                    .setMergeSuggestion("Không đủ năng lực! Ngày giao yêu cầu: " + targetDate 
+                            + " < Ngày giao sớm nhất có thể: " + earliestPossibleDelivery + ". "
+                            + "Tổng hàng đợi: " + totalQueueLoad.setScale(2, RoundingMode.HALF_UP) + " kg ("
+                            + daysToCompleteAllWork.setScale(0, RoundingMode.HALF_UP) + " ngày). "
+                            + "Cần dời ngày giao hàng.");
 
-            // Calculate proposed new delivery date = today + 7 (start buffer) + required
-            // days + 7 (end buffer)
-            long requiredDaysLong = requiredDays.setScale(0, RoundingMode.CEILING).longValue();
-            LocalDate proposedNewDate = LocalDate.now()
-                    .plusDays(7) // production start buffer
-                    .plusDays(requiredDaysLong) // production time
-                    .plusDays(7); // delivery buffer
-            machineCapacity.setProposedNewDeliveryDate(proposedNewDate);
+            // Use the ALREADY CALCULATED earliest possible delivery date
+            // This is based on total queue, so it's STABLE (no snowball effect)
+            // If user updates to this date and checks again, result will be SUFFICIENT
+            machineCapacity.setProposedNewDeliveryDate(earliestPossibleDelivery);
         }
         result.setMachineCapacity(machineCapacity);
 
