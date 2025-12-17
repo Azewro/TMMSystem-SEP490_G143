@@ -242,7 +242,7 @@ public class SequentialCapacityCalculator {
             dto.setTotalCapacityPerDay(avgTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
                     count > 0 ? avgTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-            dto.setUnit("sản phẩm (TB 3 loại)");
+            dto.setUnit("sản phẩm");
             dto.setBottleneck(false);
             capacities.add(dto);
         }
@@ -264,7 +264,7 @@ public class SequentialCapacityCalculator {
             dto.setTotalCapacityPerDay(avgTotal.setScale(2, RoundingMode.HALF_UP));
             dto.setCapacityPerMachine(
                     count > 0 ? avgTotal.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-            dto.setUnit("sản phẩm (TB 3 loại)");
+            dto.setUnit("sản phẩm");
             dto.setBottleneck(false);
             capacities.add(dto);
         }

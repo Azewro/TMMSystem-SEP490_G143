@@ -75,27 +75,29 @@ public class CapacityCheckService {
         SequentialCapacityResult newOrderCapacity = calculateCapacityForDetails(rfqDetails);
 
         // 2. Calculate Backlog Weight (kg) using QUEUE-BASED approach
-        // 
+        //
         // REAL PRODUCTION LOGIC:
-        // - All pending orders go through the same production line (bottleneck: Mắc cuồng)
+        // - All pending orders go through the same production line (bottleneck: Mắc
+        // cuồng)
         // - Orders are processed by PRIORITY (earliest delivery date first)
         // - To know when WE can deliver, we need to know:
-        //   a) How much work is ahead of us in the queue (higher priority orders)
-        //   b) Time to clear that backlog + produce our order
+        // a) How much work is ahead of us in the queue (higher priority orders)
+        // b) Time to clear that backlog + produce our order
         //
         // IMPORTANT: We calculate backlog based on a FIXED reference point (today)
         // NOT based on our target delivery date. This prevents the snowball effect.
-        
+
         LocalDate targetDate = rfq.getExpectedDeliveryDate();
         LocalDate productionStartDate = LocalDate.now().plusDays(7);
         LocalDate productionDeadline = targetDate.minusDays(7);
 
         // Get ALL active quotations
         List<Quotation> allActiveQuotations = quotationRepository.findByStatusIn(CAPACITY_BLOCKING_STATUSES);
-        
-        // Separate into: blocking backlog (higher priority) vs non-blocking (lower priority)
-        BigDecimal blockingBacklogKg = BigDecimal.ZERO;  // Orders that MUST be done before us
-        BigDecimal totalQueueKg = BigDecimal.ZERO;       // ALL pending orders (for proposed date calculation)
+
+        // Separate into: blocking backlog (higher priority) vs non-blocking (lower
+        // priority)
+        BigDecimal blockingBacklogKg = BigDecimal.ZERO; // Orders that MUST be done before us
+        BigDecimal totalQueueKg = BigDecimal.ZERO; // ALL pending orders (for proposed date calculation)
         List<CapacityCheckResultDto.BacklogOrderDto> backlogOrdersList = new ArrayList<>();
 
         for (Quotation q : allActiveQuotations) {
@@ -103,47 +105,45 @@ public class CapacityCheckService {
             if (q.getRfq() != null && q.getRfq().getId().equals(rfqId)) {
                 continue;
             }
-            
+
             LocalDate qDeliveryDate = q.getRfq() != null ? q.getRfq().getExpectedDeliveryDate() : null;
             if (qDeliveryDate == null) {
                 continue;
             }
-            
+
             BigDecimal qWeight = calculateQuotationWeight(q);
-            
+
             // Always count towards total queue (for proposed date calculation)
             totalQueueKg = totalQueueKg.add(qWeight);
-            
+
             // PRIORITY-BASED BACKLOG:
             // Only orders with delivery date BEFORE OR EQUAL to our target date block us
             // These orders have HIGHER priority (earlier deadline = higher priority)
             // Orders with later deadlines will be produced AFTER us
             boolean isBlockingOrder = !qDeliveryDate.isAfter(targetDate);
-            
+
             if (isBlockingOrder) {
                 blockingBacklogKg = blockingBacklogKg.add(qWeight);
             }
-            
+
             // Build backlog order entry for display (show all for transparency)
             CapacityCheckResultDto.BacklogOrderDto backlogOrder = new CapacityCheckResultDto.BacklogOrderDto();
             backlogOrder.setQuotationCode(q.getQuotationNumber());
             backlogOrder.setCustomerName(q.getRfq().getCustomer() != null
-                    ? q.getRfq().getCustomer().getCompanyName()
+                    ? q.getRfq().getCustomer().getContactPerson()
                     : "RFQ-" + q.getRfq().getId());
             backlogOrder.setDeliveryDate(qDeliveryDate);
             backlogOrder.setWeightKg(qWeight.setScale(2, RoundingMode.HALF_UP));
             backlogOrder.setStatus(q.getStatus());
-            // Mark if this order blocks us
-            backlogOrder.setStatus(isBlockingOrder ? q.getStatus() + " (ưu tiên cao hơn)" : q.getStatus());
             backlogOrdersList.add(backlogOrder);
         }
-        
+
         // Sort backlog by delivery date (earliest first = highest priority)
         backlogOrdersList.sort((a, b) -> a.getDeliveryDate().compareTo(b.getDeliveryDate()));
-        
+
         // 3. Get Bottleneck Capacity (kg/day)
         BigDecimal bottleneckCapacity = sequentialCapacityCalculator.getBottleneckCapacityPerDay();
-        
+
         // 4. Calculate EARLIEST POSSIBLE delivery date (independent of target date)
         // This prevents snowball effect by giving a FIXED answer
         // Logic: All pending work + our order must go through bottleneck
@@ -154,12 +154,12 @@ public class CapacityCheckService {
         } else {
             daysToCompleteAllWork = newOrderCapacity.getTotalDays();
         }
-        
+
         LocalDate earliestPossibleDelivery = LocalDate.now()
-                .plusDays(7)  // production start buffer
+                .plusDays(7) // production start buffer
                 .plusDays(daysToCompleteAllWork.setScale(0, RoundingMode.CEILING).longValue())
                 .plusDays(7); // delivery buffer
-        
+
         // 5. Calculate required days for BLOCKING backlog only (for display)
         BigDecimal backlogWeightKg = blockingBacklogKg;
         BigDecimal totalLoadKg = newOrderWeightKg.add(backlogWeightKg);
@@ -215,7 +215,7 @@ public class CapacityCheckService {
         } else {
             machineCapacity.setStatus("INSUFFICIENT");
             machineCapacity
-                    .setMergeSuggestion("Không đủ năng lực! Ngày giao yêu cầu: " + targetDate 
+                    .setMergeSuggestion("Không đủ năng lực! Ngày giao yêu cầu: " + targetDate
                             + " < Ngày giao sớm nhất có thể: " + earliestPossibleDelivery + ". "
                             + "Tổng hàng đợi: " + totalQueueLoad.setScale(2, RoundingMode.HALF_UP) + " kg ("
                             + daysToCompleteAllWork.setScale(0, RoundingMode.HALF_UP) + " ngày). "
