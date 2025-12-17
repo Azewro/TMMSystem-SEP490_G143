@@ -16,38 +16,38 @@ import java.util.UUID;
 @Service
 @Slf4j
 public class FileStorageService {
-    
+
     @Value("${file.storage.path:/data}")
     private String storagePath;
-    
+
     @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
-    
+
     /**
      * Upload contract file to local storage
      */
     public String uploadContractFile(MultipartFile file, Long contractId) throws IOException {
         validateFile(file);
-        
+
         // Create directory structure: /data/contracts/{contractId}/
         Path contractDir = Paths.get(storagePath, "contracts", contractId.toString());
         Files.createDirectories(contractDir);
-        
+
         // Generate unique filename
         String originalFilename = file.getOriginalFilename();
         String extension = getFileExtension(originalFilename);
         String fileName = "contract_" + contractId + "_" + System.currentTimeMillis() + extension;
-        
+
         // Save file
         Path filePath = contractDir.resolve(fileName);
         Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-        
+
         log.info("File uploaded successfully: {}", filePath);
-        
+
         // Return relative path for database storage
         return "contracts/" + contractId + "/" + fileName;
     }
-    
+
     /**
      * Get contract file URL (latest uploaded)
      */
@@ -60,7 +60,7 @@ public class FileStorageService {
             try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
                 return stream
                         .filter(Files::isRegularFile)
-                        .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                        .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                         .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
                         .orElse(null);
             }
@@ -69,7 +69,7 @@ public class FileStorageService {
             return null;
         }
     }
-    
+
     /**
      * Download contract file (latest uploaded)
      */
@@ -81,12 +81,12 @@ public class FileStorageService {
         try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
             Path filePath = stream
                     .filter(Files::isRegularFile)
-                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                     .orElseThrow(() -> new IOException("Contract file not found"));
             return Files.readAllBytes(filePath);
         }
     }
-    
+
     /**
      * Get contract file name for download (latest uploaded)
      */
@@ -98,37 +98,37 @@ public class FileStorageService {
         try (java.util.stream.Stream<Path> stream = Files.list(contractDir)) {
             return stream
                     .filter(Files::isRegularFile)
-                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                     .map(path -> path.getFileName().toString())
                     .orElseThrow(() -> new IOException("Contract file not found"));
         }
     }
-    
+
     /**
      * Upload production order file
      */
     public String uploadProductionOrderFile(MultipartFile file, Long productionOrderId) throws IOException {
         validateFile(file);
-        
+
         // Create directory structure: /data/production-orders/{productionOrderId}/
         Path poDir = Paths.get(storagePath, "production-orders", productionOrderId.toString());
         Files.createDirectories(poDir);
-        
+
         // Generate unique filename
         String originalFilename = file.getOriginalFilename();
         String extension = getFileExtension(originalFilename);
         String fileName = "production_order_" + productionOrderId + "_" + System.currentTimeMillis() + extension;
-        
+
         // Save file
         Path filePath = poDir.resolve(fileName);
         Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-        
+
         log.info("Production order file uploaded successfully: {}", filePath);
-        
+
         // Return relative path for database storage
         return "production-orders/" + productionOrderId + "/" + fileName;
     }
-    
+
     /**
      * Get production order file URL
      */
@@ -150,7 +150,7 @@ public class FileStorageService {
             return null;
         }
     }
-    
+
     /**
      * Upload quotation file (PDF/Doc/Excel/Images)
      */
@@ -209,11 +209,12 @@ public class FileStorageService {
     public String getQuotationFileUrl(Long quotationId) {
         try {
             Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
-            if (!Files.exists(dir)) return null;
+            if (!Files.exists(dir))
+                return null;
             try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
                 return stream
                         .filter(Files::isRegularFile)
-                        .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                        .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                         .map(path -> baseUrl + "/api/files/" + path.getFileName().toString())
                         .orElse(null);
             }
@@ -228,11 +229,12 @@ public class FileStorageService {
      */
     public byte[] downloadQuotationFile(Long quotationId) throws IOException {
         Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
-        if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
+        if (!Files.exists(dir))
+            throw new IOException("Quotation directory not found");
         try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
             Path filePath = stream
                     .filter(Files::isRegularFile)
-                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                     .orElseThrow(() -> new IOException("Quotation file not found"));
             return Files.readAllBytes(filePath);
         }
@@ -243,11 +245,12 @@ public class FileStorageService {
      */
     public String getQuotationFileName(Long quotationId) throws IOException {
         Path dir = Paths.get(storagePath, "quotations", quotationId.toString());
-        if (!Files.exists(dir)) throw new IOException("Quotation directory not found");
+        if (!Files.exists(dir))
+            throw new IOException("Quotation directory not found");
         try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
             return stream
                     .filter(Files::isRegularFile)
-                    .min((a,b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
+                    .min((a, b) -> Long.compare(b.toFile().lastModified(), a.toFile().lastModified()))
                     .map(p -> p.getFileName().toString())
                     .orElseThrow(() -> new IOException("Quotation file not found"));
         }
@@ -277,7 +280,7 @@ public class FileStorageService {
                     .orElseThrow(() -> new IOException("File not found: " + filename));
         }
     }
-    
+
     /**
      * Validate uploaded file - Allow images + PDF + Word + Excel
      */
@@ -285,12 +288,12 @@ public class FileStorageService {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File is empty");
         }
-        
-        // Check file size (max 10MB)
-        if (file.getSize() > 10 * 1024 * 1024) {
-            throw new IllegalArgumentException("File size exceeds 10MB limit");
+
+        // Check file size (max 25MB)
+        if (file.getSize() > 25 * 1024 * 1024) {
+            throw new IllegalArgumentException("File size exceeds 25MB limit");
         }
-        
+
         // Allow common types
         String contentType = file.getContentType();
         String ext = getFileExtension(file.getOriginalFilename()).toLowerCase();
@@ -302,9 +305,9 @@ public class FileStorageService {
                 "application/msword",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        );
-        java.util.Set<String> allowedExt = Set.of(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx");
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        java.util.Set<String> allowedExt = Set.of(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".pdf", ".doc",
+                ".docx", ".xls", ".xlsx");
         boolean ok = (contentType != null && allowedTypes.contains(contentType)) || allowedExt.contains(ext);
         if (!ok) {
             throw new IllegalArgumentException("Only image/PDF/Word/Excel files are allowed");
@@ -327,7 +330,7 @@ public class FileStorageService {
             throw new IllegalArgumentException("Only image files are allowed");
         }
     }
-    
+
     /**
      * Get file extension
      */
