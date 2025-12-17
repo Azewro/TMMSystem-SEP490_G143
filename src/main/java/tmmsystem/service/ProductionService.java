@@ -205,11 +205,12 @@ public class ProductionService {
             return;
         }
 
-        // "Truly active" statuses that block the slot (exclude WAITING/PENDING - those
-        // need promotion)
-        List<String> TRULY_ACTIVE_STATUSES = List.of("READY_TO_PRODUCE", "IN_PROGRESS",
-                "WAITING_QC", "QC_IN_PROGRESS", "QC_FAILED", "WAITING_REWORK",
-                "REWORK_IN_PROGRESS", "PAUSED");
+        // "Truly active" statuses that BLOCK the production slot (machine in use)
+        // READY_TO_PRODUCE: NOT blocking - lot is ready but Leader hasn't started yet
+        // WAITING_QC, QC_IN_PROGRESS: NOT blocking - Leader finished 100%, machine is
+        // free
+        List<String> TRULY_ACTIVE_STATUSES = List.of("IN_PROGRESS",
+                "QC_FAILED", "WAITING_REWORK", "REWORK_IN_PROGRESS", "PAUSED");
 
         // Count stages that are truly occupying the production slot
         long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(stageType, TRULY_ACTIVE_STATUSES);
@@ -254,7 +255,7 @@ public class ProductionService {
                                 "PRODUCTION_STAGE", next.getId());
                     }
                     System.out.println("Promoted stage " + next.getId() + " (" + stageType + ") to READY_TO_PRODUCE");
-                    break; // Only promote one (slot now occupied)
+                    // NOTE: No break - promote ALL eligible stages to READY_TO_PRODUCE
                 }
             }
         }
@@ -267,14 +268,22 @@ public class ProductionService {
      * WARPING→WEAVING→DYEING→CUTTING→HEMMING→PACKAGING
      */
     private boolean canEnterStage(ProductionStage stage) {
-        // First stage (sequence 1, usually WARPING) can always enter if slot available
-        if (stage.getStageSequence() == null || stage.getStageSequence() == 1) {
-            return true;
-        }
-
         ProductionOrder po = stage.getProductionOrder();
         if (po == null) {
             return false;
+        }
+
+        // NEW: Production Order must be IN_PROGRESS (PM already started work order)
+        // This prevents DataInitializer from promoting stages before PM clicks "Bắt đầu
+        // lệnh"
+        String poStatus = po.getExecutionStatus();
+        if (poStatus == null || !"IN_PROGRESS".equals(poStatus)) {
+            return false;
+        }
+
+        // First stage (sequence 1, usually WARPING) can always enter if slot available
+        if (stage.getStageSequence() == null || stage.getStageSequence() == 1) {
+            return true;
         }
 
         List<ProductionStage> stages = stageRepo.findByProductionOrderIdOrderByStageSequenceAsc(po.getId());
@@ -946,6 +955,11 @@ public class ProductionService {
         syncStageStatus(s, "QC_PASSED");
         stageRepo.save(s);
 
+        // FIX: Promote other lots waiting at this same stage type
+        // When LOT-001 completes CUTTING QC, LOT-003's CUTTING should be promoted from
+        // WAITING to READY_TO_PRODUCE
+        promoteNextOrderForStageType(s.getStageType());
+
         // NEW: Resume paused stages when rework stage completes
         // When a rework stage passes QC, resume all PAUSED stages of the same type
         boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
@@ -1006,6 +1020,11 @@ public class ProductionService {
             syncStageStatus(next, "READY_TO_PRODUCE");
             next.setExecutionStatus("READY_TO_PRODUCE");
             stageRepo.save(next);
+
+            // FIX: Immediately promote this stage type to ensure proper queue handling
+            // This prevents race condition where frontend sees WAITING before scheduler
+            // runs
+            promoteNextOrderForStageType(next.getStageType());
 
             // AMBULANCE PRIORITY: If this is a rework order, pause ALL other stages at next
             // stage type
@@ -1236,11 +1255,14 @@ public class ProductionService {
             }
         }
 
-        // Enforce single-lot rule per stage type (except outsourced dyeing)
+        // Enforce single-lot rule per stage type (except DYEING - always
+        // parallel/outsourced)
         // Only block if there's a stage truly IN production (not WAITING/PENDING)
-        boolean isOutsourcedDyeing = "DYEING".equalsIgnoreCase(s.getStageType())
-                && Boolean.TRUE.equals(s.getOutsourced());
-        if (!isOutsourcedDyeing) {
+        // NOTE: DYEING stages are always parallel regardless of is_outsourced flag
+        // value
+        boolean isDyeingStage = "DYEING".equalsIgnoreCase(s.getStageType())
+                || "NHUOM".equalsIgnoreCase(s.getStageType());
+        if (!isDyeingStage) {
             // Truly active = already started production, not just waiting in queue
             List<String> TRULY_ACTIVE_STATUSES = List.of("IN_PROGRESS",
                     "WAITING_QC", "QC_IN_PROGRESS", "QC_FAILED", "WAITING_REWORK",
@@ -1777,14 +1799,12 @@ public class ProductionService {
                 for (ProductionStage stage : activeWarpingStages) {
                     String lotCode = "N/A";
                     if (stage.getProductionOrder() != null) {
-                        lotCode = stage.getProductionOrder().getPoNumber();
-                        // Try to get lotCode from plan
-                        String planCode = extractPlanCodeFromNotes(stage.getProductionOrder().getNotes());
-                        if (planCode != null) {
-                            ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
-                            if (plan != null && plan.getLot() != null) {
-                                lotCode = plan.getLot().getLotCode();
-                            }
+                        // Convert PO-XXXX-XXX to LOT-XXXX-XXX for display
+                        String poNum = stage.getProductionOrder().getPoNumber();
+                        if (poNum != null && poNum.startsWith("PO-")) {
+                            lotCode = poNum.replace("PO-", "LOT-");
+                        } else {
+                            lotCode = poNum != null ? poNum : "N/A";
                         }
                     }
 
@@ -1825,10 +1845,10 @@ public class ProductionService {
         }
 
         ProductionStage firstStage = stages.get(0);
-        // Set to WAITING - scheduler will promote to READY_TO_PRODUCE when slot
-        // available
-        syncStageStatus(firstStage, "WAITING");
-        firstStage.setExecutionStatus("WAITING");
+        // NEW: Set to READY_TO_PRODUCE directly - multiple lots can be ready at once
+        // When Leader starts one lot, others will be demoted to WAITING (in startStage)
+        syncStageStatus(firstStage, "READY_TO_PRODUCE");
+        firstStage.setExecutionStatus("READY_TO_PRODUCE");
         stageRepo.save(firstStage);
 
         // 3. Set other stages to PENDING
@@ -1839,8 +1859,8 @@ public class ProductionService {
             stageRepo.save(s);
         }
 
-        // 4. Trigger scheduler to check if slot is available and promote immediately
-        promoteNextOrderForStageType(firstStage.getStageType());
+        // 4. No need to call promoteNextOrderForStageType - stage is already
+        // READY_TO_PRODUCE
 
         // 5. Notify Leader (will be notified again when promoted to READY_TO_PRODUCE)
         if (firstStage.getAssignedLeader() != null) {
@@ -3612,6 +3632,8 @@ public class ProductionService {
      * A stage is blocked if:
      * 1. It's a non-parallel stage (not DYEING)
      * 2. Another lot has IN_PROGRESS or REWORK_IN_PROGRESS at the same stage type
+     * 3. (NEW) For Leader priority: Another lot has READY_TO_PRODUCE that was
+     * started EARLIER
      */
     private BlockingInfo checkStageBlocked(ProductionStage stage) {
         // DYEING is outsourced/parallel - never blocked
@@ -3624,36 +3646,45 @@ public class ProductionService {
             return new BlockingInfo(false, null);
         }
 
-        // Find all stages of same type that are IN_PROGRESS or REWORK_IN_PROGRESS
-        // NOTE: WAITING_QC and QC_IN_PROGRESS do NOT block because the machine is
-        // now free for the next lot to start (Leader finished, waiting for QC)
+        // 1. Check for stages that are occupying the machine (including QC pending)
+        // WAITING_QC and QC_IN_PROGRESS also block because the lot hasn't passed QC yet
         List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
 
         for (ProductionStage activeStage : activeStages) {
             if (activeStage.getId().equals(stage.getId()))
                 continue; // Skip self
 
-            // Check if same stage type (considering aliases)
-            String activeType = activeStage.getStageType() != null ? activeStage.getStageType().toUpperCase() : "";
-            String thisType = stageType.toUpperCase();
-
-            boolean sameType = activeType.equals(thisType);
-            if (!sameType && STAGE_TYPE_ALIASES.containsKey(thisType)) {
-                sameType = activeType.equals(STAGE_TYPE_ALIASES.get(thisType));
-            }
-            if (!sameType && STAGE_TYPE_ALIASES.containsKey(activeType)) {
-                sameType = thisType.equals(STAGE_TYPE_ALIASES.get(activeType));
-            }
-
-            if (sameType) {
-                // This stage is blocked by activeStage
+            if (isSameStageType(stageType, activeStage.getStageType())) {
                 String blockedByLotCode = getLotCodeForStage(activeStage);
                 return new BlockingInfo(true, blockedByLotCode);
             }
         }
 
+        // NOTE: Removed READY_TO_PRODUCE priority check
+        // Multiple lots can be READY_TO_PRODUCE simultaneously
+        // Blocking only happens when another lot is actually IN_PROGRESS
+
         return new BlockingInfo(false, null);
+    }
+
+    /**
+     * Check if two stage types are the same (considering aliases)
+     */
+    private boolean isSameStageType(String type1, String type2) {
+        if (type1 == null || type2 == null)
+            return false;
+        String t1 = type1.toUpperCase();
+        String t2 = type2.toUpperCase();
+
+        if (t1.equals(t2))
+            return true;
+        if (STAGE_TYPE_ALIASES.containsKey(t1) && STAGE_TYPE_ALIASES.get(t1).equals(t2))
+            return true;
+        if (STAGE_TYPE_ALIASES.containsKey(t2) && STAGE_TYPE_ALIASES.get(t2).equals(t1))
+            return true;
+
+        return false;
     }
 
     /**

@@ -299,6 +299,9 @@ public class ExecutionOrchestrationService {
                     machineAssignmentRepository.save(ma);
                 }
             }
+            // NOTE: Removed demotion of other READY_TO_PRODUCE stages
+            // Other lots stay READY_TO_PRODUCE until Leader tries to start them
+            // If Leader tries to start but this stage is IN_PROGRESS, they'll be blocked
         }
 
         if (stage.getProgressPercent() == null)
@@ -599,7 +602,7 @@ public class ExecutionOrchestrationService {
             stageRef.setDefectLevel(defectLevel); // Persist defect level
             stageRef.setDefectDescription(defectDescription); // Persist defect description
             stageRepo.save(stageRef);
-            
+
             QualityIssue issue = new QualityIssue();
             issue.setProductionStage(stageRef);
             issue.setProductionOrder(resolveOrder(stageRef));
@@ -992,9 +995,11 @@ public class ExecutionOrchestrationService {
         }
 
         // Check if any other stage of the same type is blocking
-        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still "occupying" the machine until QC completes
+        // BUG FIX: Include WAITING_QC and QC_IN_PROGRESS because stage is still
+        // "occupying" the machine until QC completes
         java.util.List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK", "WAITING_QC", "QC_IN_PROGRESS"));
+                java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_REWORK", "WAITING_QC",
+                        "QC_IN_PROGRESS"));
 
         for (ProductionStage s : activeStages) {
             if (s.getId().equals(stageId))

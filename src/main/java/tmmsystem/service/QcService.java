@@ -16,6 +16,7 @@ public class QcService {
     private final QcStandardRepository standardRepo;
     private final tmmsystem.service.ProductionService productionService;
     private final tmmsystem.service.NotificationService notificationService;
+    private final tmmsystem.service.WebSocketEventService webSocketEventService;
     private final tmmsystem.repository.ProductionStageRepository stageRepo;
     private final tmmsystem.repository.ProductionPlanRepository productionPlanRepository;
     private final tmmsystem.repository.ProductionOrderDetailRepository productionOrderDetailRepository;
@@ -27,6 +28,7 @@ public class QcService {
             QcStandardRepository standardRepo,
             tmmsystem.service.ProductionService productionService,
             tmmsystem.service.NotificationService notificationService,
+            tmmsystem.service.WebSocketEventService webSocketEventService,
             tmmsystem.repository.ProductionStageRepository stageRepo,
             tmmsystem.repository.ProductionPlanRepository productionPlanRepository,
             tmmsystem.repository.ProductionOrderDetailRepository productionOrderDetailRepository) {
@@ -37,6 +39,7 @@ public class QcService {
         this.standardRepo = standardRepo;
         this.productionService = productionService;
         this.notificationService = notificationService;
+        this.webSocketEventService = webSocketEventService;
         this.stageRepo = stageRepo;
         this.productionPlanRepository = productionPlanRepository;
         this.productionOrderDetailRepository = productionOrderDetailRepository;
@@ -192,6 +195,10 @@ public class QcService {
             productionService.syncStageStatus(stage, "QC_PASSED");
             stageRepo.save(stage);
             productionService.markStageQcPass(stageId);
+
+            // FIX: Broadcast WebSocket event so Leader page auto-refetches
+            Long orderId = stage.getProductionOrder() != null ? stage.getProductionOrder().getId() : null;
+            webSocketEventService.notifyStageUpdate(stageId, orderId, "QC_PASSED");
         } else {
             // Sử dụng ProductionService's syncStageStatus để đồng bộ cả hai trường
             productionService.syncStageStatus(stage, "QC_FAILED");
