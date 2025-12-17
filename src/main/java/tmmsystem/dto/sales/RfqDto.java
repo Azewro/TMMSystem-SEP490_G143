@@ -22,6 +22,7 @@ public class RfqDto {
     private String notes;
     private Long createdById;
     private Long assignedSalesId;
+    private String assignedSalesName; // Name of sales person for display
     private String employeeCode; // Added to display Sales Staff Code on frontend
     private Long assignedPlanningId;
     private Long approvedById;
