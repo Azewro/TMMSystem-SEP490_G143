@@ -782,6 +782,12 @@ public class QuotationService {
     // Helper to attach quotation PDF/file
     @Transactional
     public Quotation attachQuotationFile(Long quotationId, org.springframework.web.multipart.MultipartFile file) {
+        // Validate file size (max 25MB)
+        long maxSizeBytes = 25 * 1024 * 1024; // 25MB
+        if (file.getSize() > maxSizeBytes) {
+            throw new IllegalArgumentException("File vượt quá dung lượng cho phép. Tối đa 25MB.");
+        }
+
         Quotation quotation = quotationRepository.findById(quotationId).orElseThrow();
         try {
             String path = fileStorageService.uploadQuotationFile(file, quotationId);

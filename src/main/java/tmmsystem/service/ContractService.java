@@ -162,6 +162,12 @@ public class ContractService {
 
     @Transactional
     public Contract uploadSignedContract(Long contractId, MultipartFile file, String notes, Long saleUserId) {
+        // Validate file size (max 25MB)
+        long maxSizeBytes = 25 * 1024 * 1024; // 25MB
+        if (file.getSize() > maxSizeBytes) {
+            throw new IllegalArgumentException("File vượt quá dung lượng cho phép. Tối đa 25MB.");
+        }
+
         Contract contract = repository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("Contract not found"));
 
