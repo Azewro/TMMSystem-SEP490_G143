@@ -7,5 +7,7 @@ import java.util.List;
 public interface ProductionLotOrderRepository extends JpaRepository<ProductionLotOrder, Long> {
     List<ProductionLotOrder> findByLotId(Long lotId);
 
+    List<ProductionLotOrder> findByContractId(Long contractId);
+
     boolean existsByQuotationDetail_Id(Long quotationDetailId);
 }

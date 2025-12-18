@@ -48,6 +48,7 @@ public class ProductionPlanService {
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final BomService bomService;
     private final ProductionService productionService;
+    private final ContractStatusService contractStatusService;
 
     @Value("${planning.autoInitStages:true}")
     private boolean autoInitStages;
@@ -75,7 +76,8 @@ public class ProductionPlanService {
             PlanningTimelineCalculator timelineCalculator,
             SequentialCapacityCalculator sequentialCapacityCalculator,
             BomService bomService,
-            @Lazy ProductionService productionService) {
+            @Lazy ProductionService productionService,
+            ContractStatusService contractStatusService) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
@@ -96,6 +98,7 @@ public class ProductionPlanService {
         this.sequentialCapacityCalculator = sequentialCapacityCalculator;
         this.bomService = bomService;
         this.productionService = productionService;
+        this.contractStatusService = contractStatusService;
     }
 
     // ===== LOT & PLAN VERSIONING =====
@@ -385,6 +388,8 @@ public class ProductionPlanService {
         if (saved.getLot() != null) {
             saved.getLot().setStatus("PLAN_APPROVED");
             lotRepo.save(saved.getLot());
+            // Update all contracts in this lot to IN_PRODUCTION
+            contractStatusService.updateContractsToInProductionForLot(saved.getLot());
         }
         ProductionOrder po = createProductionOrderFromPlan(saved);
 

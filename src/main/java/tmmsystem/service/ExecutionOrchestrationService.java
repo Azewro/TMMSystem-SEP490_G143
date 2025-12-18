@@ -49,6 +49,7 @@ public class ExecutionOrchestrationService {
     private final MachineRepository machineRepository;
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final ProductionPlanRepository productionPlanRepository;
+    private final ContractStatusService contractStatusService;
     private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
             Map.entry("WARPING", "CUONG_MAC"),
             Map.entry("CUONG_MAC", "WARPING"),
@@ -76,7 +77,8 @@ public class ExecutionOrchestrationService {
             QcInspectionRepository qcInspectionRepository,
             MachineRepository machineRepository,
             MachineAssignmentRepository machineAssignmentRepository,
-            ProductionPlanRepository productionPlanRepository) {
+            ProductionPlanRepository productionPlanRepository,
+            ContractStatusService contractStatusService) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -91,6 +93,7 @@ public class ExecutionOrchestrationService {
         this.machineRepository = machineRepository;
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.productionPlanRepository = productionPlanRepository;
+        this.contractStatusService = contractStatusService;
     }
 
     private record StageContext(String lotCode, String poNumber, String contractNumber, String stageType) {
@@ -811,6 +814,10 @@ public class ExecutionOrchestrationService {
                 orderRepo.save(order);
                 notificationService.notifyRole("INVENTORY_STAFF", "PRODUCTION", "SUCCESS", "Hoàn thành",
                         "Đơn hàng " + order.getPoNumber() + " đã hoàn thành", "PRODUCTION_ORDER", order.getId());
+
+                // Check if associated lot is now completed, and update contract status
+                // accordingly
+                checkLotCompletionAndUpdateContracts(order);
             }
             return;
         }
@@ -1047,5 +1054,38 @@ public class ExecutionOrchestrationService {
             case "PACKAGING", "DONG_GOI" -> "Đóng gói";
             default -> stageType;
         };
+    }
+
+    /**
+     * Check if the lot associated with this order is now completed,
+     * and if so, update lot status and check contract completion.
+     */
+    private void checkLotCompletionAndUpdateContracts(ProductionOrder order) {
+        if (order == null)
+            return;
+
+        // Find lot through plan (from order notes)
+        String notes = order.getNotes();
+        if (notes == null || !notes.contains("Plan: "))
+            return;
+
+        String planCode = notes.substring(notes.indexOf("Plan: ") + 6).trim();
+        ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+        if (plan == null || plan.getLot() == null)
+            return;
+
+        var lot = plan.getLot();
+
+        // Check if lot already completed
+        if ("COMPLETED".equals(lot.getStatus()))
+            return;
+
+        // Update lot status to COMPLETED
+        lot.setStatus("COMPLETED");
+        // Note: Need to save lot - but we don't have lotRepo here
+        // So delegate to contractStatusService which has access
+
+        // Check and update contracts for this lot
+        contractStatusService.checkContractsCompletionForLot(lot);
     }
 }
