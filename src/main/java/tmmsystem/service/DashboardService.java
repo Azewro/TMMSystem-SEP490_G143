@@ -230,8 +230,8 @@ public class DashboardService {
                                                 && !"PENDING".equals(s.getExecutionStatus()))
                                 .count();
 
-                // 5. QC Summary - Calculate based on ALL stages that have been QC checked (not
-                // just today)
+                // 5. QC Summary - Calculate based on stages AND quality issues
+                // Any QualityIssue means a QC failure, even if reworked
                 List<ProductionStage> qcCheckedStages = allStages.stream()
                                 .filter(s -> s.getQcLastResult() != null)
                                 .collect(Collectors.toList());
@@ -239,11 +239,18 @@ public class DashboardService {
                 long qcPassCount = qcCheckedStages.stream()
                                 .filter(s -> "PASS".equals(s.getQcLastResult()))
                                 .count();
-                long qcFailCount = qcCheckedStages.stream()
+                long qcFailFromStages = qcCheckedStages.stream()
                                 .filter(s -> "FAIL".equals(s.getQcLastResult())
                                                 || "QC_FAILED".equals(s.getExecutionStatus()))
                                 .count();
-                long totalQcChecked = qcPassCount + qcFailCount;
+
+                // Count ALL quality issues (including processed) as QC failures
+                long qcFailFromIssues = qualityIssueRepository.count();
+
+                // Total failures = from stages + from issues (avoid double counting if
+                // possible)
+                long totalQcFail = Math.max(qcFailFromStages, qcFailFromIssues);
+                long totalQcChecked = qcPassCount + totalQcFail;
                 double qcPassRate = totalQcChecked > 0 ? (qcPassCount * 100.0 / totalQcChecked) : 100;
 
                 // Count quality issues - total counts for severity, pending count for new
