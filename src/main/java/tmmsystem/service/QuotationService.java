@@ -35,6 +35,8 @@ public class QuotationService {
     private final CustomerService customerService;
     // NEW: Inject CapacityCheckService for strict backend verification
     private final CapacityCheckService capacityCheckService;
+    // NEW: Inject WebSocketService for real-time updates
+    private final WebSocketService webSocketService;
 
     public QuotationService(QuotationRepository quotationRepository,
             QuotationDetailRepository quotationDetailRepository,
@@ -48,7 +50,8 @@ public class QuotationService {
             EmailService emailService,
             FileStorageService fileStorageService,
             CustomerService customerService,
-            CapacityCheckService capacityCheckService) {
+            CapacityCheckService capacityCheckService,
+            WebSocketService webSocketService) {
         this.quotationRepository = quotationRepository;
         this.quotationDetailRepository = quotationDetailRepository;
         this.rfqRepository = rfqRepository;
@@ -62,6 +65,7 @@ public class QuotationService {
         this.fileStorageService = fileStorageService;
         this.customerService = customerService;
         this.capacityCheckService = capacityCheckService;
+        this.webSocketService = webSocketService;
     }
 
     public List<Quotation> findAll() {
@@ -353,6 +357,8 @@ public class QuotationService {
             log.error("Failed to send quotation email for quotation {}: {}", savedQuotation.getId(),
                     e.getMessage(), e);
         }
+        // Broadcast real-time update for quotation created
+        webSocketService.broadcastDataUpdate("QUOTATION", savedQuotation.getId(), "CREATED");
         return savedQuotation;
     }
 
@@ -651,7 +657,8 @@ public class QuotationService {
         } else {
             emailService.sendQuotationEmail(savedQuotation);
         }
-
+        // Broadcast real-time update for quotation sent
+        webSocketService.broadcastDataUpdate("QUOTATION", savedQuotation.getId(), "SENT");
         return savedQuotation;
     }
 
@@ -683,7 +690,8 @@ public class QuotationService {
         // (createOrderFromQuotation() sẽ chịu trách nhiệm gửi notification và email xác
         // nhận đơn hàng)
         createOrderFromQuotation(quotationId);
-
+        // Broadcast real-time update for quotation accepted
+        webSocketService.broadcastDataUpdate("QUOTATION", savedQuotation.getId(), "ACCEPTED");
         return savedQuotation;
     }
 
@@ -708,7 +716,12 @@ public class QuotationService {
 
         // Gửi thông báo cho Sale Staff
         notificationService.notifyQuotationRejected(savedQuotation);
-
+        // Broadcast real-time update for quotation rejected
+        webSocketService.broadcastDataUpdate("QUOTATION", savedQuotation.getId(), "REJECTED");
+        // Also broadcast RFQ update since status changed
+        if (quotation.getRfq() != null) {
+            webSocketService.broadcastDataUpdate("RFQ", quotation.getRfq().getId(), "STATUS_CHANGED");
+        }
         return savedQuotation;
     }
 

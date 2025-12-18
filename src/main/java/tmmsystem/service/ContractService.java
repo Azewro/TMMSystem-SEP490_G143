@@ -27,6 +27,8 @@ public class ContractService {
     private final ProductionPlanService productionPlanService;
     private final ProductionLotRepository lotRepo;
     private final ProductionLotOrderRepository lotOrderRepo;
+    // NEW: Inject WebSocketService for real-time updates
+    private final WebSocketService webSocketService;
     @Autowired(required = false)
     private AutoMergeService autoMergeService;
 
@@ -40,7 +42,8 @@ public class ContractService {
             FileStorageService fileStorageService,
             ProductionPlanService productionPlanService,
             ProductionLotRepository lotRepo,
-            ProductionLotOrderRepository lotOrderRepo) {
+            ProductionLotOrderRepository lotOrderRepo,
+            WebSocketService webSocketService) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
@@ -48,6 +51,7 @@ public class ContractService {
         this.productionPlanService = productionPlanService;
         this.lotRepo = lotRepo;
         this.lotOrderRepo = lotOrderRepo;
+        this.webSocketService = webSocketService;
     }
 
     public List<Contract> findAll() {
@@ -184,7 +188,8 @@ public class ContractService {
 
             // Send notification to Director
             notificationService.notifyContractUploaded(savedContract);
-
+            // Broadcast real-time update for contract uploaded
+            webSocketService.broadcastDataUpdate("CONTRACT", savedContract.getId(), "UPLOADED");
             return savedContract;
         } catch (Exception e) {
             log.error("Error uploading contract file", e);
@@ -228,6 +233,8 @@ public class ContractService {
 
         // Thông báo
         notificationService.notifyContractApproved(savedContract);
+        // Broadcast real-time update for contract approved
+        webSocketService.broadcastDataUpdate("CONTRACT", savedContract.getId(), "APPROVED");
         return savedContract;
     }
 
@@ -249,7 +256,8 @@ public class ContractService {
 
         // Send notification to Sale Staff
         notificationService.notifyContractRejected(savedContract);
-
+        // Broadcast real-time update for contract rejected
+        webSocketService.broadcastDataUpdate("CONTRACT", savedContract.getId(), "REJECTED");
         return savedContract;
     }
 

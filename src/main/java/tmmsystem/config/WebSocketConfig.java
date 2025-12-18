@@ -16,12 +16,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Enable a simple in-memory message broker for topics
-        // Clients subscribe to /topic/orders, /topic/stages, etc.
-        config.enableSimpleBroker("/topic");
-        
-        // Prefix for messages FROM clients TO server (not used in this implementation)
+        // Enable a simple in-memory message broker
+        // /topic for public broadcasts (e.g., /topic/updates)
+        // /queue for private user messages (e.g., /user/{userId}/queue/notifications)
+        config.enableSimpleBroker("/topic", "/queue");
+
+        // Prefix for messages FROM clients TO server
         config.setApplicationDestinationPrefixes("/app");
+
+        // Prefix for user-specific destinations (used by convertAndSendToUser)
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override
