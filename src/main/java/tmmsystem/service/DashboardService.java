@@ -357,14 +357,16 @@ public class DashboardService {
                                                                 : o.getStatus(),
                                                 Collectors.counting()));
 
-                Map<String, String> statusLabels = Map.of(
-                                "IN_PROGRESS", "Đang sản xuất",
-                                "COMPLETED", "Hoàn thành",
-                                "WAITING_PRODUCTION", "Chờ sản xuất",
-                                "WAITING_MATERIAL_APPROVAL", "Chờ duyệt NVL",
-                                "WAITING_REWORK", "Chờ làm lại",
-                                "PENDING_APPROVAL", "Chờ duyệt",
-                                "APPROVED", "Đã duyệt");
+                Map<String, String> statusLabels = new java.util.HashMap<>();
+                statusLabels.put("IN_PROGRESS", "Đang sản xuất");
+                statusLabels.put("COMPLETED", "Hoàn thành");
+                statusLabels.put("WAITING_PRODUCTION", "Chờ sản xuất");
+                statusLabels.put("WAITING_MATERIAL_APPROVAL", "Chờ duyệt NVL");
+                statusLabels.put("WAITING_REWORK", "Chờ làm lại");
+                statusLabels.put("PENDING_APPROVAL", "Chờ duyệt");
+                statusLabels.put("APPROVED", "Đã duyệt");
+                statusLabels.put("WAITING_SUPPLEMENTARY", "Chờ bổ sung");
+                statusLabels.put("SUPPLEMENTARY_CREATED", "Đã tạo lệnh bổ sung");
 
                 return statusCounts.entrySet().stream()
                                 .map(e -> DirectorDashboardDTO.StatusCountDTO.builder()
