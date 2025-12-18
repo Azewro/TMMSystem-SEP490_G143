@@ -5,23 +5,23 @@ import jakarta.validation.ConstraintValidatorContext;
 
 /**
  * Validator for Vietnamese tax code.
- * Regex matches frontend: /^[0-9]{10,13}$/
+ * Vietnam tax codes are exactly 10 or 13 digits only.
  */
 public class TaxCodeValidator implements ConstraintValidator<TaxCode, String> {
-    
-    private static final String TAX_CODE_REGEX = "^[0-9]{10,13}$";
-    
+
+    // Vietnam tax code: exactly 10 digits OR exactly 13 digits
+    private static final String TAX_CODE_REGEX = "^[0-9]{10}$|^[0-9]{13}$";
+
     @Override
     public void initialize(TaxCode constraintAnnotation) {
         // No initialization needed
     }
-    
+
     @Override
     public boolean isValid(String taxCode, ConstraintValidatorContext context) {
         if (taxCode == null || taxCode.trim().isEmpty()) {
-            return false;
+            return true; // Optional field - allow null/empty
         }
         return taxCode.trim().matches(TAX_CODE_REGEX);
     }
 }
-

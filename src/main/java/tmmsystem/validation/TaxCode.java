@@ -10,15 +10,16 @@ import java.lang.annotation.Target;
 
 /**
  * Custom validation annotation for Vietnamese tax code.
- * Matches frontend regex: /^[0-9]{10,13}$/
+ * Vietnam tax codes are exactly 10 or 13 digits only.
  */
 @Documented
 @Constraint(validatedBy = TaxCodeValidator.class)
-@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Target({ ElementType.FIELD, ElementType.PARAMETER })
 @Retention(RetentionPolicy.RUNTIME)
 public @interface TaxCode {
-    String message() default "Mã số thuế không hợp lệ.";
+    String message() default "Mã số thuế phải là 10 hoặc 13 chữ số.";
+
     Class<?>[] groups() default {};
+
     Class<? extends Payload>[] payload() default {};
 }
-
