@@ -246,18 +246,20 @@ public class DashboardService {
                 long totalQcChecked = qcPassCount + qcFailCount;
                 double qcPassRate = totalQcChecked > 0 ? (qcPassCount * 100.0 / totalQcChecked) : 100;
 
-                List<QualityIssue> todayIssues = qualityIssueRepository.findAll().stream()
-                                .filter(i -> i.getCreatedAt() != null)
-                                .filter(i -> !i.getCreatedAt().isBefore(todayStart)
-                                                && i.getCreatedAt().isBefore(todayEnd))
-                                .collect(Collectors.toList());
+                // Count quality issues - total counts for severity, pending count for new
+                // issues
+                List<QualityIssue> allIssues = qualityIssueRepository.findAll();
 
-                int newIssues = todayIssues.size();
-                int minorIssues = (int) todayIssues.stream()
+                // newIssues = pending (unprocessed) issues
+                int newIssues = (int) allIssues.stream()
+                                .filter(i -> "PENDING".equals(i.getStatus()))
+                                .count();
+                // minorIssues/majorIssues = ALL issues (including processed) to show total
+                int minorIssues = (int) allIssues.stream()
                                 .filter(i -> "MINOR".equals(i.getSeverity()))
                                 .count();
-                int majorIssues = (int) todayIssues.stream()
-                                .filter(i -> "MAJOR".equals(i.getSeverity()))
+                int majorIssues = (int) allIssues.stream()
+                                .filter(i -> "MAJOR".equals(i.getSeverity()) || "CRITICAL".equals(i.getSeverity()))
                                 .count();
 
                 int reworkStages = (int) allStages.stream()
