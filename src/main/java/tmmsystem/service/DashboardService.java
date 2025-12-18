@@ -230,28 +230,18 @@ public class DashboardService {
                                                 && !"PENDING".equals(s.getExecutionStatus()))
                                 .count();
 
-                // 5. QC Summary - Calculate based on stages AND quality issues
-                // Any QualityIssue means a QC failure, even if reworked
-                List<ProductionStage> qcCheckedStages = allStages.stream()
-                                .filter(s -> s.getQcLastResult() != null)
-                                .collect(Collectors.toList());
-
-                long qcPassCount = qcCheckedStages.stream()
+                // 5. QC Summary
+                // PASS = stages that have qcLastResult = "PASS" (even if later stages failed)
+                // FAIL = total number of QualityIssues (each issue = 1 QC failure)
+                long qcPassCount = allStages.stream()
                                 .filter(s -> "PASS".equals(s.getQcLastResult()))
                                 .count();
-                long qcFailFromStages = qcCheckedStages.stream()
-                                .filter(s -> "FAIL".equals(s.getQcLastResult())
-                                                || "QC_FAILED".equals(s.getExecutionStatus()))
-                                .count();
 
-                // Count ALL quality issues (including processed) as QC failures
-                long qcFailFromIssues = qualityIssueRepository.count();
+                // Each QualityIssue represents a QC failure
+                long qcFailCount = qualityIssueRepository.count();
 
-                // Total failures = from stages + from issues (avoid double counting if
-                // possible)
-                long totalQcFail = Math.max(qcFailFromStages, qcFailFromIssues);
-                long totalQcChecked = qcPassCount + totalQcFail;
-                double qcPassRate = totalQcChecked > 0 ? (qcPassCount * 100.0 / totalQcChecked) : 100;
+                long totalQcChecks = qcPassCount + qcFailCount;
+                double qcPassRate = totalQcChecks > 0 ? (qcPassCount * 100.0 / totalQcChecks) : 100;
 
                 // Count quality issues - total counts for severity, pending count for new
                 // issues
