@@ -179,6 +179,7 @@ public class DashboardService {
                         long completed = allStages.stream()
                                         .filter(s -> stageType.equals(s.getStageType()))
                                         .filter(s -> "COMPLETED".equals(s.getExecutionStatus())
+                                                        || "QC_PASSED".equals(s.getExecutionStatus())
                                                         || (s.getExecutionStatus() == null
                                                                         && "COMPLETED".equals(s.getStatus())))
                                         .count();
@@ -229,17 +230,21 @@ public class DashboardService {
                                                 && !"PENDING".equals(s.getExecutionStatus()))
                                 .count();
 
-                // 5. QC Today
-                List<ProductionStage> todayStages = allStages.stream()
-                                .filter(s -> s.getQcLastCheckedAt() != null)
-                                .filter(s -> !s.getQcLastCheckedAt().isBefore(todayStart)
-                                                && s.getQcLastCheckedAt().isBefore(todayEnd))
+                // 5. QC Summary - Calculate based on ALL stages that have been QC checked (not
+                // just today)
+                List<ProductionStage> qcCheckedStages = allStages.stream()
+                                .filter(s -> s.getQcLastResult() != null)
                                 .collect(Collectors.toList());
 
-                long qcPassToday = todayStages.stream()
+                long qcPassCount = qcCheckedStages.stream()
                                 .filter(s -> "PASS".equals(s.getQcLastResult()))
                                 .count();
-                double qcPassRate = todayStages.isEmpty() ? 100 : (qcPassToday * 100.0 / todayStages.size());
+                long qcFailCount = qcCheckedStages.stream()
+                                .filter(s -> "FAIL".equals(s.getQcLastResult())
+                                                || "QC_FAILED".equals(s.getExecutionStatus()))
+                                .count();
+                long totalQcChecked = qcPassCount + qcFailCount;
+                double qcPassRate = totalQcChecked > 0 ? (qcPassCount * 100.0 / totalQcChecked) : 100;
 
                 List<QualityIssue> todayIssues = qualityIssueRepository.findAll().stream()
                                 .filter(i -> i.getCreatedAt() != null)
