@@ -1519,8 +1519,10 @@ public class ProductionService {
         // 1. Pause the requested stage
         pauseSingleStage(s, leaderUserId, pauseReason, pauseNotes);
 
-        // 2. CASCADE PAUSE: Find other IN_PROGRESS stages at the same stageType (not same machine)
-        // Per business requirement: when one order pauses for rework, all orders at same stage type pause
+        // 2. CASCADE PAUSE: Find other IN_PROGRESS stages at the same stageType (not
+        // same machine)
+        // Per business requirement: when one order pauses for rework, all orders at
+        // same stage type pause
         String stageType = s.getStageType();
         if (stageType != null && !stageType.isEmpty()) {
             // Skip parallel stages (DYEING is outsourced - doesn't block others)
@@ -1558,7 +1560,7 @@ public class ProductionService {
                 }
             }
         }
-        
+
         return s;
     }
 
@@ -2211,7 +2213,8 @@ public class ProductionService {
 
         List<ProductionOrder> orders = poRepo.findAllById(orderIds);
 
-        // Filter out WAITING_PRODUCTION, PENDING_APPROVAL, and PENDING (not started yet)
+        // Filter out WAITING_PRODUCTION, PENDING_APPROVAL, and PENDING (not started
+        // yet)
         return orders.stream()
                 .filter(o -> !"WAITING_PRODUCTION".equals(o.getExecutionStatus()) &&
                         !"PENDING_APPROVAL".equals(o.getExecutionStatus()) &&
@@ -3454,10 +3457,11 @@ public class ProductionService {
         // return;
         // }
 
-        // FIX: Expand cascade to pause stages in IN_PROGRESS, WAITING, and READY_TO_PRODUCE
+        // FIX: Expand cascade to pause stages in IN_PROGRESS, WAITING, and
+        // READY_TO_PRODUCE
         // This ensures Rework has full priority over the stage type
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(
-                stageType, 
+                stageType,
                 List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE"));
         for (ProductionStage stage : activeStages) {
             // Skip if no production order or if it's the current rework order
@@ -3520,7 +3524,7 @@ public class ProductionService {
         // FIX 1: Use executionStatus instead of status field
         List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatusIn(
                 stageType, List.of("PAUSED"));
-        
+
         for (ProductionStage stage : pausedStages) {
             // FIX 2: Check for REWORK_IN_PROGRESS using executionStatus
             boolean hasActiveRework = stageRepo.findByStageTypeAndExecutionStatus(
@@ -3535,7 +3539,7 @@ public class ProductionService {
             // Check if there are other IN_PROGRESS stages at this type
             long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
                     stageType, List.of("IN_PROGRESS"));
-            
+
             String restoreStatus;
             if (activeCount > 0) {
                 // Another lot is IN_PROGRESS, so this one should WAIT
@@ -3730,13 +3734,5 @@ public class ProductionService {
             }
         }
         return po.getPoNumber() != null ? po.getPoNumber() : "N/A";
-    }
-
-    /**
-     * Helper to synchronize status and executionStatus fields
-     */
-    private void syncStageStatus(ProductionStage stage, String newStatus) {
-        stage.setStatus(newStatus);
-        stage.setExecutionStatus(newStatus);
     }
 }
