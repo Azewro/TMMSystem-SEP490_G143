@@ -164,9 +164,12 @@ public class DashboardService {
                 // 2. Stage Progress by type
                 Map<String, PMDashboardDTO.StageStatusCountDTO> stageProgress = new LinkedHashMap<>();
                 for (String stageType : STAGE_TYPES) {
+                        // Check both executionStatus and status fields (fallback)
                         long inProgress = allStages.stream()
                                         .filter(s -> stageType.equals(s.getStageType()))
-                                        .filter(s -> "IN_PROGRESS".equals(s.getExecutionStatus()))
+                                        .filter(s -> "IN_PROGRESS".equals(s.getExecutionStatus())
+                                                        || (s.getExecutionStatus() == null
+                                                                        && "IN_PROGRESS".equals(s.getStatus())))
                                         .count();
                         long waitingQC = allStages.stream()
                                         .filter(s -> stageType.equals(s.getStageType()))
@@ -175,11 +178,15 @@ public class DashboardService {
                                         .count();
                         long completed = allStages.stream()
                                         .filter(s -> stageType.equals(s.getStageType()))
-                                        .filter(s -> "COMPLETED".equals(s.getExecutionStatus()))
+                                        .filter(s -> "COMPLETED".equals(s.getExecutionStatus())
+                                                        || (s.getExecutionStatus() == null
+                                                                        && "COMPLETED".equals(s.getStatus())))
                                         .count();
                         long failed = allStages.stream()
                                         .filter(s -> stageType.equals(s.getStageType()))
-                                        .filter(s -> "QC_FAILED".equals(s.getExecutionStatus()))
+                                        .filter(s -> "QC_FAILED".equals(s.getExecutionStatus())
+                                                        || (s.getExecutionStatus() == null
+                                                                        && "FAILED".equals(s.getStatus())))
                                         .count();
 
                         stageProgress.put(stageType, PMDashboardDTO.StageStatusCountDTO.builder()
