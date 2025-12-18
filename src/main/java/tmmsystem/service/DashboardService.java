@@ -231,10 +231,13 @@ public class DashboardService {
                                 .count();
 
                 // 5. QC Summary
-                // PASS = stages that have qcLastResult = "PASS" (even if later stages failed)
+                // PASS = stages with executionStatus = QC_PASSED or qcLastResult = PASS or
+                // COMPLETED
                 // FAIL = total number of QualityIssues (each issue = 1 QC failure)
                 long qcPassCount = allStages.stream()
-                                .filter(s -> "PASS".equals(s.getQcLastResult()))
+                                .filter(s -> "QC_PASSED".equals(s.getExecutionStatus())
+                                                || "COMPLETED".equals(s.getExecutionStatus())
+                                                || "PASS".equals(s.getQcLastResult()))
                                 .count();
 
                 // Each QualityIssue represents a QC failure
