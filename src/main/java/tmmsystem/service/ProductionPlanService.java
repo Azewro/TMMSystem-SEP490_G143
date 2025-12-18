@@ -49,6 +49,7 @@ public class ProductionPlanService {
     private final BomService bomService;
     private final ProductionService productionService;
     private final ContractStatusService contractStatusService;
+    private final WebSocketService webSocketService;
 
     @Value("${planning.autoInitStages:true}")
     private boolean autoInitStages;
@@ -77,7 +78,8 @@ public class ProductionPlanService {
             SequentialCapacityCalculator sequentialCapacityCalculator,
             BomService bomService,
             @Lazy ProductionService productionService,
-            ContractStatusService contractStatusService) {
+            ContractStatusService contractStatusService,
+            WebSocketService webSocketService) {
         this.planRepo = planRepo;
         this.stageRepo = stageRepo;
         this.contractRepo = contractRepo;
@@ -99,6 +101,7 @@ public class ProductionPlanService {
         this.bomService = bomService;
         this.productionService = productionService;
         this.contractStatusService = contractStatusService;
+        this.webSocketService = webSocketService;
     }
 
     // ===== LOT & PLAN VERSIONING =====
@@ -310,6 +313,7 @@ public class ProductionPlanService {
         // Auto-assign leader/QC ngay sau khi tạo để đảm bảo chọn người đang rảnh
         autoAssignResourcesToPlan(saved, true);
         notificationService.notifyProductionPlanCreated(saved);
+        webSocketService.broadcastDataUpdate("PRODUCTION_PLAN", saved.getId(), "CREATED");
         return mapper.toDto(saved);
     }
 
@@ -327,6 +331,7 @@ public class ProductionPlanService {
         autoAssignResourcesToPlan(saved, true);
 
         notificationService.notifyProductionPlanCreated(saved);
+        webSocketService.broadcastDataUpdate("PRODUCTION_PLAN", saved.getId(), "CREATED");
         return mapper.toDto(saved);
     }
 
@@ -364,6 +369,7 @@ public class ProductionPlanService {
         plan.setApprovalNotes(request.getNotes());
         ProductionPlan saved = planRepo.save(plan);
         notificationService.notifyProductionPlanSubmittedForApproval(saved);
+        webSocketService.broadcastDataUpdate("PRODUCTION_PLAN", saved.getId(), "STATUS_CHANGED");
         return mapper.toDto(saved);
     }
 
@@ -419,6 +425,8 @@ public class ProductionPlanService {
                 "PRODUCTION_PLAN", saved.getId());
 
         notificationService.notifyProductionPlanApproved(saved);
+        webSocketService.broadcastDataUpdate("PRODUCTION_PLAN", saved.getId(), "STATUS_CHANGED");
+        webSocketService.broadcastDataUpdate("PRODUCTION_ORDER", po.getId(), "CREATED");
         return mapper.toDto(saved);
     }
 
@@ -434,6 +442,7 @@ public class ProductionPlanService {
         ProductionPlan saved = planRepo.save(plan);
         releasePlanReservations(saved.getId());
         notificationService.notifyProductionPlanRejected(saved);
+        webSocketService.broadcastDataUpdate("PRODUCTION_PLAN", saved.getId(), "STATUS_CHANGED");
         return mapper.toDto(saved);
     }
 

@@ -26,11 +26,12 @@ public class RfqService {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final QuotationRepository quotationRepository;
+    private final WebSocketService webSocketService;
 
     public RfqService(RfqRepository rfqRepository, RfqDetailRepository detailRepository,
             NotificationService notificationService, CustomerRepository customerRepository,
             UserRepository userRepository, ProductRepository productRepository,
-            QuotationRepository quotationRepository) {
+            QuotationRepository quotationRepository, WebSocketService webSocketService) {
         this.rfqRepository = rfqRepository;
         this.detailRepository = detailRepository;
         this.notificationService = notificationService;
@@ -38,6 +39,7 @@ public class RfqService {
         this.userRepository = userRepository;
         this.productRepository = productRepository;
         this.quotationRepository = quotationRepository;
+        this.webSocketService = webSocketService;
     }
 
     public List<Rfq> findAll() {
@@ -304,7 +306,9 @@ public class RfqService {
             rfq.setContactMethod(method);
         }
 
-        return createWithDetails(rfq, dto.getDetails());
+        Rfq saved = createWithDetails(rfq, dto.getDetails());
+        webSocketService.broadcastDataUpdate("RFQ", saved.getId(), "CREATED");
+        return saved;
     }
 
     @Transactional
@@ -408,7 +412,9 @@ public class RfqService {
         if (dto.getExpectedDeliveryDate() != null)
             validateExpectedDeliveryDate(dto.getExpectedDeliveryDate(), java.time.LocalDate.now());
 
-        return createWithDetails(rfq, dto.getDetails());
+        Rfq saved = createWithDetails(rfq, dto.getDetails());
+        webSocketService.broadcastDataUpdate("RFQ", saved.getId(), "CREATED");
+        return saved;
     }
 
     @Transactional
@@ -479,7 +485,9 @@ public class RfqService {
         rfq.setContactMethod(method);
         if (req.getExpectedDeliveryDate() != null)
             validateExpectedDeliveryDate(req.getExpectedDeliveryDate(), java.time.LocalDate.now());
-        return createWithDetails(rfq, req.getDetails());
+        Rfq saved = createWithDetails(rfq, req.getDetails());
+        webSocketService.broadcastDataUpdate("RFQ", saved.getId(), "CREATED");
+        return saved;
     }
 
     private String validateAndDetermineMethod(String providedMethod, String email, String phone) {
@@ -636,7 +644,9 @@ public class RfqService {
             }
         }
 
-        return rfqRepository.save(rfq);
+        Rfq saved = rfqRepository.save(rfq);
+        webSocketService.broadcastDataUpdate("RFQ", saved.getId(), "UPDATED");
+        return saved;
     }
 
     public void delete(Long id) {
@@ -726,6 +736,7 @@ public class RfqService {
         rfq.setSent(true);
         Rfq savedRfq = rfqRepository.save(rfq);
         notificationService.notifyNewRfq(savedRfq);
+        webSocketService.broadcastDataUpdate("RFQ", savedRfq.getId(), "STATUS_CHANGED");
         return savedRfq;
     }
 
@@ -747,6 +758,7 @@ public class RfqService {
         rfq.setSalesConfirmedBy(rfq.getAssignedSales());
         Rfq saved = rfqRepository.save(rfq);
         notificationService.notifySalesConfirmed(saved);
+        webSocketService.broadcastDataUpdate("RFQ", saved.getId(), "STATUS_CHANGED");
         return saved;
     }
 
@@ -759,6 +771,7 @@ public class RfqService {
         rfq.setStatus("FORWARDED_TO_PLANNING");
         Rfq savedRfq = rfqRepository.save(rfq);
         notificationService.notifyRfqForwardedToPlanning(savedRfq);
+        webSocketService.broadcastDataUpdate("RFQ", savedRfq.getId(), "STATUS_CHANGED");
         return savedRfq;
     }
 
@@ -771,6 +784,7 @@ public class RfqService {
         rfq.setStatus("RECEIVED_BY_PLANNING");
         Rfq savedRfq = rfqRepository.save(rfq);
         notificationService.notifyRfqReceivedByPlanning(savedRfq);
+        webSocketService.broadcastDataUpdate("RFQ", savedRfq.getId(), "STATUS_CHANGED");
         return savedRfq;
     }
 
@@ -787,6 +801,7 @@ public class RfqService {
         rfq.setStatus("CANCELED");
         Rfq savedRfq = rfqRepository.save(rfq);
         notificationService.notifyRfqCanceled(savedRfq);
+        webSocketService.broadcastDataUpdate("RFQ", savedRfq.getId(), "STATUS_CHANGED");
         return savedRfq;
     }
 

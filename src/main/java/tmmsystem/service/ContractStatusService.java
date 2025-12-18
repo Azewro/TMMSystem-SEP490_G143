@@ -29,6 +29,7 @@ public class ContractStatusService {
     private final ContractRepository contractRepository;
     private final ProductionLotOrderRepository lotOrderRepository;
     private final ProductionLotRepository lotRepository;
+    private final WebSocketService webSocketService;
 
     /**
      * Update contract status to IN_PRODUCTION if it's currently in SIGNED status.
@@ -45,6 +46,7 @@ public class ContractStatusService {
             contract.setStatus("IN_PRODUCTION");
             contractRepository.save(contract);
             log.info("Contract {} status updated to IN_PRODUCTION", contract.getContractNumber());
+            webSocketService.broadcastDataUpdate("CONTRACT", contract.getId(), "STATUS_CHANGED");
         }
     }
 
@@ -99,6 +101,7 @@ public class ContractStatusService {
             contractRepository.save(contract);
             log.info("Contract {} status updated to PRODUCTION_COMPLETED (all lots completed)",
                     contract.getContractNumber());
+            webSocketService.broadcastDataUpdate("CONTRACT", contract.getId(), "STATUS_CHANGED");
         }
     }
 
@@ -116,6 +119,7 @@ public class ContractStatusService {
             lot.setStatus("COMPLETED");
             lotRepository.save(lot);
             log.info("Lot {} status updated to COMPLETED", lot.getLotCode());
+            webSocketService.broadcastDataUpdate("PRODUCTION_LOT", lot.getId(), "STATUS_CHANGED");
         }
 
         List<ProductionLotOrder> lotOrders = lotOrderRepository.findByLotId(lot.getId());
