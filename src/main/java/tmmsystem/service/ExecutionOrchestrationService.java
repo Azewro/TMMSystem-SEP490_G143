@@ -610,6 +610,10 @@ public class ExecutionOrchestrationService {
             issue.setIssueType("REWORK");
             issue.setDescription(defectDescription != null ? defectDescription : notes);
             issue.setEvidencePhoto(firstPhotoUrl);
+            // FIX: Set status so Leader Defects can show the issue
+            // MINOR → PROCESSED (Leader sees immediately)
+            // MAJOR → PENDING (waits for Technical to process)
+            issue.setStatus("MINOR".equals(defectLevel) ? "PROCESSED" : "PENDING");
 
             issueRepo.save(issue);
 
@@ -692,7 +696,8 @@ public class ExecutionOrchestrationService {
                 && !"WAITING".equals(stage.getExecutionStatus())
                 && !"READY".equals(stage.getExecutionStatus())
                 && !"READY_TO_PRODUCE".equals(stage.getExecutionStatus())
-                && !"PENDING".equals(stage.getExecutionStatus())) // Allow PENDING for Rework to jump queue
+                && !"PENDING".equals(stage.getExecutionStatus())
+                && !"QC_FAILED".equals(stage.getExecutionStatus())) // FIX: Allow rework from QC_FAILED status
             throw new RuntimeException(
                     "Không ở trạng thái chờ sửa hoặc chờ làm (Current: " + stage.getExecutionStatus() + ")");
         if (stage.getAssignedLeader() == null || !stage.getAssignedLeader().getId().equals(leaderUserId))
@@ -712,6 +717,7 @@ public class ExecutionOrchestrationService {
         stage.setStartAt(Instant.now());
         stage.setProgressPercent(0); // Reset progress for rework
         stage.setCompleteAt(null); // Clear previous complete time
+        stage.setIsRework(true); // FIX: Mark stage as rework so resume logic works when complete
         stage.setExecutionStatus("REWORK_IN_PROGRESS");
         ProductionStage saved = stageRepo.save(stage);
 

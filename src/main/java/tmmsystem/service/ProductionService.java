@@ -694,7 +694,12 @@ public class ProductionService {
     private tmmsystem.dto.qc.QualityIssueDto mapQualityIssueToDto(QualityIssue issue) {
         tmmsystem.dto.qc.QualityIssueDto dto = new tmmsystem.dto.qc.QualityIssueDto();
         dto.setId(issue.getId());
-        dto.setSeverity(issue.getSeverity());
+        // FIX: Fallback to stage.defectLevel if issue.severity is null (for old data)
+        String severity = issue.getSeverity();
+        if (severity == null && issue.getProductionStage() != null) {
+            severity = issue.getProductionStage().getDefectLevel();
+        }
+        dto.setSeverity(severity != null ? severity : "MINOR"); // Default to MINOR if still null
         dto.setIssueType(issue.getIssueType());
         dto.setDescription(issue.getDescription());
         dto.setStatus(issue.getStatus());
@@ -2674,6 +2679,12 @@ public class ProductionService {
                 }
             }
         }
+
+        // 5. Cleanup orphaned PAUSED stages (no active rework blocking them)
+        int cleanedPausedStages = cleanupOrphanedPausedStages();
+        if (cleanedPausedStages > 0) {
+            System.out.println("Cleaned up " + cleanedPausedStages + " orphaned PAUSED stages.");
+        }
     }
 
     @Transactional
@@ -3439,13 +3450,22 @@ public class ProductionService {
         // return;
         // }
 
-        List<ProductionStage> activeStages = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS");
+        // FIX: Use executionStatus (not status field) to find active stages
+        List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(
+                stageType, List.of("IN_PROGRESS"));
         for (ProductionStage stage : activeStages) {
             // Skip if no production order or if it's the current rework order
             if (stage.getProductionOrder() == null) {
                 continue;
             }
             if (stage.getProductionOrder().getId().equals(excludeOrderId)) {
+                continue;
+            }
+
+            // Skip if this is a rework order (only pause main production orders)
+            if (Boolean.TRUE.equals(stage.getIsRework()) ||
+                    (stage.getProductionOrder().getPoNumber() != null &&
+                            stage.getProductionOrder().getPoNumber().contains("-REWORK"))) {
                 continue;
             }
 
@@ -3500,13 +3520,16 @@ public class ProductionService {
 
         List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndStatus(stageType, "PAUSED");
         for (ProductionStage stage : pausedStages) {
-            // Check if there are any OTHER rework orders still running?
-            // For simplicity, we assume strict serialization means if one finishes, we can
-            // resume.
-            // But ideally we should check if ANY rework is active.
-            // Let's check if any Rework is IN_PROGRESS at this stage.
-            boolean hasActiveRework = stageRepo.findByStageTypeAndStatus(stageType, "IN_PROGRESS").stream()
-                    .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()));
+            // FIX: Check for active rework stages using executionStatus (not status field)
+            // Must check both IN_PROGRESS and REWORK_IN_PROGRESS
+            List<String> activeReworkStatuses = List.of("IN_PROGRESS", "REWORK_IN_PROGRESS");
+            List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(stageType,
+                    activeReworkStatuses);
+            boolean hasActiveRework = activeStages.stream()
+                    .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()) ||
+                            (s.getProductionOrder() != null &&
+                                    s.getProductionOrder().getPoNumber() != null &&
+                                    s.getProductionOrder().getPoNumber().contains("-REWORK")));
 
             if (hasActiveRework) {
                 continue; // Still blocked by another rework
@@ -3536,6 +3559,57 @@ public class ProductionService {
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
         }
+    }
+
+    /**
+     * Cleanup orphaned PAUSED stages that have no active rework to wait for.
+     * This handles edge cases where stages got stuck in PAUSED state.
+     * 
+     * @return number of stages cleaned up
+     */
+    @Transactional
+    public int cleanupOrphanedPausedStages() {
+        int cleaned = 0;
+        // Get all stage types that have PAUSED stages (skip DYEING - it's
+        // parallel/outsourced)
+        List<String> stageTypes = List.of("WARPING", "WEAVING", "CUTTING", "HEMMING", "PACKAGING");
+
+        for (String stageType : stageTypes) {
+            // Check if there are any PAUSED stages of this type
+            List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndStatus(stageType, "PAUSED");
+            if (pausedStages.isEmpty())
+                continue;
+
+            // Check if there are any ACTIVE rework stages of this type
+            List<String> activeReworkStatuses = List.of("IN_PROGRESS", "REWORK_IN_PROGRESS");
+            List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(stageType,
+                    activeReworkStatuses);
+            boolean hasActiveRework = activeStages.stream()
+                    .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()) ||
+                            (s.getProductionOrder() != null &&
+                                    s.getProductionOrder().getPoNumber() != null &&
+                                    s.getProductionOrder().getPoNumber().contains("-REWORK")));
+
+            if (!hasActiveRework) {
+                // No active rework - resume all PAUSED stages of this type
+                for (ProductionStage stage : pausedStages) {
+                    stage.setStatus("IN_PROGRESS"); // Resume
+                    stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
+                            + "System: Auto-resumed - no active rework blocking.");
+                    stageRepo.save(stage);
+                    cleaned++;
+
+                    // Notify Leader
+                    if (stage.getAssignedLeader() != null && stage.getProductionOrder() != null) {
+                        notificationService.notifyUser(stage.getAssignedLeader(), "PRODUCTION", "INFO",
+                                "Tiếp tục sản xuất",
+                                "Công đoạn " + stageType + " đã được tự động tiếp tục.",
+                                "PRODUCTION_STAGE", stage.getId());
+                    }
+                }
+            }
+        }
+        return cleaned;
     }
 
     // Cleanup Duplicate Orders Helper
@@ -3646,10 +3720,12 @@ public class ProductionService {
             return new BlockingInfo(false, null);
         }
 
-        // 1. Check for stages that are occupying the machine (including QC pending)
-        // WAITING_QC and QC_IN_PROGRESS also block because the lot hasn't passed QC yet
+        // 1. Check for stages that are actively using the machine (production in
+        // progress)
+        // Note: WAITING_QC and QC_IN_PROGRESS no longer block - when lot reaches 100%
+        // and moves to QC, other lots can start production
         List<ProductionStage> activeStages = stageRepo.findByExecutionStatusIn(
-                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS", "WAITING_QC", "QC_IN_PROGRESS"));
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
 
         for (ProductionStage activeStage : activeStages) {
             if (activeStage.getId().equals(stage.getId()))
