@@ -811,10 +811,11 @@ public class ExecutionOrchestrationService {
         // FIX: Tìm tất cả stages cùng loại đang hoạt động hoặc chờ sửa lỗi
         // để hiển thị trong modal xác nhận cascade pause
         // INCLUDES: WAITING_REWORK, QC_FAILED (other defect lots like B)
+        // FIX: Chỉ lọc stage đang IN_PROGRESS, bỏ qua WAITING và READY_TO_PRODUCE
         java.util.List<ProductionStage> activeStages = stageRepo
                 .findByStageTypeAndExecutionStatusIn(
                         stage.getStageType(),
-                        java.util.List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE", "WAITING_REWORK", "QC_FAILED"))
+                        java.util.List.of("IN_PROGRESS"))
                 .stream()
                 .filter(s -> !s.getId().equals(stageId))
                 .toList();
@@ -1135,7 +1136,7 @@ public class ExecutionOrchestrationService {
         if (stageType == null)
             return "";
         return switch (stageType.toUpperCase()) {
-            case "WARPING", "CUONG_MAC" -> "Cuộn mắc";
+            case "WARPING", "CUONG_MAC" -> "Cuồng mắc";
             case "WEAVING", "DET" -> "Dệt";
             case "DYEING", "NHUOM" -> "Nhuộm";
             case "CUTTING", "CAT" -> "Cắt";
