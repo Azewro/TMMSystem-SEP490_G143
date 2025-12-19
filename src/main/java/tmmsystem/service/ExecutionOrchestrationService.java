@@ -251,9 +251,15 @@ public class ExecutionOrchestrationService {
             }
         }
 
-        // Check machine availability
-        // Exception: Parallel // Check machine availability (SKIP for Parallel Stages)
-        if (!isParallelStage && stage.getStageType() != null) {
+        // Check machine availability (SKIP for Parallel Stages and stages without
+        // machines)
+        // DYEING and PACKAGING don't require machines
+        boolean requiresMachine = stage.getStageType() != null
+                && !isParallelStage
+                && !"DYEING".equals(stage.getStageType())
+                && !"PACKAGING".equals(stage.getStageType());
+
+        if (requiresMachine) {
             java.util.List<tmmsystem.entity.Machine> availableMachines = machineRepository
                     .findByTypeAndStatus(stage.getStageType(), "AVAILABLE");
             if (availableMachines.isEmpty()) {
@@ -274,9 +280,9 @@ public class ExecutionOrchestrationService {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
         }
 
-        // Update machine status to IN_USE and create MachineAssignment (SKIP for
-        // Parallel Stages)
-        if (!isParallelStage && stage.getStageType() != null) {
+        // Update machine status to IN_USE and create MachineAssignment
+        // SKIP for Parallel Stages and stages without machines (DYEING, PACKAGING)
+        if (requiresMachine) {
             // Update status
             machineRepository.updateStatusByType(stage.getStageType(), "IN_USE");
 
