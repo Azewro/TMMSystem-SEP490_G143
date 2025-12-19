@@ -982,8 +982,17 @@ public class ProductionService {
                     .orElse(null);
 
             if (toResume != null) {
-                toResume.setExecutionStatus("READY_TO_PRODUCE");
-                toResume.setStatus("READY_TO_PRODUCE");
+                // FIX: Check if stage was in progress before being paused
+                boolean wasInProgress = (toResume.getProgressPercent() != null && toResume.getProgressPercent() > 0)
+                        || toResume.getStartAt() != null;
+
+                if (wasInProgress) {
+                    toResume.setExecutionStatus("IN_PROGRESS");
+                    toResume.setStatus("IN_PROGRESS");
+                } else {
+                    toResume.setExecutionStatus("READY_TO_PRODUCE");
+                    toResume.setStatus("READY_TO_PRODUCE");
+                }
                 stageRepo.save(toResume);
 
                 // Notify leader that they can resume
@@ -3623,8 +3632,15 @@ public class ProductionService {
                 // Another lot is IN_PROGRESS, so this one should WAIT
                 restoreStatus = "WAITING";
             } else {
-                // No one is using the stage, restore to READY_TO_PRODUCE
-                restoreStatus = "READY_TO_PRODUCE";
+                // FIX: Check if stage was in progress before being paused
+                boolean wasInProgress = (stage.getProgressPercent() != null && stage.getProgressPercent() > 0)
+                        || stage.getStartAt() != null;
+
+                if (wasInProgress) {
+                    restoreStatus = "IN_PROGRESS";
+                } else {
+                    restoreStatus = "READY_TO_PRODUCE";
+                }
             }
 
             // FIX 4: Use syncStageStatus for proper sync of both status and executionStatus
