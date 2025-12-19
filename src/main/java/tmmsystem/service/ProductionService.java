@@ -1821,12 +1821,18 @@ public class ProductionService {
                 for (ProductionStage stage : activeWarpingStages) {
                     String lotCode = "N/A";
                     if (stage.getProductionOrder() != null) {
-                        // Convert PO-XXXX-XXX to LOT-XXXX-XXX for display
-                        String poNum = stage.getProductionOrder().getPoNumber();
-                        if (poNum != null && poNum.startsWith("PO-")) {
-                            lotCode = poNum.replace("PO-", "LOT-");
+                        // Try to get actual lot code from ProductionPlan
+                        ProductionOrder stagePO = stage.getProductionOrder();
+                        String planCode = extractPlanCodeFromNotes(stagePO.getNotes());
+                        if (planCode != null) {
+                            ProductionPlan plan = productionPlanRepository.findByPlanCode(planCode).orElse(null);
+                            if (plan != null && plan.getLot() != null && plan.getLot().getLotCode() != null) {
+                                lotCode = plan.getLot().getLotCode();
+                            } else {
+                                lotCode = stagePO.getPoNumber() != null ? stagePO.getPoNumber() : "N/A";
+                            }
                         } else {
-                            lotCode = poNum != null ? poNum : "N/A";
+                            lotCode = stagePO.getPoNumber() != null ? stagePO.getPoNumber() : "N/A";
                         }
                     }
 
