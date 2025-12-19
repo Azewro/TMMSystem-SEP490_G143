@@ -388,15 +388,21 @@ public class RfqService {
 
         if (dto.getEmployeeCode() != null && !dto.getEmployeeCode().isBlank()) {
             String code = dto.getEmployeeCode().trim();
-            User user = userRepository.findByEmployeeCode(code)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Invalid employeeCode or user not found: " + code));
-            String roleName = user.getRole() != null ? user.getRole().getName() : null;
-            if (roleName == null || !roleName.toUpperCase().contains("SALE")) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Employee is not a Sales staff: " + code);
+            User user = userRepository.findByEmployeeCode(code).orElse(null);
+            String roleName = user != null && user.getRole() != null ? user.getRole().getName() : null;
+
+            if (user != null && roleName != null && roleName.toUpperCase().contains("SALE")) {
+                // Valid Sales code - assign to specified Sales
+                rfq.setAssignedSales(user);
+            } else {
+                // Invalid code or not a Sales - fallback to auto-assign
+                User sales = findLeastBusySalesStaff();
+                if (sales != null) {
+                    rfq.setAssignedSales(sales);
+                }
             }
         } else {
-            // Auto-assign for public requests
+            // No code provided - auto-assign
             User sales = findLeastBusySalesStaff();
             if (sales != null) {
                 rfq.setAssignedSales(sales);
