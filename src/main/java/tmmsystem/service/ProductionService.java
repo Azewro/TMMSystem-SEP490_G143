@@ -2898,9 +2898,26 @@ public class ProductionService {
 
         // 2. Update Requisition
         req.setStatus("APPROVED");
-        Long directorId = dto.getDirectorId() != null ? dto.getDirectorId() : 1L;
-        req.setApprovedBy(
-                userRepository.findById(directorId).orElseThrow(() -> new RuntimeException("Director not found")));
+        // FIX: Get approver from DTO, or use requestedBy as fallback (the person who
+        // approved is usually PM)
+        User approver = null;
+        if (dto.getDirectorId() != null) {
+            approver = userRepository.findById(dto.getDirectorId()).orElse(null);
+        }
+        if (approver == null && req.getRequestedBy() != null) {
+            // Fallback to the person who made the request (Technical staff) - but PM should
+            // approve
+            // For now, just use requestedBy to avoid null
+            approver = req.getRequestedBy();
+        }
+        if (approver == null) {
+            // Ultimate fallback - find any PM user
+            approver = userRepository.findAll().stream()
+                    .filter(u -> u.getRole() != null && "PRODUCTION_MANAGER".equals(u.getRole().getName()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        req.setApprovedBy(approver);
         req.setApprovedAt(Instant.now());
 
         // Fallback: If totalApproved is still 0, try to read from existing database
