@@ -186,6 +186,12 @@ public class ExecutionOrchestrationService {
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(stage.getStageType());
 
+        // FIX: Check if this is a rework/supplementary order (isRework flag OR poNumber
+        // contains -REWORK)
+        boolean isReworkOrder = Boolean.TRUE.equals(stage.getIsRework()) ||
+                (stage.getProductionOrder() != null && stage.getProductionOrder().getPoNumber() != null &&
+                        stage.getProductionOrder().getPoNumber().contains("-REWORK"));
+
         if (!isParallelStage) {
             // 1. Check if any Rework Order is IN_PROGRESS at this stage
             boolean hasActiveRework = stageRepo
@@ -206,8 +212,8 @@ public class ExecutionOrchestrationService {
                 // But for now, assume strict serialization.
                 // If we are a rework order, we should have used startRework?
                 // Or if we are using startStage for rework, we should preempt others.
-                if (Boolean.TRUE.equals(stage.getIsRework())) {
-                    // We are rework, so we preempt others!
+                if (isReworkOrder) {
+                    // We are rework/supplementary, so we preempt others!
                     productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
                 } else {
                     // We are normal order, so we are blocked.
@@ -229,8 +235,8 @@ public class ExecutionOrchestrationService {
 
                     for (ProductionStage s : activeStages) {
                         if (s.getStageType().equals(stage.getStageType()) && !s.getId().equals(stage.getId())) {
-                            // If we are Rework, we preempt.
-                            if (Boolean.TRUE.equals(stage.getIsRework())) {
+                            // If we are Rework/Supplementary, we preempt.
+                            if (isReworkOrder) {
                                 productionService.pauseOtherOrdersAtStage(stage.getStageType(),
                                         stage.getProductionOrder().getId());
                                 break; // Proceed
@@ -260,6 +266,13 @@ public class ExecutionOrchestrationService {
         stage.setStartAt(Instant.now());
         stage.setExecutionStatus("IN_PROGRESS");
         productionService.syncStageStatus(stage, "IN_PROGRESS"); // NEW: Sync status
+
+        // NEW: AMBULANCE PRIORITY - If this is a rework/supplementary order, pause ALL
+        // other stages
+        // This ensures FIFS works: whoever starts first gets priority
+        if (!isParallelStage && isReworkOrder) {
+            productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
+        }
 
         // Update machine status to IN_USE and create MachineAssignment (SKIP for
         // Parallel Stages)
