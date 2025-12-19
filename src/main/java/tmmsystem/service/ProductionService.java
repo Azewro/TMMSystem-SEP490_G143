@@ -1027,10 +1027,12 @@ public class ProductionService {
             // runs
             promoteNextOrderForStageType(next.getStageType());
 
-            // AMBULANCE PRIORITY: If this is a rework order, pause ALL other stages at next
-            // stage type
+            // AMBULANCE PRIORITY: If this is a rework order, pause other active stages at
+            // next stage type
+            // FIX: Only pause IN_PROGRESS stages, not WAITING/READY (they are just blocked
+            // from starting)
             if (isReworkStage && !"DYEING".equalsIgnoreCase(next.getStageType())) {
-                List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+                List<String> statusesToPause = List.of("IN_PROGRESS");
                 List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(
                         next.getStageType(), statusesToPause);
 
@@ -1351,8 +1353,11 @@ public class ProductionService {
                         s.getProductionOrder().getPoNumber().contains("-REWORK"));
 
         if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
-            // Pause ALL stages of same type that are not this rework stage
-            List<String> statusesToPause = List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE");
+            // FIX: Only pause stages that are actively IN_PROGRESS
+            // Per business rule: "đang công đoạn xxx" → PAUSE
+            // "chờ xxx" and "sẵn sàng xxx" → DO NOT PAUSE (they are just blocked from
+            // starting)
+            List<String> statusesToPause = List.of("IN_PROGRESS");
             List<ProductionStage> stagesToPause = stageRepo.findByStageTypeAndExecutionStatusIn(s.getStageType(),
                     statusesToPause);
 
@@ -3475,14 +3480,15 @@ public class ProductionService {
         // return;
         // }
 
-        // FIX: Expand cascade to pause stages in IN_PROGRESS, WAITING,
-        // READY_TO_PRODUCE,
-        // WAITING_REWORK, and QC_FAILED
-        // This ensures Rework has full priority over the stage type
-        // B (also has defect, WAITING_REWORK) should also be paused!
+        // FIX: Only pause stages that are actively IN_PROGRESS or REWORK_IN_PROGRESS
+        // Per business rule: "đang công đoạn xxx" → PAUSE
+        // "chờ xxx" and "sẵn sàng xxx" → DO NOT PAUSE (they are just blocked from
+        // starting)
+        // Stages in WAITING, READY_TO_PRODUCE, WAITING_REWORK, QC_FAILED will be
+        // blocked from starting by checkCanStartStage, but NOT paused.
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(
                 stageType,
-                List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE", "WAITING_REWORK", "QC_FAILED"));
+                List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
         for (ProductionStage stage : activeStages) {
             // Skip if no production order or if it's the current rework order
             if (stage.getProductionOrder() == null) {
