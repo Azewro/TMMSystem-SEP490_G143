@@ -215,7 +215,8 @@ public class ExecutionOrchestrationService {
                 }
                 // No rework active. Check for ANY active stage (Strict Serialization for Normal
                 // Orders)
-                // FIX: Removed WAITING_REWORK - it's just waiting for Leader, machine is NOT in use
+                // FIX: Removed WAITING_REWORK - it's just waiting for Leader, machine is NOT in
+                // use
                 long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
                         stage.getStageType(),
                         java.util.List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
@@ -356,7 +357,7 @@ public class ExecutionOrchestrationService {
             // This is needed to detect rework completion and resume paused orders
             String originalExecStatus = stage.getExecutionStatus();
             boolean wasReworkInProgress = "REWORK_IN_PROGRESS".equals(originalExecStatus);
-            
+
             stage.setExecutionStatus("WAITING_QC");
             if (stage.getCompleteAt() == null) {
                 stage.setCompleteAt(Instant.now());
@@ -713,6 +714,31 @@ public class ExecutionOrchestrationService {
         boolean isParallelStage = "DYEING".equalsIgnoreCase(stage.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(stage.getStageType());
 
+        // FIX: BLOCKING CHECK - Only ONE rework allowed at a stage type at a time
+        // If another stage is already REWORK_IN_PROGRESS, block this one
+        if (!isParallelStage) {
+            java.util.List<ProductionStage> activeReworks = stageRepo.findByStageTypeAndExecutionStatus(
+                    stage.getStageType(), "REWORK_IN_PROGRESS");
+
+            // Check if there's another rework (not this stage) already in progress
+            boolean hasOtherActiveRework = activeReworks.stream()
+                    .anyMatch(s -> !s.getId().equals(stage.getId()));
+
+            if (hasOtherActiveRework) {
+                // Find the lot code of the blocking rework for error message
+                ProductionStage blockingStage = activeReworks.stream()
+                        .filter(s -> !s.getId().equals(stage.getId()))
+                        .findFirst()
+                        .orElse(null);
+                String blockingLot = blockingStage != null && blockingStage.getProductionOrder() != null
+                        ? blockingStage.getProductionOrder().getPoNumber()
+                        : "lô khác";
+                throw new RuntimeException(
+                        "BLOCKING: Công đoạn " + stage.getStageType() + " đang ưu tiên sửa lỗi cho " + blockingLot +
+                                ". Vui lòng chờ lô đó hoàn thành sửa lỗi trước.");
+            }
+        }
+
         // Only pause if forceStopActive is true
         if (!isParallelStage && forceStopActive) {
             productionService.pauseOtherOrdersAtStage(stage.getStageType(), stage.getProductionOrder().getId());
@@ -758,11 +784,12 @@ public class ExecutionOrchestrationService {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         java.util.Map<String, Object> result = new java.util.HashMap<>();
 
-        // FIX: Tìm tất cả stages cùng loại đang IN_PROGRESS, WAITING, hoặc READY_TO_PRODUCE
+        // FIX: Tìm tất cả stages cùng loại đang IN_PROGRESS, WAITING, hoặc
+        // READY_TO_PRODUCE
         // để hiển thị trong modal xác nhận cascade pause
         java.util.List<ProductionStage> activeStages = stageRepo
                 .findByStageTypeAndExecutionStatusIn(
-                        stage.getStageType(), 
+                        stage.getStageType(),
                         java.util.List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE"))
                 .stream()
                 .filter(s -> !s.getId().equals(stageId))
@@ -831,12 +858,14 @@ public class ExecutionOrchestrationService {
             }
             return;
         }
-        // FIX: Check if another lot is actively using this stage type before setting status
-        // If not blocked, set READY_TO_PRODUCE immediately so Leader sees "Sẵn sàng sản xuất"
+        // FIX: Check if another lot is actively using this stage type before setting
+        // status
+        // If not blocked, set READY_TO_PRODUCE immediately so Leader sees "Sẵn sàng sản
+        // xuất"
         // DYEING is always parallel/outsourced - never blocked
         boolean isParallelStage = "DYEING".equalsIgnoreCase(next.getStageType()) ||
                 "NHUOM".equalsIgnoreCase(next.getStageType());
-        
+
         String nextStatus;
         if (isParallelStage) {
             nextStatus = "READY_TO_PRODUCE";
@@ -845,7 +874,7 @@ public class ExecutionOrchestrationService {
             boolean hasReworkActive = stageRepo.countByStageTypeAndExecutionStatusIn(
                     next.getStageType(),
                     java.util.List.of("REWORK_IN_PROGRESS")) > 0;
-            
+
             if (hasReworkActive) {
                 // Rework has priority - set PAUSED so this lot waits for rework to complete
                 nextStatus = "PAUSED";
@@ -857,7 +886,7 @@ public class ExecutionOrchestrationService {
                 nextStatus = (activeCount > 0) ? "WAITING" : "READY_TO_PRODUCE";
             }
         }
-        
+
         productionService.syncStageStatus(next, nextStatus);
         stageRepo.save(next);
         StageContext ctx = buildContext(next);
