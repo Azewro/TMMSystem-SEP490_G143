@@ -61,7 +61,18 @@ public class DashboardService {
                 int pendingQuotations = quotationRepository.findByStatus("PENDING_APPROVAL").size();
 
                 // 2. Business Overview
-                List<Contract> activeContracts = contractRepository.findByStatus("APPROVED");
+                // Include APPROVED, IN_PRODUCTION, and PRODUCTION_COMPLETED contracts for
+                // expected revenue
+                List<Contract> approvedContracts = contractRepository.findByStatus("APPROVED");
+                List<Contract> inProductionContracts = contractRepository.findByStatus("IN_PRODUCTION");
+                List<Contract> productionCompletedContracts = contractRepository.findByStatus("PRODUCTION_COMPLETED");
+
+                // Combine all active contracts for expected revenue calculation
+                List<Contract> activeContracts = new ArrayList<>();
+                activeContracts.addAll(approvedContracts);
+                activeContracts.addAll(inProductionContracts);
+                activeContracts.addAll(productionCompletedContracts);
+
                 BigDecimal expectedRevenue = activeContracts.stream()
                                 .map(Contract::getTotalAmount)
                                 .filter(Objects::nonNull)

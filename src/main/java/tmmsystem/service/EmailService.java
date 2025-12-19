@@ -2,6 +2,7 @@ package tmmsystem.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tmmsystem.entity.Quotation;
 import tmmsystem.entity.QuotationDetail;
@@ -16,8 +17,20 @@ public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
     private final MailService mailService;
 
+    // Production URL
+    private static final String PROD_BASE_URL = "https://tmmsystem-sep490g143-front-production.up.railway.app";
+    // Local URL
+    private static final String LOCAL_BASE_URL = "http://localhost:8080";
+
+    @Value("${spring.profiles.active:local}")
+    private String activeProfile;
+
     public EmailService(MailService mailService) {
         this.mailService = mailService;
+    }
+
+    private String getBaseUrl() {
+        return "prod".equals(activeProfile) ? PROD_BASE_URL : LOCAL_BASE_URL;
     }
 
     public void sendQuotationEmail(Quotation quotation) {
@@ -29,14 +42,11 @@ public class EmailService {
             loginSection.append(
                     "<div style='margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;'>");
             loginSection.append("<h3 style='color: #007bff; margin-top: 0;'>Đăng nhập để phê duyệt báo giá:</h3>");
-            String baseUrl = "https://tmmsystem-sep490g143-front-production.up.railway.app";
-            loginSection.append("<p><strong>Portal:</strong> <a href='").append(baseUrl).append("/login'>")
-                    .append(baseUrl).append("/login</a></p>");
+            loginSection.append("<p><strong>Portal:</strong> <a href='").append(getBaseUrl()).append("/login'>")
+                    .append(getBaseUrl()).append("/login</a></p>");
             loginSection.append("<p><strong>Email đăng nhập:</strong> ").append(quotation.getCustomer().getEmail())
                     .append("</p>");
             loginSection.append("<p>Đăng nhập bằng mật khẩu hiện tại của bạn.</p>");
-            loginSection.append("<p><strong>Link báo giá:</strong> <a href='").append(baseUrl)
-                    .append("/customer/quotations/").append(quotation.getId()).append("'>Xem chi tiết báo giá</a></p>");
             loginSection.append("</div>");
 
             // Chèn login section trước closing tag của body
@@ -69,9 +79,8 @@ public class EmailService {
             loginSection.append(
                     "<div style='margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;'>");
             loginSection.append("<h3 style='color: #007bff; margin-top: 0;'>Đăng nhập để phê duyệt báo giá:</h3>");
-            String baseUrl = "https://tmmsystem-sep490g143-front-production.up.railway.app";
-            loginSection.append("<p><strong>Portal:</strong> <a href='").append(baseUrl).append("/login'>")
-                    .append(baseUrl).append("/login</a></p>");
+            loginSection.append("<p><strong>Portal:</strong> <a href='").append(getBaseUrl()).append("/login'>")
+                    .append(getBaseUrl()).append("/login</a></p>");
             loginSection.append("<p><strong>Email đăng nhập:</strong> ").append(quotation.getCustomer().getEmail())
                     .append("</p>");
             if (tempPassword != null && !tempPassword.isBlank()) {
@@ -363,10 +372,7 @@ public class EmailService {
         content.append("Kính gửi ").append(companyName).append(",\n\n");
         content.append("Cảm ơn quý khách đã chấp nhận báo giá. Đơn hàng của quý khách đã được tạo:\n\n");
         content.append("Mã đơn hàng: ").append(contract.getContractNumber()).append("\n");
-        if (contract.getContractDate() != null) {
-            content.append("Ngày ký hợp đồng: ")
-                    .append(contract.getContractDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))).append("\n");
-        }
+        // Removed: Ngày ký hợp đồng (per user request)
         if (contract.getDeliveryDate() != null) {
             content.append("Ngày giao hàng dự kiến: ")
                     .append(contract.getDeliveryDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))).append("\n");
