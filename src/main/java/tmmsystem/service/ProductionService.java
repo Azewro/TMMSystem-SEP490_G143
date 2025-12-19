@@ -3457,12 +3457,14 @@ public class ProductionService {
         // return;
         // }
 
-        // FIX: Expand cascade to pause stages in IN_PROGRESS, WAITING, and
-        // READY_TO_PRODUCE
+        // FIX: Expand cascade to pause stages in IN_PROGRESS, WAITING,
+        // READY_TO_PRODUCE,
+        // WAITING_REWORK, and QC_FAILED
         // This ensures Rework has full priority over the stage type
+        // B (also has defect, WAITING_REWORK) should also be paused!
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(
                 stageType,
-                List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE"));
+                List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE", "WAITING_REWORK", "QC_FAILED"));
         for (ProductionStage stage : activeStages) {
             // Skip if no production order or if it's the current rework order
             if (stage.getProductionOrder() == null) {
@@ -3535,13 +3537,17 @@ public class ProductionService {
                 continue; // Still blocked by another rework
             }
 
-            // FIX 3: Determine correct status to restore based on stage notes or default
+            // FIX 3: Determine correct status to restore based on stage's original purpose
             // Check if there are other IN_PROGRESS stages at this type
             long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
                     stageType, List.of("IN_PROGRESS"));
 
             String restoreStatus;
-            if (activeCount > 0) {
+            // FIX: If this was a rework stage (B also had defect), restore to
+            // WAITING_REWORK
+            if (Boolean.TRUE.equals(stage.getIsRework())) {
+                restoreStatus = "WAITING_REWORK"; // B can continue its rework now
+            } else if (activeCount > 0) {
                 // Another lot is IN_PROGRESS, so this one should WAIT
                 restoreStatus = "WAITING";
             } else {

@@ -400,6 +400,17 @@ public class ExecutionOrchestrationService {
             // FIX: Use wasReworkInProgress which was captured BEFORE changing to WAITING_QC
             if (wasReworkInProgress || Boolean.TRUE.equals(stage.getIsRework())) {
                 productionService.resumePausedOrdersAtStage(stage.getStageType());
+
+                // FIX: Set QualityIssue status to RESOLVED when rework completes (100%)
+                // This makes defect list show "đã xử lý" immediately, not waiting for QC pass
+                List<QualityIssue> linkedIssues = issueRepo.findByProductionStageId(stage.getId());
+                for (QualityIssue issue : linkedIssues) {
+                    if (!"RESOLVED".equals(issue.getStatus())) {
+                        issue.setStatus("RESOLVED");
+                        issue.setResolvedAt(Instant.now());
+                        issueRepo.save(issue);
+                    }
+                }
             }
 
             // Notify PM about available slot for serialized stages (non-outsource)
