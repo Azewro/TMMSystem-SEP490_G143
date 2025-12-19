@@ -38,7 +38,7 @@ public class DataInitializer implements CommandLineRunner {
     public void run(String... args) {
         try {
             // Chỉ thực thi đổi mật khẩu cho tất cả User/Customer thành "Abcd1234"
-            // resetAllUserPasswords();
+            resetAllUserPasswords();
             // resetAllCustomerPasswords();
 
             // Fix RFQ status on startup

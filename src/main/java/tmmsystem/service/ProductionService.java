@@ -961,57 +961,24 @@ public class ProductionService {
         // WAITING to READY_TO_PRODUCE
         promoteNextOrderForStageType(s.getStageType());
 
-        // NEW: Resume paused stages when rework stage completes
-        // When a rework stage passes QC, resume all PAUSED stages of the same type
+        // NEW: Resume paused and demoted stages when rework stage completes
+        // When a rework stage passes QC, resume all PAUSED and restore all DEMOTED
+        // stages of the same type
         boolean isReworkStage = Boolean.TRUE.equals(s.getIsRework()) ||
                 (s.getProductionOrder() != null && s.getProductionOrder().getPoNumber() != null &&
                         s.getProductionOrder().getPoNumber().contains("-REWORK"));
 
-        if (isReworkStage && !"DYEING".equalsIgnoreCase(s.getStageType())) {
-            List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatus(s.getStageType(),
-                    "PAUSED");
-
-            // Resume the oldest paused stage (by createdAt) to READY_TO_PRODUCE
-            ProductionStage toResume = pausedStages.stream()
-                    .filter(ps -> !ps.getId().equals(s.getId()))
-                    .min((a, b) -> {
-                        Instant aCreated = a.getCreatedAt() != null ? a.getCreatedAt() : Instant.MAX;
-                        Instant bCreated = b.getCreatedAt() != null ? b.getCreatedAt() : Instant.MAX;
-                        return aCreated.compareTo(bCreated);
-                    })
-                    .orElse(null);
-
-            if (toResume != null) {
-                // FIX: Check if stage was in progress before being paused
-                boolean wasInProgress = (toResume.getProgressPercent() != null && toResume.getProgressPercent() > 0)
-                        || toResume.getStartAt() != null;
-
-                if (wasInProgress) {
-                    toResume.setExecutionStatus("IN_PROGRESS");
-                    toResume.setStatus("IN_PROGRESS");
-                } else {
-                    toResume.setExecutionStatus("READY_TO_PRODUCE");
-                    toResume.setStatus("READY_TO_PRODUCE");
-                }
-                stageRepo.save(toResume);
-
-                // Notify leader that they can resume
-                if (toResume.getAssignedLeader() != null) {
-                    notificationService.notifyUser(toResume.getAssignedLeader(), "PRODUCTION", "SUCCESS",
-                            "Có thể tiếp tục sản xuất",
-                            "Lô bổ sung đã hoàn thành công đoạn " + s.getStageType() +
-                                    ". Lô " + toResume.getProductionOrder().getPoNumber() +
-                                    " có thể tiếp tục sản xuất.",
-                            "PRODUCTION_STAGE", toResume.getId());
-                }
-
-                System.out.println("Resumed stage " + toResume.getId() + " for order " +
-                        toResume.getProductionOrder().getPoNumber() + " after rework completion at "
-                        + s.getStageType());
-            }
-
-            // Other paused stages remain PAUSED (will be promoted via
-            // promoteNextOrderForStageType)
+        if (isReworkStage) {
+            // Use the unified resumePausedOrdersAtStage which handles:
+            // 1. PAUSED stages -> restore to original status (using PAUSED_FROM: marker)
+            // 2. DEMOTED PENDING stages -> restore to original status (using DEMOTED_FROM:
+            // marker)
+            // 3. DYEING exception is already handled inside resumePausedOrdersAtStage
+            resumePausedOrdersAtStage(s.getStageType());
+            System.out.println("[QC_PASS] Triggered resumePausedOrdersAtStage for " + s.getStageType() +
+                    " after rework order "
+                    + (s.getProductionOrder() != null ? s.getProductionOrder().getPoNumber() : "unknown")
+                    + " passed QC");
         }
 
         // Determine next stage in same ProductionOrder (NEW: không qua WorkOrderDetail)
@@ -3531,21 +3498,18 @@ public class ProductionService {
 
     @Transactional
     public void pauseOtherOrdersAtStage(String stageType, Long excludeOrderId) {
-        // Allow pausing Dyeing (NHUOM) as well if needed for Rework priority
-        // if ("NHUOM".equalsIgnoreCase(stageType) ||
-        // "DYEING".equalsIgnoreCase(stageType)) {
-        // return;
-        // }
+        // EXCEPTION: DYEING/NHUOM is parallel/outsourced - no pause/demote needed
+        if ("NHUOM".equalsIgnoreCase(stageType) || "DYEING".equalsIgnoreCase(stageType)) {
+            System.out.println("[PAUSE] Skipping DYEING stage - parallel/outsourced, no pause needed.");
+            return;
+        }
 
-        // FIX: Only pause stages that are actively IN_PROGRESS or REWORK_IN_PROGRESS
-        // Per business rule: "đang công đoạn xxx" → PAUSE
-        // "chờ xxx" and "sẵn sàng xxx" → DO NOT PAUSE (they are just blocked from
-        // starting)
-        // Stages in WAITING, READY_TO_PRODUCE, WAITING_REWORK, QC_FAILED will be
-        // blocked from starting by checkCanStartStage, but NOT paused.
+        // ========== PART 1: PAUSE stages that are actively IN_PROGRESS ==========
+        // Per business rule: "Đang làm xxx" → "Tạm dừng"
         List<ProductionStage> activeStages = stageRepo.findByStageTypeAndExecutionStatusIn(
                 stageType,
                 List.of("IN_PROGRESS", "REWORK_IN_PROGRESS"));
+
         for (ProductionStage stage : activeStages) {
             // Skip if no production order or if it's the current rework order
             if (stage.getProductionOrder() == null) {
@@ -3555,18 +3519,18 @@ public class ProductionService {
                 continue;
             }
 
+            // Store original status for later restoration
+            String originalStatus = stage.getExecutionStatus();
+
             // Pause the stage
             syncStageStatus(stage, "PAUSED");
             stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
-                    + "System: Paused due to priority Rework Order.");
+                    + "PAUSED_FROM:" + originalStatus + " | System: Paused due to priority Rework Order.");
             stageRepo.save(stage);
 
             // Release Machine
             try {
-                // Update machine status to AVAILABLE
                 machineRepository.updateStatusByType(stage.getStageType(), "AVAILABLE");
-
-                // Release assignments
                 List<MachineAssignment> assignments = machineAssignmentRepository
                         .findByProductionStageAndReservationStatus(stage, "ACTIVE");
                 for (MachineAssignment ma : assignments) {
@@ -3574,8 +3538,6 @@ public class ProductionService {
                     ma.setReleasedAt(Instant.now());
                     machineAssignmentRepository.save(ma);
                 }
-
-                // Also update for alias if exists
                 if (STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
                     machineRepository.updateStatusByType(STAGE_TYPE_ALIASES.get(stage.getStageType()), "AVAILABLE");
                 }
@@ -3594,59 +3556,74 @@ public class ProductionService {
                                 + " bị tạm dừng để ưu tiên lệnh sửa lỗi.",
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
+
+            System.out.println("[PAUSE] Stage " + stage.getId() + " (" + stageType + ") paused from " + originalStatus);
+        }
+
+        // ========== PART 2: DEMOTE stages that are READY_TO_PRODUCE ==========
+        // Per business rule: "Sẵn sàng sản xuất xxx" → "Chờ đến lượt xxx" (PENDING)
+        List<ProductionStage> readyStages = stageRepo.findByStageTypeAndExecutionStatusIn(
+                stageType,
+                List.of("READY_TO_PRODUCE", "READY", "WAITING"));
+
+        for (ProductionStage stage : readyStages) {
+            // Skip if no production order or if it's the current rework order
+            if (stage.getProductionOrder() == null) {
+                continue;
+            }
+            if (stage.getProductionOrder().getId().equals(excludeOrderId)) {
+                continue;
+            }
+
+            // Store original status for later restoration
+            String originalStatus = stage.getExecutionStatus();
+
+            // Demote to PENDING (will show as "Chờ đến lượt xxx")
+            syncStageStatus(stage, "PENDING");
+            stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
+                    + "DEMOTED_FROM:" + originalStatus + " | System: Demoted due to priority Rework Order.");
+            stageRepo.save(stage);
+
+            System.out.println("[DEMOTE] Stage " + stage.getId() + " (" + stageType + ") demoted from " + originalStatus
+                    + " to PENDING");
         }
     }
 
     @Transactional
     public void resumePausedOrdersAtStage(String stageType) {
-        // Dyeing (NHUOM) is outsourced/parallel, so we don't pause it.
+        // EXCEPTION: DYEING/NHUOM is parallel/outsourced - no resume needed
         if ("NHUOM".equalsIgnoreCase(stageType) || "DYEING".equalsIgnoreCase(stageType)) {
+            System.out.println("[RESUME] Skipping DYEING stage - parallel/outsourced, no resume needed.");
             return;
         }
 
-        // FIX 1: Use executionStatus instead of status field
+        // Check if there's still an active rework at this stage
+        boolean hasActiveRework = stageRepo.findByStageTypeAndExecutionStatusIn(
+                stageType, List.of("IN_PROGRESS", "REWORK_IN_PROGRESS")).stream()
+                .anyMatch(s -> Boolean.TRUE.equals(s.getIsRework()));
+
+        if (hasActiveRework) {
+            System.out.println("[RESUME] Skipping - still has active rework at stage " + stageType);
+            return; // Still blocked by another rework
+        }
+
+        // ========== PART 1: RESTORE PAUSED stages ==========
         List<ProductionStage> pausedStages = stageRepo.findByStageTypeAndExecutionStatusIn(
                 stageType, List.of("PAUSED"));
 
         for (ProductionStage stage : pausedStages) {
-            // FIX 2: Check for REWORK_IN_PROGRESS using executionStatus
-            boolean hasActiveRework = stageRepo.findByStageTypeAndExecutionStatus(
-                    stageType, "REWORK_IN_PROGRESS").stream()
-                    .anyMatch(s -> !s.getId().equals(stage.getId()));
+            String restoreStatus = extractOriginalStatus(stage.getNotes(), "PAUSED_FROM:");
 
-            if (hasActiveRework) {
-                continue; // Still blocked by another rework
-            }
-
-            // FIX 3: Determine correct status to restore based on stage's original purpose
-            // Check if there are other IN_PROGRESS stages at this type
-            long activeCount = stageRepo.countByStageTypeAndExecutionStatusIn(
-                    stageType, List.of("IN_PROGRESS"));
-
-            String restoreStatus;
-            // FIX: If this was a rework stage (B also had defect), restore to
-            // WAITING_REWORK
-            if (Boolean.TRUE.equals(stage.getIsRework())) {
-                restoreStatus = "WAITING_REWORK"; // B can continue its rework now
-            } else if (activeCount > 0) {
-                // Another lot is IN_PROGRESS, so this one should WAIT
-                restoreStatus = "WAITING";
-            } else {
-                // FIX: Check if stage was in progress before being paused
+            // Fallback logic if no marker found
+            if (restoreStatus == null) {
                 boolean wasInProgress = (stage.getProgressPercent() != null && stage.getProgressPercent() > 0)
                         || stage.getStartAt() != null;
-
-                if (wasInProgress) {
-                    restoreStatus = "IN_PROGRESS";
-                } else {
-                    restoreStatus = "READY_TO_PRODUCE";
-                }
+                restoreStatus = wasInProgress ? "IN_PROGRESS" : "READY_TO_PRODUCE";
             }
 
-            // FIX 4: Use syncStageStatus for proper sync of both status and executionStatus
+            // Restore the stage
             syncStageStatus(stage, restoreStatus);
-            stage.setNotes((stage.getNotes() != null ? stage.getNotes() + "\n" : "")
-                    + "System: Resumed after Rework Order completion.");
+            stage.setNotes(cleanupMarkers(stage.getNotes()) + "\nSystem: Resumed after Rework Order completion.");
             stageRepo.save(stage);
 
             // Notify Leader
@@ -3660,7 +3637,70 @@ public class ProductionService {
                                 + " đã được tiếp tục.",
                         "PRODUCTION_ORDER", stage.getProductionOrder().getId());
             }
+
+            System.out.println("[RESUME] Stage " + stage.getId() + " (" + stageType + ") restored to " + restoreStatus);
         }
+
+        // ========== PART 2: RESTORE DEMOTED stages (PENDING with marker) ==========
+        List<ProductionStage> demotedStages = stageRepo.findByStageTypeAndExecutionStatusIn(
+                stageType, List.of("PENDING"));
+
+        for (ProductionStage stage : demotedStages) {
+            // Only restore if has DEMOTED_FROM marker
+            String notes = stage.getNotes();
+            if (notes == null || !notes.contains("DEMOTED_FROM:")) {
+                continue; // This was a natural PENDING, not demoted
+            }
+
+            String restoreStatus = extractOriginalStatus(notes, "DEMOTED_FROM:");
+            if (restoreStatus == null) {
+                restoreStatus = "READY_TO_PRODUCE"; // Default fallback
+            }
+
+            // Restore the stage
+            syncStageStatus(stage, restoreStatus);
+            stage.setNotes(cleanupMarkers(notes) + "\nSystem: Restored after Rework Order completion.");
+            stageRepo.save(stage);
+
+            System.out
+                    .println("[RESTORE] Stage " + stage.getId() + " (" + stageType + ") restored to " + restoreStatus);
+        }
+    }
+
+    /**
+     * Extract original status from notes using a marker prefix.
+     * Example: "PAUSED_FROM:IN_PROGRESS | System: ..." -> "IN_PROGRESS"
+     */
+    private String extractOriginalStatus(String notes, String marker) {
+        if (notes == null || !notes.contains(marker)) {
+            return null;
+        }
+        try {
+            int startIndex = notes.indexOf(marker) + marker.length();
+            int endIndex = notes.indexOf(" |", startIndex);
+            if (endIndex == -1) {
+                endIndex = notes.indexOf("\n", startIndex);
+            }
+            if (endIndex == -1) {
+                endIndex = notes.length();
+            }
+            return notes.substring(startIndex, endIndex).trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Remove PAUSED_FROM and DEMOTED_FROM markers from notes.
+     */
+    private String cleanupMarkers(String notes) {
+        if (notes == null)
+            return "";
+        return notes
+                .replaceAll("PAUSED_FROM:[A-Z_]+ \\| ", "")
+                .replaceAll("DEMOTED_FROM:[A-Z_]+ \\| ", "")
+                .replaceAll("\n+", "\n")
+                .trim();
     }
 
     // Cleanup Duplicate Orders Helper
