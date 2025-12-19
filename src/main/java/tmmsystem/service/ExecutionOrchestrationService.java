@@ -262,6 +262,21 @@ public class ExecutionOrchestrationService {
         if (requiresMachine) {
             java.util.List<tmmsystem.entity.Machine> availableMachines = machineRepository
                     .findByTypeAndStatus(stage.getStageType(), "AVAILABLE");
+
+            // FIX: Also check alias types (HEMMING <-> SEWING, MAY)
+            // Database may store machines under different type names
+            if (availableMachines.isEmpty() && STAGE_TYPE_ALIASES.containsKey(stage.getStageType())) {
+                String aliasType = STAGE_TYPE_ALIASES.get(stage.getStageType());
+                availableMachines = machineRepository.findByTypeAndStatus(aliasType, "AVAILABLE");
+            }
+
+            // Special case: HEMMING/MAY also maps to SEWING
+            if (availableMachines.isEmpty() &&
+                    ("HEMMING".equalsIgnoreCase(stage.getStageType())
+                            || "MAY".equalsIgnoreCase(stage.getStageType()))) {
+                availableMachines = machineRepository.findByTypeAndStatus("SEWING", "AVAILABLE");
+            }
+
             if (availableMachines.isEmpty()) {
                 throw new RuntimeException("Không có máy " + stage.getStageType()
                         + " nào sẵn sàng (AVAILABLE). Vui lòng kiểm tra lại trạng thái máy móc.");
