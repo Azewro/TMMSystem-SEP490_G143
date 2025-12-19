@@ -72,8 +72,8 @@ public class ProductionStage {
     @Column(name = "complete_at")
     private Instant completeAt;
 
-    @Column(length = 20)
-    private String status = "PENDING"; // PENDING, IN_PROGRESS, PAUSED, COMPLETED, FAILED, CANCELED
+    @Column(length = 30)
+    private String status = "PENDING"; // PENDING, IN_PROGRESS, PAUSED, COMPLETED, FAILED, CANCELED, IN_SUPPLEMENTARY
 
     @Column(name = "is_outsourced")
     private Boolean outsourced = false;

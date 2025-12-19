@@ -564,29 +564,40 @@ public class ExecutionOrchestrationService {
             // NEW: Merge Back Logic for Supplementary Orders
             if (wasRework) {
                 ProductionOrder currentPO = stageRef.getProductionOrder();
-                if (currentPO.getPoNumber().contains("-REWORK")) {
-                    // This is a supplementary order
-                    // 1. Complete Supplementary Order
-                    currentPO.setExecutionStatus("COMPLETED");
-                    currentPO.setStatus("COMPLETED");
-                    // currentPO.setActualEndDate(java.time.LocalDate.now()); // Field might not
-                    // exist
-                    orderRepo.save(currentPO);
+                if (currentPO != null && currentPO.getPoNumber() != null
+                        && currentPO.getPoNumber().contains("-REWORK")) {
+                    // IMPORTANT: Only complete and merge back if this is the LAST stage of the
+                    // rework order
+                    List<ProductionStage> reworkStages = stageRepo
+                            .findByProductionOrderIdOrderByStageSequenceAsc(currentPO.getId());
+                    ProductionStage lastReworkStage = reworkStages.get(reworkStages.size() - 1);
 
-                    // 2. Resume Original Order
-                    if (stageRef.getOriginalStage() != null) {
-                        ProductionStage originalStage = stageRef.getOriginalStage();
-                        originalStage.setExecutionStatus("QC_PASSED");
-                        stageRepo.save(originalStage);
+                    if (lastReworkStage.getId().equals(stageRef.getId())) {
+                        // 1. Complete Supplementary Order
+                        currentPO.setExecutionStatus("COMPLETED");
+                        currentPO.setStatus("COMPLETED");
+                        orderRepo.save(currentPO);
 
-                        // Trigger next stage of ORIGINAL order
-                        openNextStage(originalStage);
+                        // 2. Resume Original Order
+                        if (stageRef.getOriginalStage() != null) {
+                            ProductionStage originalStage = stageRef.getOriginalStage();
+                            originalStage.setExecutionStatus("QC_PASSED");
+                            stageRepo.save(originalStage);
 
-                        // Notify
-                        ProductionOrder originalPO = originalStage.getProductionOrder();
-                        originalPO.setExecutionStatus("IN_PROGRESS"); // Ensure it's back to IN_PROGRESS if it was
-                                                                      // waiting
-                        orderRepo.save(originalPO);
+                            // Trigger next stage of ORIGINAL order
+                            openNextStage(originalStage);
+
+                            // Notify and set back to IN_PROGRESS
+                            ProductionOrder originalPO = originalStage.getProductionOrder();
+                            if (originalPO != null) {
+                                originalPO.setExecutionStatus("IN_PROGRESS");
+                                originalPO.setStatus("IN_PROGRESS");
+                                orderRepo.save(originalPO);
+                            }
+                        }
+                    } else {
+                        // Not the last rework stage, just move to the next rework stage
+                        openNextStage(stageRef);
                     }
                 } else {
                     // Minor defect rework (same order) -> Just open next stage

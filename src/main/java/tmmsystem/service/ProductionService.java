@@ -3025,7 +3025,7 @@ public class ProductionService {
         if (originalStage.getExecutionStatus() != null
                 && originalStage.getExecutionStatus().contains("WAITING_MATERIAL")) {
             originalStage.setExecutionStatus("SUPPLEMENTARY_CREATED");
-            originalStage.setStatus("SUPPLEMENTARY_CREATED");
+            originalStage.setStatus("PAUSED");
             stageRepo.save(originalStage);
         }
 
@@ -3130,6 +3130,39 @@ public class ProductionService {
         order.setStatus("IN_PROGRESS");
         order.setExecutionStatus("IN_SUPPLEMENTARY");
         poRepo.save(order);
+
+        // FIX: Also update the original order's status to "Đang sản xuất bổ sung"
+        // Find original order by PoNumber (rework order poNumber is originalPoNumber +
+        // "-REWORK-...")
+        String reworkPoNumber = order.getPoNumber();
+        if (reworkPoNumber != null && reworkPoNumber.contains("-REWORK-")) {
+            try {
+                String originalPoNumber = reworkPoNumber.split("-REWORK-")[0];
+                java.util.Optional<ProductionOrder> originalOpt = poRepo.findByPoNumber(originalPoNumber);
+                if (originalOpt.isPresent()) {
+                    ProductionOrder originalPO = originalOpt.get();
+                    originalPO.setExecutionStatus("IN_SUPPLEMENTARY");
+                    poRepo.save(originalPO);
+
+                    // Also update the stage that was waiting for material
+                    List<ProductionStage> originalStages = stageRepo
+                            .findByProductionOrderIdOrderByStageSequenceAsc(originalPO.getId());
+                    for (ProductionStage s : originalStages) {
+                        if ("SUPPLEMENTARY_CREATED".equals(s.getExecutionStatus())
+                                || (s.getExecutionStatus() != null
+                                        && s.getExecutionStatus().contains("WAITING_MATERIAL"))) {
+                            s.setExecutionStatus("IN_SUPPLEMENTARY");
+                            s.setStatus("IN_SUPPLEMENTARY");
+                            stageRepo.save(s);
+                        }
+                    }
+                    System.out.println(
+                            "[REWORK DEBUG] Updated Original Order " + originalPoNumber + " to IN_SUPPLEMENTARY");
+                }
+            } catch (Exception e) {
+                System.err.println("[REWORK ERROR] Failed to update original order status: " + e.getMessage());
+            }
+        }
 
         // Demote all other READY_SUPPLEMENTARY orders to WAITING_SUPPLEMENTARY
         List<ProductionOrder> allReworkOrders = poRepo.findAll().stream()

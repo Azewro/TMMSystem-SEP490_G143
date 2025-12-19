@@ -15,4 +15,8 @@ public interface ProductionOrderRepository extends JpaRepository<ProductionOrder
     List<ProductionOrder> findByStatus(String status);
 
     List<ProductionOrder> findByNotes(String notes);
+
+    java.util.Optional<ProductionOrder> findByPoNumber(String poNumber);
+
+    ProductionOrder findFirstByPoNumber(String poNumber);
 }
