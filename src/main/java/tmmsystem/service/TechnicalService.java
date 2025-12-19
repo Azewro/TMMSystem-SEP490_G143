@@ -37,6 +37,24 @@ public class TechnicalService {
             java.util.List<tmmsystem.dto.execution.MaterialRequisitionDetailDto> details) {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
 
+        // Validate quantity for MATERIAL_REQUEST
+        if ("MATERIAL_REQUEST".equalsIgnoreCase(decision)) {
+            // Validate total quantity
+            if (quantity != null && quantity.compareTo(java.math.BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Số lượng không hợp lệ: không được là số âm");
+            }
+
+            // Validate individual detail quantities
+            if (details != null) {
+                for (tmmsystem.dto.execution.MaterialRequisitionDetailDto detail : details) {
+                    if (detail.getQuantityRequested() != null
+                            && detail.getQuantityRequested().compareTo(java.math.BigDecimal.ZERO) < 0) {
+                        throw new RuntimeException("Số lượng không hợp lệ: không được là số âm");
+                    }
+                }
+            }
+        }
+
         if ("REWORK".equalsIgnoreCase(decision)) {
             // Minor defect -> Rework
             // Reset stage to PENDING/WAITING_REWORK

@@ -3020,6 +3020,15 @@ public class ProductionService {
         originalPO.setExecutionStatus("SUPPLEMENTARY_CREATED");
         poRepo.save(originalPO);
 
+        // FIX: Also update the original stage execution status
+        // Frontend checks stage.executionStatus, not just order.executionStatus
+        if (originalStage.getExecutionStatus() != null
+                && originalStage.getExecutionStatus().contains("WAITING_MATERIAL")) {
+            originalStage.setExecutionStatus("SUPPLEMENTARY_CREATED");
+            originalStage.setStatus("SUPPLEMENTARY_CREATED");
+            stageRepo.save(originalStage);
+        }
+
         // 3.1. Clone ProductionOrderDetail
         try {
             List<ProductionOrderDetail> originalDetails = podRepo.findByProductionOrderId(originalPO.getId());
