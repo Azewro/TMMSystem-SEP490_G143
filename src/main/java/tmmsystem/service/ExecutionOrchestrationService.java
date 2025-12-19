@@ -795,13 +795,13 @@ public class ExecutionOrchestrationService {
         ProductionStage stage = stageRepo.findById(stageId).orElseThrow();
         java.util.Map<String, Object> result = new java.util.HashMap<>();
 
-        // FIX: Tìm tất cả stages cùng loại đang IN_PROGRESS, WAITING, hoặc
-        // READY_TO_PRODUCE
+        // FIX: Tìm tất cả stages cùng loại đang hoạt động hoặc chờ sửa lỗi
         // để hiển thị trong modal xác nhận cascade pause
+        // INCLUDES: WAITING_REWORK, QC_FAILED (other defect lots like B)
         java.util.List<ProductionStage> activeStages = stageRepo
                 .findByStageTypeAndExecutionStatusIn(
                         stage.getStageType(),
-                        java.util.List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE"))
+                        java.util.List.of("IN_PROGRESS", "WAITING", "READY_TO_PRODUCE", "WAITING_REWORK", "QC_FAILED"))
                 .stream()
                 .filter(s -> !s.getId().equals(stageId))
                 .toList();
