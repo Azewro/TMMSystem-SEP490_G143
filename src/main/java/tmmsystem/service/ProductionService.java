@@ -606,14 +606,15 @@ public class ProductionService {
                     String severity = i.getSeverity();
                     String status = i.getStatus();
 
-                    // For MINOR defects: show PROCESSED or IN_PROGRESS
+                    // For MINOR defects: show PROCESSED, IN_PROGRESS, or RESOLVED (to keep
+                    // completed ones visible)
                     if ("MINOR".equals(severity)) {
-                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status);
+                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status) || "RESOLVED".equals(status);
                     }
 
-                    // For MAJOR defects: show PROCESSED (PM has approved material requisition)
+                    // For MAJOR defects: show PROCESSED, IN_PROGRESS, or RESOLVED
                     if ("MAJOR".equals(severity)) {
-                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status);
+                        return "PROCESSED".equals(status) || "IN_PROGRESS".equals(status) || "RESOLVED".equals(status);
                     }
 
                     return false;
