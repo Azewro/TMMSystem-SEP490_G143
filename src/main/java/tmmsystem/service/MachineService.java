@@ -15,6 +15,7 @@ public class MachineService {
     private final MachineRepository repository;
     private final tmmsystem.repository.ProductionStageRepository stageRepository;
     private final tmmsystem.repository.MachineAssignmentRepository assignmentRepository;
+    private final WebSocketService webSocketService;
     private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
             Map.entry("WARPING", "CUONG_MAC"),
             Map.entry("CUONG_MAC", "WARPING"),
@@ -31,10 +32,12 @@ public class MachineService {
 
     public MachineService(MachineRepository repository,
             tmmsystem.repository.ProductionStageRepository stageRepository,
-            tmmsystem.repository.MachineAssignmentRepository assignmentRepository) {
+            tmmsystem.repository.MachineAssignmentRepository assignmentRepository,
+            WebSocketService webSocketService) {
         this.repository = repository;
         this.stageRepository = stageRepository;
         this.assignmentRepository = assignmentRepository;
+        this.webSocketService = webSocketService;
     }
 
     public List<Machine> findAll() {
@@ -98,7 +101,9 @@ public class MachineService {
 
     @Transactional
     public Machine create(Machine m) {
-        return repository.save(m);
+        Machine saved = repository.save(m);
+        webSocketService.broadcastDataUpdate("MACHINE", saved.getId(), "CREATED");
+        return saved;
     }
 
     @Transactional
@@ -111,10 +116,12 @@ public class MachineService {
         existing.setSpecifications(updated.getSpecifications());
         existing.setLastMaintenanceAt(updated.getLastMaintenanceAt());
         existing.setNextMaintenanceAt(updated.getNextMaintenanceAt());
+        webSocketService.broadcastDataUpdate("MACHINE", existing.getId(), "UPDATED");
         return existing;
     }
 
     public void delete(Long id) {
+        webSocketService.broadcastDataUpdate("MACHINE", id, "DELETED");
         repository.deleteById(id);
     }
 

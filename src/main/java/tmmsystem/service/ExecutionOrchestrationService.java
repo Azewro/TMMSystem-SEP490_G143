@@ -50,6 +50,7 @@ public class ExecutionOrchestrationService {
     private final MachineAssignmentRepository machineAssignmentRepository;
     private final ProductionPlanRepository productionPlanRepository;
     private final ContractStatusService contractStatusService;
+    private final WebSocketService webSocketService;
     private static final Map<String, String> STAGE_TYPE_ALIASES = Map.ofEntries(
             Map.entry("WARPING", "CUONG_MAC"),
             Map.entry("CUONG_MAC", "WARPING"),
@@ -78,7 +79,8 @@ public class ExecutionOrchestrationService {
             MachineRepository machineRepository,
             MachineAssignmentRepository machineAssignmentRepository,
             ProductionPlanRepository productionPlanRepository,
-            ContractStatusService contractStatusService) {
+            ContractStatusService contractStatusService,
+            WebSocketService webSocketService) {
         this.orderRepo = orderRepo;
         this.stageRepo = stageRepo;
         this.issueRepo = issueRepo;
@@ -94,6 +96,7 @@ public class ExecutionOrchestrationService {
         this.machineAssignmentRepository = machineAssignmentRepository;
         this.productionPlanRepository = productionPlanRepository;
         this.contractStatusService = contractStatusService;
+        this.webSocketService = webSocketService;
     }
 
     private record StageContext(String lotCode, String poNumber, String contractNumber, String stageType) {
@@ -339,6 +342,11 @@ public class ExecutionOrchestrationService {
         tracking.setQuantityCompleted(java.math.BigDecimal.valueOf(saved.getProgressPercent()));
         stageTrackingRepository.save(tracking);
 
+        // Broadcast WebSocket update for real-time frontend refresh
+        webSocketService.broadcastDataUpdate("PRODUCTION_STAGE", saved.getId(), "STARTED");
+        webSocketService.broadcastDataUpdate("PRODUCTION_ORDER",
+                stage.getProductionOrder() != null ? stage.getProductionOrder().getId() : 0L, "STAGE_STARTED");
+
         return saved;
     }
 
@@ -456,6 +464,10 @@ public class ExecutionOrchestrationService {
         tracking.setIsRework(isRework);
 
         stageTrackingRepository.save(tracking);
+
+        // Broadcast WebSocket update for real-time frontend refresh
+        webSocketService.broadcastDataUpdate("PRODUCTION_STAGE", saved.getId(),
+                percent == 100 ? "COMPLETED" : "PROGRESS_UPDATED");
 
         return saved;
     }
@@ -692,6 +704,11 @@ public class ExecutionOrchestrationService {
                         issue.getId());
             }
         }
+
+        // Broadcast WebSocket updates for real-time frontend refresh
+        webSocketService.broadcastDataUpdate("PRODUCTION_STAGE", stageRef.getId(),
+                "PASS".equalsIgnoreCase(overallResult) ? "QC_PASSED" : "QC_FAILED");
+
         return session;
     }
 
@@ -1002,6 +1019,9 @@ public class ExecutionOrchestrationService {
 
         notificationService.notifyRole("PRODUCTION_MANAGER", "PRODUCTION", "WARNING", "Yêu cầu cấp sợi",
                 "Có yêu cầu cấp sợi cho công đoạn " + stage.getStageType(), "MATERIAL_REQUISITION", req.getId());
+
+        // Broadcast WebSocket update for real-time frontend refresh
+        webSocketService.broadcastDataUpdate("MATERIAL_REQUEST", req.getId(), "CREATED");
 
         return req;
     }
