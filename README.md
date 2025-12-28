@@ -3,13 +3,13 @@
 # Supervisor
 Nguyễn Văn An - AnNV22@fe.edu.vn
 # Team Members
-Nguyễn Anh Hùng - HE180711
+Nguyễn Anh Hùng - HE180711 (Leader) - Full Stack Developer
 
-Nguyễn Thị Thu Hiền - HE172532
+Nguyễn Thị Thu Hiền - HE172532 (Member) - BA/Tester
 
-Nguyễn Thị Thủy - HE172416
+Nguyễn Thị Thủy - HE172416 (Member) - BA/Tester
 
-Đỗ Hải Phong - HE181907
+Đỗ Hải Phong - HE181907 (Member) - Full Stack Developer
 
-Lê Văn Đức - HE160559
+Lê Văn Đức - HE160559 (Member) - Front-end Developer/Tester
 
